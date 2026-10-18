@@ -62,6 +62,8 @@ try:
         publish_native_binding,
         publish_native_submission,
         publish_native_result,
+        publish_legacy_native_result,
+        request_fingerprint,
     )
     from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
     from project_os_runtime.lightrsi_reader import LightRSIResultReader
@@ -86,6 +88,8 @@ except ModuleNotFoundError:
         publish_native_binding,
         publish_native_submission,
         publish_native_result,
+        publish_legacy_native_result,
+        request_fingerprint,
     )
     from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
     from scripts.project_os_runtime.lightrsi_reader import LightRSIResultReader
@@ -135,6 +139,7 @@ _LIGHTRSI_PRE_SUBMIT_CURSOR_ENV = "LIGHTRSI_PRE_SUBMIT_CURSOR"
 _LIGHTRSI_SOURCE_FINGERPRINT_ENV = "LIGHTRSI_SOURCE_FINGERPRINT"
 _LIGHTRSI_ARTIFACT_SHA256_ENV = "LIGHTRSI_ARTIFACT_SHA256"
 _CODEX_NATIVE_APP_SERVER_ENV = "PROJECT_OS_CODEX_NATIVE_APP_SERVER"
+_SECRETARY_LEGACY_MODE_ENV = "PROJECT_OS_SECRETARY_LEGACY_MODE"
 _LIGHTRSI_RESULT_TIMEOUT_SECONDS = 120.0
 _LIGHTRSI_RESULT_POLL_SECONDS = 0.5
 _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS = 30.0
@@ -275,10 +280,41 @@ class SecretaryNormalRequest:
     profile: str = "normal"
     session: str = "auto"
     pane: str = "auto"
+    repository_identity: str = ""
+    git_revision: str = ""
+    model_identity: str = ""
+    runtime_grant_digest: str = ""
 
     def __post_init__(self) -> None:
         for field in ("task", "profile", "session", "pane"):
             _required_text(getattr(self, field), field)
+        for field in ("repository_identity", "git_revision", "model_identity", "runtime_grant_digest"):
+            if not isinstance(getattr(self, field), str):
+                raise ValueError(f"{field} must be text")
+
+
+def _normal_request_fingerprint(
+    request: SecretaryNormalRequest,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    values = environment if isinstance(environment, Mapping) else {}
+    return request_fingerprint(
+        {
+            "task_sha256": hashlib.sha256(request.task.encode("utf-8")).hexdigest(),
+            "repository_identity": request.repository_identity or values.get("PROJECT_OS_REPOSITORY_IDENTITY", ""),
+            "git_revision": request.git_revision or values.get("PROJECT_OS_GIT_REVISION", ""),
+            "execution_role": "secretary",
+            "model_identity": request.model_identity or values.get("PROJECT_OS_MODEL_IDENTITY", ""),
+            "runtime_grant_digest": request.runtime_grant_digest or values.get("PROJECT_OS_RUNTIME_GRANT_DIGEST", ""),
+        }
+    )
+
+
+def _require_attempt_budget(deadline: float) -> None:
+    if time.monotonic() >= deadline:
+        raise NativeAppServerError(
+            "Secretary native attempt deadline exhausted.", failure_kind="NATIVE_RESULT_TIMEOUT"
+        )
 
 
 def build_normal_launcher_command(
@@ -990,7 +1026,7 @@ def _observe_bound_lightrsi_result(
         if isinstance(assignment_id, str) and assignment_id.strip():
             native_source["assignment_id"] = assignment_id
         try:
-            publication = publish_native_result(native_result_output, native_source)
+            publication = publish_legacy_native_result(native_result_output, native_source)
             persisted = parse_native_result(native_result_output, attempt_id=attempt_id)
             if persisted.get("state") != "confirmed":
                 raise ValueError("native result read-back unavailable")
@@ -1962,6 +1998,7 @@ def canonical_resource_inventory(
     resources: Sequence[Mapping[str, Any]],
     *,
     attempt_id: str | None = None,
+    empty_state: str = "unknown",
 ) -> dict[str, Any]:
     """Deduplicate attempt-bound resource observations and fail closed on conflict."""
 
@@ -2005,7 +2042,7 @@ def canonical_resource_inventory(
         for item in ordered
     )
     if not ordered:
-        state = "unknown"
+        state = empty_state if empty_state in {"settled", "quarantined", "unknown"} else "unknown"
     elif unresolved:
         state = "quarantined"
     else:
@@ -2456,6 +2493,7 @@ def _normalize_invocation_outcome(
     resource_inventory = canonical_resource_inventory(
         owned_resources,
         attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+        empty_state=resource["state"],
     )
     if resource_inventory["resources"]:
         resource = {
@@ -2500,6 +2538,29 @@ def _normalize_invocation_outcome(
     }
 
 
+def _apply_native_retirement_evidence(
+    result: dict[str, Any], retirement: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    evidence = dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}
+    result.setdefault("preflight", {})["retirement"] = evidence
+    if evidence.get("state") == "retired":
+        return result
+    result["failure_kind"] = "NATIVE_RETIREMENT_UNVERIFIED"
+    result["recovery_required"] = True
+    result["resource"] = {"state": "quarantined", "reuse_blocked": True}
+    inventory = result.get("resource_inventory")
+    if isinstance(inventory, Mapping):
+        result["resource_inventory"] = {
+            **inventory,
+            "state": "quarantined",
+            "reuse_blocked": True,
+            "recovery_required": True,
+        }
+    result["finalization_outcome"] = {"state": "recovery_required", "recovery_required": True}
+    result["settlement"] = {"state": "retirement_unverified", "recovery_required": True}
+    return result
+
+
 def _normal_managed_result_capability_available() -> bool:
     return all(callable(value) for value in (native_result_path, publish_native_result, CodexAppServerClient))
 
@@ -2523,7 +2584,13 @@ def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) ->
         return None
 
 
-def _reconcile_native_artifacts(*, output: Path, invocation_id: str, started_at: str) -> dict[str, Any] | None:
+def _reconcile_native_artifacts(
+    *,
+    output: Path,
+    invocation_id: str,
+    started_at: str,
+    request_fingerprint_value: str,
+) -> dict[str, Any] | None:
     result_path = native_result_path(output)
     if result_path.is_file():
         try:
@@ -2532,12 +2599,49 @@ def _reconcile_native_artifacts(*, output: Path, invocation_id: str, started_at:
             raise NativeAppServerError(
                 "Existing native result is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
             ) from exc
-        attempt_id = raw.get("attempt_id") if isinstance(raw, Mapping) else None
+        if not isinstance(raw, Mapping) or raw.get("schema") != "secretary-native-result.v2":
+            raise NativeAppServerError(
+                "Existing native result is legacy read-only evidence.", failure_kind="NATIVE_RESULT_CONFLICT"
+            )
+        attempt_id = raw.get("attempt_id")
         if not isinstance(attempt_id, str) or not attempt_id.strip():
             raise NativeAppServerError("Existing native result has no attempt identity.", failure_kind="NATIVE_RESULT_CONFLICT")
-        persisted = parse_native_result(result_path, attempt_id=attempt_id)
+        persisted = parse_native_result(
+            result_path,
+            attempt_id=attempt_id,
+            request_fingerprint=request_fingerprint_value,
+        )
         if persisted.get("state") != "confirmed":
-            raise NativeAppServerError("Existing native result is malformed.", failure_kind="NATIVE_RESULT_CONFLICT")
+            detail = persisted.get("detail", "malformed")
+            raise NativeAppServerError(
+                f"Existing native result is {detail}.", failure_kind="NATIVE_RESULT_CONFLICT"
+            )
+        binding = parse_native_binding(
+            native_binding_path(output),
+            attempt_id=attempt_id,
+            request_fingerprint=request_fingerprint_value,
+        )
+        submission = parse_native_submission(
+            native_submission_path(output),
+            attempt_id=attempt_id,
+            request_fingerprint=request_fingerprint_value,
+        )
+        if binding.get("state") != "confirmed" or submission.get("state") != "confirmed":
+            raise NativeAppServerError(
+                "Existing native result lacks matching binding or submission evidence.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            )
+        if any(
+            binding.get(key) != persisted.get(key)
+            for key in ("request_fingerprint", "attempt_id", "native_session_id")
+        ) or any(
+            submission.get(key) != persisted.get(key)
+            for key in ("request_fingerprint", "attempt_id", "native_session_id", "native_thread_id", "native_turn_id")
+        ):
+            raise NativeAppServerError(
+                "Existing native artifacts disagree on request or turn identity.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            )
         assignment = {
             "attempt_id": attempt_id,
             "session": persisted.get("session", "codex-app-server"),
@@ -2582,9 +2686,17 @@ def _run_normal_via_native_app_server(
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
     preflight: dict[str, Any] = {"transport": "codex-app-server"}
+    client: CodexAppServerClient | None = None
     try:
+        attempt_deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
         worktree, _ = _read_only_git_anchor(request.worktree)
-        reconciled = _reconcile_native_artifacts(output=output, invocation_id=invocation_id, started_at=started)
+        request_fingerprint_value = _normal_request_fingerprint(request, environment)
+        reconciled = _reconcile_native_artifacts(
+            output=output,
+            invocation_id=invocation_id,
+            started_at=started,
+            request_fingerprint_value=request_fingerprint_value,
+        )
         if reconciled is not None:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(reconciled, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -2603,11 +2715,13 @@ def _run_normal_via_native_app_server(
             codex_home=request.codex_home,
             environment=environment,
             timeout_seconds=_CODEX_OBSERVATION_TIMEOUT_SECONDS,
+            attempt_deadline=attempt_deadline,
         ) as client:
             thread = client.start_thread()
             binding = {
-                "schema": "secretary-native-binding.v1",
+                "schema": "secretary-native-binding.v2",
                 "attempt_id": attempt_id,
+                "request_fingerprint": request_fingerprint_value,
                 "native_session_id": thread.session_id,
                 "native_thread_id": thread.thread_id,
                 "pre_submit_boundary": thread.pre_submit_boundary,
@@ -2619,29 +2733,34 @@ def _run_normal_via_native_app_server(
                     "agent_name": "normal-secretary",
                 },
             }
+            _require_attempt_budget(attempt_deadline)
             publish_native_binding(binding_path, binding)
+            _require_attempt_budget(attempt_deadline)
             turn = client.start_turn(thread, request.task)
             submission = {
-                "schema": "secretary-native-submission.v1",
+                "schema": "secretary-native-submission.v2",
                 "attempt_id": attempt_id,
+                "request_fingerprint": request_fingerprint_value,
                 "native_session_id": thread.session_id,
                 "native_thread_id": thread.thread_id,
                 "native_turn_id": turn.turn_id,
                 "accepted_at": datetime.now(timezone.utc).isoformat(),
                 "status": "accepted",
             }
+            _require_attempt_budget(attempt_deadline)
             publish_native_submission(submission_path, submission)
+            _require_attempt_budget(attempt_deadline)
             evidence = client.wait_for_turn(turn)
             native_payload = {
-                "schema": "secretary-native-result.v1",
+                "schema": "secretary-native-result.v2",
                 "producer": NATIVE_RESULT_PRODUCER,
                 "attempt_id": attempt_id,
+                "request_fingerprint": request_fingerprint_value,
                 "observed_at": datetime.now(timezone.utc).isoformat(),
                 "native_authority": NATIVE_APP_SERVER_AUTHORITY,
                 "native_session_id": thread.session_id,
                 "native_thread_id": thread.thread_id,
                 "native_turn_id": evidence.turn_id,
-                "completion_seq": 1,
                 "terminal_status": evidence.status,
                 "content_source": "native_app_server_completed_turn",
                 "semantic_complete": True,
@@ -2652,8 +2771,14 @@ def _run_normal_via_native_app_server(
                 "pane": "native",
                 "agent_name": "normal-secretary",
             }
+            _require_attempt_budget(attempt_deadline)
             publish_native_result(native_result_path(output), native_payload)
-            persisted = parse_native_result(native_result_path(output), attempt_id=attempt_id)
+            _require_attempt_budget(attempt_deadline)
+            persisted = parse_native_result(
+                native_result_path(output),
+                attempt_id=attempt_id,
+                request_fingerprint=request_fingerprint_value,
+            )
             if persisted.get("state") != "confirmed":
                 raise LaunchBlocked("Codex app-server native result read-back failed")
             observation = {
@@ -2682,6 +2807,9 @@ def _run_normal_via_native_app_server(
                 started_at=started,
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
+        retirement = getattr(client, "retirement_evidence", {"state": "retired", "method": "unreported"})
+        preflight["retirement"] = dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}
+        result = _apply_native_retirement_evidence(result, retirement)
     except Exception as exc:
         result = _normalize_invocation_outcome(
             invocation_id=invocation_id,
@@ -2732,8 +2860,9 @@ def _native_binding_for_submission(
         if not isinstance(native_session_id, str) or not native_session_id.strip():
             raise LaunchBlocked("LightRSI native session unavailable")
     binding: dict[str, Any] = {
-        "schema": "secretary-native-binding.v1",
+        "schema": "secretary-native-binding.v2",
         "attempt_id": attempt_id,
+        "request_fingerprint": _normal_request_fingerprint(launch_request, environment),
         "native_session_id": native_session_id,
         "pre_submit_cursor": cursor,
         "lightrsi_cli_path": str(reader.cli_path),
@@ -2751,7 +2880,11 @@ def _native_binding_for_submission(
     if isinstance(artifact_sha256, str) and artifact_sha256.strip():
         binding["lightrsi_artifact_sha256"] = artifact_sha256
     publish_native_binding(native_binding_path(output), binding)
-    persisted = parse_native_binding(native_binding_path(output), attempt_id=attempt_id)
+    persisted = parse_native_binding(
+        native_binding_path(output),
+        attempt_id=attempt_id,
+        request_fingerprint=binding["request_fingerprint"],
+    )
     if persisted.get("state") != "confirmed":
         raise LaunchBlocked("LightRSI native binding read-back unavailable")
     return persisted
@@ -2833,7 +2966,7 @@ def _write_native_handoff_ack(path: Path, handoff: Mapping[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
+def _run_normal_via_legacy_lightrsi(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
     invocation_id = uuid.uuid4().hex
     started = datetime.now(timezone.utc).isoformat()
     if not _normal_managed_result_capability_available():
@@ -2860,13 +2993,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     request = replace(request, worktree=worktree)
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
-    if environment.get(_CODEX_NATIVE_APP_SERVER_ENV, "").strip().lower() in {"1", "true", "yes"}:
-        return _run_normal_via_native_app_server(
-            request,
-            output=output,
-            environment=environment,
-            invocation_id=invocation_id,
-        )
     native_reader = _configured_lightrsi_reader(environment)
     if native_reader is None:
         raise LaunchBlocked("LightRSI reader capability unavailable")
@@ -3029,6 +3155,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             resource_inventory = canonical_resource_inventory(
                 result["owned_resources"],
                 attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+                empty_state=resource["state"],
             )
             if resource_inventory["resources"]:
                 resource = {
@@ -3050,6 +3177,42 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
+
+
+def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
+    environment = dict(os.environ)
+    legacy_mode = environment.get(_SECRETARY_LEGACY_MODE_ENV, "").strip().lower() in {"1", "true", "yes"}
+    native_mode = environment.get(_CODEX_NATIVE_APP_SERVER_ENV, "").strip().lower() in {"1", "true", "yes"}
+    if not legacy_mode or native_mode:
+        invocation_id = uuid.uuid4().hex
+        started = datetime.now(timezone.utc).isoformat()
+        if not _normal_managed_result_capability_available():
+            result = _normalize_invocation_outcome(
+                invocation_id=invocation_id,
+                returncode=1,
+                payload=None,
+                observation=None,
+                started_at=started,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            result["execution"].update({"state": "blocked", "error": "BLOCKED_CAPABILITY"})
+            result["failure_kind"] = "BLOCKED_CAPABILITY"
+            result["capability_state"] = "BLOCKED_CAPABILITY"
+            result["preflight"] = {
+                "disposition": "BLOCKED_CAPABILITY",
+                "reason": "native result publication interface unavailable",
+            }
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            return result
+        worktree, _ = _read_only_git_anchor(request.worktree)
+        return _run_normal_via_native_app_server(
+            replace(request, worktree=worktree),
+            output=output,
+            environment=environment,
+            invocation_id=invocation_id,
+        )
+    return _run_normal_via_legacy_lightrsi(request, output=output)
 
 
 def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any]:
@@ -3191,6 +3354,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 resource_inventory = canonical_resource_inventory(
                     result["owned_resources"],
                     attempt_id=attempt_id if isinstance(attempt_id, str) else None,
+                    empty_state=resource["state"],
                 )
                 if resource_inventory["resources"]:
                     resource = {

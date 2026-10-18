@@ -4,9 +4,12 @@ from pathlib import Path
 import pytest
 
 from scripts.project_os_runtime.secretary_results import (
+    NATIVE_BINDING_SCHEMA,
+    NATIVE_RESULT_SCHEMA,
     NATIVE_RESULT_AUTHORITY,
     NATIVE_RESULT_PRODUCER,
     NATIVE_RESULT_MAX_BYTES,
+    NATIVE_SUBMISSION_SCHEMA,
     native_binding_path,
     native_submission_path,
     parse_native_binding,
@@ -17,24 +20,38 @@ from scripts.project_os_runtime.secretary_results import (
     native_result_path,
     parse_native_result,
     publish_native_result,
+    request_fingerprint,
+)
+
+
+FINGERPRINT = request_fingerprint(
+    {
+        "task_sha256": "task",
+        "repository_identity": "repo",
+        "git_revision": "rev",
+        "execution_role": "secretary",
+        "model_identity": "model",
+        "runtime_grant_digest": "",
+    }
 )
 
 
 def payload(content: str = "native answer") -> dict[str, object]:
     return {
-        "schema": "secretary-native-result.v1",
+        "schema": NATIVE_RESULT_SCHEMA,
         "producer": NATIVE_RESULT_PRODUCER,
         "attempt_id": "attempt-1",
+        "request_fingerprint": FINGERPRINT,
         "session": "session",
         "pane": "pane",
         "agent_name": "agent",
         "native_authority": NATIVE_RESULT_AUTHORITY,
         "native_session_id": "session",
+        "native_thread_id": "thread",
         "native_turn_id": "session:t1",
         "content_source": "lightrsi_completed_turn",
-        "turn_seq": 1,
+        "terminal_status": "completed",
         "semantic_complete": True,
-        "completion_seq": 8,
         "semantic_content": content,
         "freshness_proven": True,
         "assistant_owned": True,
@@ -137,7 +154,6 @@ def test_native_result_allows_missing_transport_metadata(tmp_path: Path) -> None
 def test_native_result_does_not_publish_legacy_completed_turn_source(tmp_path: Path) -> None:
     value = payload()
     value["content_source"] = "native_completed_turn"
-    value.pop("turn_seq")
 
     with pytest.raises(ValueError, match="content source"):
         publish_native_result(tmp_path / "native-result.json", value)
@@ -147,8 +163,11 @@ def test_native_result_reads_legacy_completed_turn_artifact_without_republishing
     tmp_path: Path,
 ) -> None:
     value = payload("legacy answer")
+    value["schema"] = "secretary-native-result.v1"
     value["content_source"] = "native_completed_turn"
-    value.pop("turn_seq")
+    value.pop("request_fingerprint")
+    value.pop("native_thread_id")
+    value.pop("terminal_status")
     value.pop("content_sha256", None)
     path = tmp_path / "native-result.json"
     path.write_text(json.dumps(value), encoding="utf-8")
@@ -160,20 +179,39 @@ def test_native_result_reads_legacy_completed_turn_artifact_without_republishing
     assert parsed["semantic_content"] == "legacy answer"
 
 
+def test_native_result_writer_does_not_republish_legacy_artifact(tmp_path: Path) -> None:
+    path = tmp_path / "native-result.json"
+    legacy = payload("legacy answer")
+    legacy["schema"] = "secretary-native-result.v1"
+    legacy["content_source"] = "native_completed_turn"
+    legacy.pop("request_fingerprint")
+    legacy.pop("native_thread_id")
+    legacy.pop("terminal_status")
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    with pytest.raises(NativeResultConflictError, match="malformed existing evidence"):
+        publish_native_result(path, payload("new answer"))
+
+
 def test_native_result_rejects_missing_new_semantic_contract_fields(tmp_path: Path) -> None:
     value = payload()
-    value.pop("turn_seq")
+    value.pop("request_fingerprint")
 
-    with pytest.raises(ValueError, match="turn_seq"):
+    with pytest.raises(ValueError, match="request_fingerprint"):
         publish_native_result(tmp_path / "native-result.json", value)
 
 
-def test_native_result_requires_canonical_lightrsi_turn_id(tmp_path: Path) -> None:
+def test_native_result_requires_terminal_completion(tmp_path: Path) -> None:
     value = payload()
-    value["native_turn_id"] = "arbitrary-turn-id"
+    value["terminal_status"] = "idle"
 
-    with pytest.raises(ValueError, match="canonical turn id"):
+    with pytest.raises(ValueError, match="terminal status"):
         publish_native_result(tmp_path / "native-result.json", value)
+
+
+def test_request_fingerprint_uses_fixed_field_order_and_empty_values() -> None:
+    assert FINGERPRINT == "b01dc2a65f02a764cab922b85643028fe8ba23f9fbf67a81a52f3e8d23904262"
+    assert request_fingerprint({"task_sha256": "task", "repository_identity": "repo", "git_revision": "rev", "execution_role": "secretary", "model_identity": "model"}) == FINGERPRINT
 
 
 def test_native_result_rejects_oversized_encoded_payload(tmp_path: Path) -> None:
@@ -186,8 +224,9 @@ def test_native_result_rejects_oversized_encoded_payload(tmp_path: Path) -> None
 def test_native_binding_is_atomic_attempt_bound_and_immutable(tmp_path: Path) -> None:
     path = native_binding_path(tmp_path / "normal.json")
     value = {
-        "schema": "secretary-native-binding.v1",
+        "schema": NATIVE_BINDING_SCHEMA,
         "attempt_id": "attempt-1",
+        "request_fingerprint": FINGERPRINT,
         "native_session_id": "session",
         "pre_submit_cursor": "cursor",
         "lightrsi_cli_path": "C:/pinned/cli.js",
@@ -207,8 +246,9 @@ def test_native_binding_is_atomic_attempt_bound_and_immutable(tmp_path: Path) ->
 def test_native_submission_ack_is_attempt_bound_and_idempotent(tmp_path: Path) -> None:
     path = native_submission_path(tmp_path / "normal.json")
     value = {
-        "schema": "secretary-native-submission.v1",
+        "schema": NATIVE_SUBMISSION_SCHEMA,
         "attempt_id": "attempt-1",
+        "request_fingerprint": FINGERPRINT,
         "native_session_id": "session",
         "native_thread_id": "thread",
         "native_turn_id": "turn",

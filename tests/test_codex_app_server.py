@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
+from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError, NativeTurn
 
 
 class FakeStdout:
@@ -115,17 +115,68 @@ class FakeProcess:
             }})
             self.stdout.push({"method": "item/completed", "params": {
                 "threadId": "thread-1", "turnId": "turn-1",
-                "item": {"id": "item-2", "type": "agentMessage", "order": 2, "text": " world"},
+                "item": {"id": "item-2", "type": "agentMessage", "order": 2, "finalized": True, "provenance": "final_answer", "text": " world"},
             }})
             self.stdout.push({"method": "item/completed", "params": {
                 "threadId": "thread-1", "turnId": "turn-1",
-                "item": {"id": "item-1", "type": "agentMessage", "order": 1, "text": "hello"},
+                "item": {"id": "item-1", "type": "agentMessage", "order": 1, "finalized": True, "provenance": "final_answer", "text": "hello"},
             }})
             self.stdout.push({"method": "turn/completed", "params": {
                 "threadId": "thread-1", "turn": {"id": "turn-1", "status": {"type": "completed"}},
             }})
         else:
             raise AssertionError(f"unexpected method {method}")
+
+
+def test_close_exposes_structured_retirement_evidence() -> None:
+    client = CodexAppServerClient(
+        "codex",
+        cwd=Path("C:/worktree"),
+        codex_home=Path("C:/codex"),
+    )
+    process = FakeProcess()
+    process.returncode = None
+    client._process = process
+    client._started = True
+
+    evidence = client.close()
+
+    assert evidence == {"state": "retired", "method": "terminate"}
+    assert client.retirement_evidence == evidence
+    assert process.terminated is True
+
+
+def test_completed_final_answer_item_is_finalized_by_protocol_event() -> None:
+    client = CodexAppServerClient(
+        "codex",
+        cwd=Path("C:/worktree"),
+        codex_home=Path("C:/codex"),
+    )
+    turn = NativeTurn("thread-1", "turn-1")
+    client._events.put({
+        "method": "item/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {
+                "id": "item-1",
+                "type": "agentMessage",
+                "phase": "final_answer",
+                "text": "OK",
+            },
+        },
+    })
+    client._events.put({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": {"type": "completed"}},
+        },
+    })
+
+    evidence = client.wait_for_turn(turn)
+
+    assert evidence.semantic_content == "OK"
 
 
 def make_client(process: FakeProcess, tmp_path: Path) -> CodexAppServerClient:
@@ -226,3 +277,76 @@ def test_client_rejects_completed_turn_without_finalized_assistant_content(tmp_p
             client.wait_for_turn(turn)
     assert error.value.failure_kind == "NATIVE_PROTOCOL_INCOMPATIBLE"
     assert process.terminated is True
+
+
+def test_client_rejects_assistant_content_without_final_answer_provenance(tmp_path: Path) -> None:
+    process = FakeProcess()
+
+    def handle(request: dict[str, Any]) -> None:
+        process.requests.append(request)
+        if request.get("method") == "initialize":
+            process.stdout.push({"id": request["id"], "result": {}})
+        elif request.get("method") == "thread/start":
+            process.stdout.push({"id": request["id"], "result": {"thread": {
+                "id": "t", "sessionId": "s", "ephemeral": True,
+                "status": {"type": "idle"}, "turns": [],
+            }}})
+        elif request.get("method") == "turn/start":
+            process.stdout.push({"id": request["id"], "result": {"turn": {"id": "turn"}}})
+            process.stdout.push({"method": "item/finalized", "params": {
+                "threadId": "t", "turnId": "turn",
+                "item": {"id": "item", "type": "agentMessage", "text": "commentary"},
+            }})
+            process.stdout.push({"method": "turn/completed", "params": {
+                "threadId": "t", "turn": {"id": "turn", "status": {"type": "completed"}},
+            }})
+
+    process.handle = handle  # type: ignore[method-assign]
+    with pytest.raises(NativeAppServerError, match="no finalized assistant") as error:
+        with make_client(process, tmp_path) as client:
+            turn = client.start_turn(client.start_thread(), "answer")
+            client.wait_for_turn(turn)
+    assert error.value.failure_kind == "NATIVE_PROTOCOL_INCOMPATIBLE"
+
+
+def test_client_rejects_conflicting_final_answer_item_replay(tmp_path: Path) -> None:
+    process = FakeProcess()
+
+    def handle(request: dict[str, Any]) -> None:
+        process.requests.append(request)
+        if request.get("method") == "initialize":
+            process.stdout.push({"id": request["id"], "result": {}})
+        elif request.get("method") == "thread/start":
+            process.stdout.push({"id": request["id"], "result": {"thread": {
+                "id": "t", "sessionId": "s", "ephemeral": True,
+                "status": {"type": "idle"}, "turns": [],
+            }}})
+        elif request.get("method") == "turn/start":
+            process.stdout.push({"id": request["id"], "result": {"turn": {"id": "turn"}}})
+            for text in ("one", "two"):
+                process.stdout.push({"method": "item/finalized", "params": {
+                    "threadId": "t", "turnId": "turn",
+                    "item": {
+                        "id": "item", "type": "agentMessage", "finalized": True,
+                        "provenance": "final_answer", "text": text,
+                    },
+                }})
+
+    process.handle = handle  # type: ignore[method-assign]
+    with pytest.raises(NativeAppServerError, match="replay conflicts") as error:
+        with make_client(process, tmp_path) as client:
+            turn = client.start_turn(client.start_thread(), "answer")
+            client.wait_for_turn(turn)
+    assert error.value.failure_kind == "NATIVE_PROTOCOL_INCOMPATIBLE"
+
+
+def test_client_overflow_fails_closed_without_blocking(tmp_path: Path) -> None:
+    process = FakeProcess()
+    client = make_client(process, tmp_path)
+    for _ in range(256):
+        client._events.put_nowait({"method": "turn/completed"})
+
+    client._put_event({"method": "turn/completed"})
+
+    assert client._fatal is not None
+    assert client._fatal.failure_kind == "NATIVE_RESULT_LIMIT_EXCEEDED"
