@@ -180,10 +180,12 @@ success. The normal Secretary semantic boundary is the pinned LightRSI
 `codex completed-turn --json` query, joined to a pre-submit cursor and persisted
 through `secretary-native-result.v1`.
 The worker-native session ID must be handed off explicitly to the Secretary
-runtime; the launcher captures exactly one new Codex rollout and the runtime
-acknowledges the resulting session/cursor before prompt delivery. A Herdr
-transport session, pane, or agent identity cannot stand in for that native
-session. If the upstream rollout is unavailable or ambiguous, normal dispatch
+runtime. The preferred direct path uses the installed Codex app-server:
+`initialize` -> `thread/start` returns an ephemeral idle thread/session with
+zero prior turns, the launcher persists the binding, and only then sends one
+`turn/start`. A Herdr transport session, pane, or agent identity cannot stand in
+for that native session. The legacy rollout/cursor handoff remains a
+compatibility fallback during rollout; missing app-server or LightRSI capability
 blocks before prompt delivery rather than polling an unrelated session.
 `agent wait` is a documented Herdr capability, not current launcher integration.
 Normalize evidence fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds

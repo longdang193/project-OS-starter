@@ -124,6 +124,7 @@ _LIGHTRSI_NATIVE_SESSION_ENV = "LIGHTRSI_NATIVE_SESSION_ID"
 _LIGHTRSI_PRE_SUBMIT_CURSOR_ENV = "LIGHTRSI_PRE_SUBMIT_CURSOR"
 _LIGHTRSI_SOURCE_FINGERPRINT_ENV = "LIGHTRSI_SOURCE_FINGERPRINT"
 _LIGHTRSI_ARTIFACT_SHA256_ENV = "LIGHTRSI_ARTIFACT_SHA256"
+_CODEX_NATIVE_APP_SERVER_ENV = "PROJECT_OS_CODEX_NATIVE_APP_SERVER"
 _LIGHTRSI_RESULT_TIMEOUT_SECONDS = 120.0
 _LIGHTRSI_RESULT_POLL_SECONDS = 0.5
 _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS = 30.0
@@ -274,6 +275,9 @@ def build_normal_launcher_command(
     request: SecretaryNormalRequest,
     *,
     expected_base: str,
+    native_app_server: bool = False,
+    native_binding_path: Path | None = None,
+    lightrsi_cli_path: Path | None = None,
     native_handoff_path: Path | None = None,
     native_handoff_ack_path: Path | None = None,
     dry_run: bool = False,
@@ -306,6 +310,16 @@ def build_normal_launcher_command(
     ]
     if dry_run:
         command.append("--dry-run")
+    if native_app_server:
+        if native_binding_path is None or lightrsi_cli_path is None:
+            raise ValueError("native app-server requires binding and LightRSI paths")
+        command.extend([
+            "--native-app-server",
+            "--native-binding-path",
+            str(native_binding_path),
+            "--lightrsi-cli-path",
+            str(lightrsi_cli_path),
+        ])
     if native_handoff_path is not None or native_handoff_ack_path is not None:
         if native_handoff_path is None or native_handoff_ack_path is None:
             raise ValueError("native handoff requires both artifact paths")
@@ -889,6 +903,8 @@ def _observe_bound_lightrsi_result(
     native_session_id = native_binding.get("native_session_id")
     after_cursor = native_binding.get("pre_submit_cursor")
     attempt_id = native_binding.get("attempt_id")
+    request_id = native_binding.get("native_request_id") or assignment.get("native_request_id")
+    turn_id = native_binding.get("native_turn_id") or assignment.get("native_turn_id")
     if not all(isinstance(value, str) and value.strip() for value in (
         executable, transport_session, pane, agent_name, native_session_id, after_cursor, attempt_id,
     )):
@@ -902,6 +918,8 @@ def _observe_bound_lightrsi_result(
             candidate = native_reader.read(
                 session_id=native_session_id,
                 after_cursor=after_cursor,
+                request_id=request_id if isinstance(request_id, str) else None,
+                turn_id=turn_id if isinstance(turn_id, str) else None,
             )
         except Exception as exc:
             terminal_error = f"LightRSI reader failed: {type(exc).__name__}"
@@ -990,7 +1008,9 @@ def _observe_bound_lightrsi_result(
             observation["state"] = "unknown"
             observation["observation_error"] = f"native result publication failed: {type(exc).__name__}"
 
-    if observation["state"] in {"done", "unknown"}:
+    if payload.get("transport") == "codex-app-server" or herdr.get("transport") == "codex-app-server":
+        observation["cleanup"] = {"state": "not_required", "reason": "codex-app-server owns the native process"}
+    elif observation["state"] in {"done", "unknown"}:
         observation["cleanup"] = _release_codex_agent(
             executable,
             transport_session,
@@ -2223,7 +2243,7 @@ def _result_source_authoritative(
         expected_assignment_id = assignment.get("assignment_id")
         if expected_assignment_id is not None and source.get("assignment_id") != expected_assignment_id:
             return False
-        expected_attempt_id = assignment.get("project_os_attempt_id", assignment.get("attempt_id"))
+        expected_attempt_id = assignment.get("attempt_id")
         if source.get("native_authority") != NATIVE_RESULT_AUTHORITY:
             return False
         if source.get("attempt_id") != expected_attempt_id or not isinstance(source.get("attempt_id"), str):
@@ -2483,9 +2503,103 @@ def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) ->
         return None
 
 
+def _run_normal_via_native_app_server(
+    request: SecretaryNormalRequest,
+    *,
+    output: Path,
+    environment: Mapping[str, str],
+    native_reader: LightRSIResultReader,
+    invocation_id: str,
+) -> dict[str, Any]:
+    started = datetime.now(timezone.utc).isoformat()
+    process: subprocess.Popen[str] | None = None
+    payload: Mapping[str, Any] | None = None
+    observation: Mapping[str, Any] = {}
+    preflight: dict[str, Any] = {"transport": "codex-app-server"}
+    try:
+        worktree, expected_base = _read_only_git_anchor(request.worktree)
+        codex_executable = environment.get("CODEX_EXECUTABLE") or shutil.which("codex")
+        if not isinstance(codex_executable, str) or not codex_executable.strip():
+            raise LaunchBlocked("Required executable unavailable on PATH: codex")
+        binding_path = native_binding_path(output)
+        if binding_path.exists():
+            raise LaunchBlocked("Codex app-server native binding already exists")
+        command = build_normal_launcher_command(
+            replace(request, worktree=worktree),
+            expected_base=expected_base,
+            native_app_server=True,
+            native_binding_path=binding_path,
+            lightrsi_cli_path=native_reader.cli_path,
+        )
+        process = subprocess.Popen(
+            command,
+            cwd=worktree,
+            env=dict(environment),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        native_binding = _wait_for_native_binding(binding_path, process)
+        stdout, stderr = process.communicate()
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
+        payload = select_launcher_payload(payloads) if payloads else None
+        if completed.returncode != 0 or not isinstance(payload, Mapping):
+            raise LaunchBlocked("Codex app-server did not return a successful assignment")
+        assignment = payload.get("assignment")
+        if not isinstance(assignment, Mapping):
+            raise LaunchBlocked("Codex app-server assignment evidence is missing")
+        if assignment.get("attempt_id") != native_binding.get("attempt_id"):
+            raise LaunchBlocked("Codex app-server binding and assignment attempts do not match")
+        bound = dict(native_binding)
+        for key in ("native_request_id", "native_turn_id"):
+            value = assignment.get(key)
+            if isinstance(value, str) and value.strip():
+                bound[key] = value
+        observation = _observe_submitted_codex(
+            replace(request, worktree=worktree),
+            payload,
+            native_binding=bound,
+            native_reader=native_reader,
+            native_result_output=native_result_path(output),
+            env=dict(environment),
+        )
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=completed.returncode,
+            payload=payload,
+            observation=observation,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as exc:
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=1,
+            payload=payload,
+            observation=observation,
+            started_at=started,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        result["execution"]["state"] = "failed"
+        result["execution"]["error"] = type(exc).__name__
+        preflight["error"] = str(exc)
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.communicate(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                process.kill()
+    result["preflight"] = preflight
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return result
+
+
 def _native_binding_for_submission(
     *,
-    invocation_id: str,
+    attempt_id: str,
     launch_request: SecretaryNormalRequest,
     output: Path,
     environment: Mapping[str, str],
@@ -2510,7 +2624,7 @@ def _native_binding_for_submission(
             raise LaunchBlocked("LightRSI native session unavailable")
     binding: dict[str, Any] = {
         "schema": "secretary-native-binding.v1",
-        "attempt_id": invocation_id,
+        "attempt_id": attempt_id,
         "native_session_id": native_session_id,
         "pre_submit_cursor": cursor,
         "lightrsi_cli_path": str(reader.cli_path),
@@ -2528,20 +2642,23 @@ def _native_binding_for_submission(
     if isinstance(artifact_sha256, str) and artifact_sha256.strip():
         binding["lightrsi_artifact_sha256"] = artifact_sha256
     publish_native_binding(native_binding_path(output), binding)
-    persisted = parse_native_binding(native_binding_path(output), attempt_id=invocation_id)
+    persisted = parse_native_binding(native_binding_path(output), attempt_id=attempt_id)
     if persisted.get("state") != "confirmed":
         raise LaunchBlocked("LightRSI native binding read-back unavailable")
     return persisted
 
 
-def _read_native_handoff(path: Path, *, attempt_id: str) -> dict[str, Any]:
+def _read_native_handoff(path: Path, *, attempt_id: str | None = None) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise LaunchBlocked("Codex native session handoff is invalid") from exc
     if not isinstance(payload, dict) or payload.get("schema") != _CODEX_NATIVE_HANDOFF_SCHEMA:
         raise LaunchBlocked("Codex native session handoff schema mismatch")
-    if payload.get("attempt_id") != attempt_id:
+    handoff_attempt_id = payload.get("attempt_id")
+    if not isinstance(handoff_attempt_id, str) or not handoff_attempt_id.strip():
+        raise LaunchBlocked("Codex native session handoff attempt unavailable")
+    if attempt_id is not None and handoff_attempt_id != attempt_id:
         raise LaunchBlocked("Codex native session handoff attempt mismatch")
     if not isinstance(payload.get("native_session_id"), str) or not payload["native_session_id"].strip():
         raise LaunchBlocked("Codex native session handoff session unavailable")
@@ -2554,7 +2671,7 @@ def _wait_for_native_handoff(
     path: Path,
     process: subprocess.Popen[str],
     *,
-    attempt_id: str,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
@@ -2565,6 +2682,26 @@ def _wait_for_native_handoff(
             raise LaunchBlocked("Codex native session handoff was not captured before launcher exit")
         time.sleep(0.05)
     raise LaunchBlocked("Timed out waiting for Codex native session handoff")
+
+
+def _wait_for_native_binding(path: Path, process: subprocess.Popen[str]) -> dict[str, Any]:
+    deadline = time.monotonic() + _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if path.is_file():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise LaunchBlocked("Codex app-server native binding is invalid") from exc
+            if not isinstance(payload, dict) or payload.get("schema") != "secretary-native-binding.v1":
+                raise LaunchBlocked("Codex app-server native binding schema mismatch")
+            required = ("attempt_id", "native_session_id", "pre_submit_cursor", "lightrsi_cli_path")
+            if not all(isinstance(payload.get(key), str) and payload[key].strip() for key in required):
+                raise LaunchBlocked("Codex app-server native binding identity incomplete")
+            return payload
+        if process.poll() is not None:
+            raise LaunchBlocked("Codex app-server exited before native binding")
+        time.sleep(0.05)
+    raise LaunchBlocked("Timed out waiting for Codex app-server native binding")
 
 
 def _write_native_handoff_ack(path: Path, handoff: Mapping[str, Any]) -> None:
@@ -2622,6 +2759,14 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     )
     if capability.get("state") != "ready":
         raise LaunchBlocked(f"LightRSI capability unavailable: {capability.get('reason', 'unknown')}")
+    if environment.get(_CODEX_NATIVE_APP_SERVER_ENV, "").strip().lower() in {"1", "true", "yes"}:
+        return _run_normal_via_native_app_server(
+            request,
+            output=output,
+            environment=environment,
+            native_reader=native_reader,
+            invocation_id=invocation_id,
+        )
     herdr = shutil.which("herdr")
     if not herdr:
         raise LaunchBlocked("Required executable unavailable on PATH: herdr")
@@ -2666,11 +2811,13 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             native_handoff = _wait_for_native_handoff(
                 native_handoff_path,
                 completed_process,
-                attempt_id=invocation_id,
             )
             if native_reader is not None:
+                native_attempt_id = native_handoff.get("attempt_id")
+                if not isinstance(native_attempt_id, str) or not native_attempt_id.strip():
+                    raise LaunchBlocked("Codex native session handoff attempt unavailable")
                 native_binding = _native_binding_for_submission(
-                    invocation_id=invocation_id,
+                    attempt_id=native_attempt_id,
                     launch_request=launch_request,
                     output=output,
                     environment=environment,
@@ -2695,7 +2842,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         if isinstance(payload, dict):
             assignment_payload = payload.get("assignment")
             if isinstance(assignment_payload, dict):
-                assignment_payload.setdefault("project_os_attempt_id", invocation_id)
                 assignment_payload.setdefault("session", launch_request.session)
                 assignment_payload.setdefault("pane", launch_request.pane)
                 assignment_payload.setdefault(

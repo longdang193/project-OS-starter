@@ -107,6 +107,56 @@ def test_native_result_redacts_secret_values_before_publication(
     assert persisted["semantic_content"] != value["semantic_content"]
 
 
+def test_native_result_readback_uses_persisted_content_when_environment_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "native-result.json"
+    monkeypatch.setenv("SECRETARY_SEMANTIC_SECRETS", "initial-secret")
+    publish_native_result(path, payload("initial-secret answer"))
+
+    monkeypatch.setenv("SECRETARY_SEMANTIC_SECRETS", "answer")
+    parsed = parse_native_result(path, attempt_id="attempt-1")
+
+    assert parsed["state"] == "confirmed"
+    assert parsed["semantic_content"] == "[REDACTED] answer"
+
+
+def test_native_result_allows_missing_transport_metadata(tmp_path: Path) -> None:
+    value = payload()
+    for field in ("session", "pane", "agent_name"):
+        value.pop(field)
+
+    publication = publish_native_result(tmp_path / "native-result.json", value)
+
+    assert publication["state"] == "published"
+
+
+def test_native_result_does_not_publish_legacy_completed_turn_source(tmp_path: Path) -> None:
+    value = payload()
+    value["content_source"] = "native_completed_turn"
+    value.pop("turn_seq")
+
+    with pytest.raises(ValueError, match="content source"):
+        publish_native_result(tmp_path / "native-result.json", value)
+
+
+def test_native_result_reads_legacy_completed_turn_artifact_without_republishing(
+    tmp_path: Path,
+) -> None:
+    value = payload("legacy answer")
+    value["content_source"] = "native_completed_turn"
+    value.pop("turn_seq")
+    value.pop("content_sha256", None)
+    path = tmp_path / "native-result.json"
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    parsed = parse_native_result(path, attempt_id="attempt-1")
+
+    assert parsed["state"] == "confirmed"
+    assert parsed["content_source"] == "native_completed_turn"
+    assert parsed["semantic_content"] == "legacy answer"
+
+
 def test_native_result_rejects_missing_new_semantic_contract_fields(tmp_path: Path) -> None:
     value = payload()
     value.pop("turn_seq")

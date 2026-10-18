@@ -18,10 +18,8 @@ NATIVE_BINDING_SCHEMA = "secretary-native-binding.v1"
 NATIVE_RESULT_PRODUCER = "codex-native"
 NATIVE_RESULT_AUTHORITY = "lightrsi-codex-context-history"
 NATIVE_RESULT_MAX_BYTES = 64 * 1024
-NATIVE_RESULT_CONTENT_SOURCES = frozenset({
-    "lightrsi_completed_turn",
-    "native_completed_turn",
-})
+NATIVE_RESULT_CONTENT_SOURCES = frozenset({"lightrsi_completed_turn"})
+NATIVE_RESULT_LEGACY_CONTENT_SOURCES = frozenset({"native_completed_turn"})
 
 
 class NativeResultConflictError(ValueError):
@@ -144,7 +142,12 @@ def parse_native_binding(path: Path, *, attempt_id: str) -> dict[str, Any]:
     return {"state": "confirmed", **payload, "binding_reference": str(path)}
 
 
-def _validate(payload: object) -> dict[str, Any]:
+def _validate_contract(
+    payload: object,
+    *,
+    allow_legacy_content_source: bool,
+    require_content_digest: bool,
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("native result payload invalid")
     if payload.get("schema") != NATIVE_RESULT_SCHEMA:
@@ -153,10 +156,6 @@ def _validate(payload: object) -> dict[str, Any]:
         raise ValueError("native result producer invalid")
     for field in (
         "attempt_id",
-        "session",
-        "pane",
-        "agent_name",
-        "semantic_content",
         "observed_at",
         "native_authority",
         "native_session_id",
@@ -164,10 +163,17 @@ def _validate(payload: object) -> dict[str, Any]:
         "content_source",
     ):
         _text(payload.get(field), field)
+    for field in ("session", "pane", "agent_name"):
+        if payload.get(field) is not None:
+            _text(payload.get(field), field)
+    _text(payload.get("semantic_content"), "semantic_content")
     if payload.get("native_authority") != NATIVE_RESULT_AUTHORITY:
         raise ValueError("native result authority invalid")
     content_source = payload.get("content_source")
-    if content_source not in NATIVE_RESULT_CONTENT_SOURCES:
+    allowed_sources = set(NATIVE_RESULT_CONTENT_SOURCES)
+    if allow_legacy_content_source:
+        allowed_sources.update(NATIVE_RESULT_LEGACY_CONTENT_SOURCES)
+    if content_source not in allowed_sources:
         raise ValueError("native result content source invalid")
     if content_source == "lightrsi_completed_turn":
         turn_seq = payload.get("turn_seq")
@@ -196,18 +202,41 @@ def _validate(payload: object) -> dict[str, Any]:
     except ValueError as exc:
         raise ValueError("native result observed_at invalid") from exc
     normalized = dict(payload)
-    semantic_content = redact_semantic_content(normalized["semantic_content"])
-    normalized["semantic_content"] = semantic_content
+    semantic_content = normalized["semantic_content"]
     expected_content_sha256 = hashlib.sha256(semantic_content.encode("utf-8")).hexdigest()
     content_sha256 = normalized.get("content_sha256")
-    if content_sha256 is not None and content_sha256 != expected_content_sha256:
+    if content_sha256 is None and require_content_digest:
+        if content_source not in NATIVE_RESULT_LEGACY_CONTENT_SOURCES:
+            raise ValueError("native result content digest missing")
+    elif content_sha256 is not None and content_sha256 != expected_content_sha256:
         raise ValueError("native result content digest mismatch")
-    normalized["content_sha256"] = expected_content_sha256
+    if content_sha256 is None:
+        normalized["content_sha256"] = expected_content_sha256
     return normalized
 
 
+def normalize_for_publication(payload: Mapping[str, Any]) -> dict[str, Any]:
+    normalized = _validate_contract(
+        dict(payload),
+        allow_legacy_content_source=False,
+        require_content_digest=False,
+    )
+    semantic_content = redact_semantic_content(normalized["semantic_content"])
+    normalized["semantic_content"] = semantic_content
+    normalized["content_sha256"] = hashlib.sha256(semantic_content.encode("utf-8")).hexdigest()
+    return normalized
+
+
+def validate_persisted_result(payload: object) -> dict[str, Any]:
+    return _validate_contract(
+        payload,
+        allow_legacy_content_source=True,
+        require_content_digest=True,
+    )
+
+
 def _encode(payload: Mapping[str, Any]) -> bytes:
-    normalized = _validate(dict(payload))
+    normalized = validate_persisted_result(dict(payload))
     encoded = (json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
     if len(encoded) > NATIVE_RESULT_MAX_BYTES:
         raise ValueError(f"native result exceeds {NATIVE_RESULT_MAX_BYTES} bytes")
@@ -215,7 +244,8 @@ def _encode(payload: Mapping[str, Any]) -> bytes:
 
 
 def publish_native_result(path: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
-    encoded = _encode(payload)
+    normalized = normalize_for_publication(payload)
+    encoded = _encode(normalized)
     digest = hashlib.sha256(encoded).hexdigest()
     path.parent.mkdir(parents=True, exist_ok=True)
     with evidence_path_lock(path):
@@ -224,12 +254,12 @@ def publish_native_result(path: Path, payload: Mapping[str, Any]) -> dict[str, A
             if existing == encoded:
                 return {"state": "idempotent", "path": str(path), "digest": digest}
             try:
-                existing_payload = _validate(json.loads(existing.decode("utf-8")))
+                existing_payload = validate_persisted_result(json.loads(existing.decode("utf-8")))
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 raise NativeResultConflictError(
                     "native result publication conflicts with malformed existing evidence"
                 ) from exc
-            if _publication_identity(existing_payload) == _publication_identity(_validate(dict(payload))):
+            if _publication_identity(existing_payload) == _publication_identity(normalized):
                 return {
                     "state": "idempotent",
                     "path": str(path),
@@ -255,7 +285,7 @@ def parse_native_result(path: Path, *, attempt_id: str) -> dict[str, Any]:
         if not path.is_file() or path.stat().st_size > NATIVE_RESULT_MAX_BYTES:
             return {"state": "unknown", "detail": "native result unavailable"}
         payload = json.loads(path.read_text(encoding="utf-8"))
-        normalized = _validate(payload)
+        normalized = validate_persisted_result(payload)
     except FileNotFoundError:
         return {"state": "unknown", "detail": "native result unavailable"}
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
@@ -273,6 +303,7 @@ __all__ = [
     "NATIVE_RESULT_PRODUCER",
     "NATIVE_RESULT_AUTHORITY",
     "NATIVE_RESULT_CONTENT_SOURCES",
+    "NATIVE_RESULT_LEGACY_CONTENT_SOURCES",
     "NATIVE_RESULT_SCHEMA",
     "NATIVE_BINDING_SCHEMA",
     "NativeResultConflictError",
@@ -283,4 +314,6 @@ __all__ = [
     "publish_native_result",
     "publish_native_binding",
     "redact_semantic_content",
+    "normalize_for_publication",
+    "validate_persisted_result",
 ]
