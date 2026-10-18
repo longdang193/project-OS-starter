@@ -1,8 +1,8 @@
 {
   "schema_version": "native-live-probe-evidence-v1",
-  "captured_at": "2026-10-18T10:37:02.8544231Z",
-  "implementation_head": "84b043d0a858619ed5461f9af82fdf687c3ca3e8",
-  "classifier_patch": "working-tree",
+  "captured_at": "2026-10-18T10:53:48.1870107Z",
+  "implementation_head": "4b4562d61065579ac7a56f06e9516e04798f982c",
+  "classifier_patch": "committed-on-branch",
   "probes": [
     {
       "label": "successful-native-observation",

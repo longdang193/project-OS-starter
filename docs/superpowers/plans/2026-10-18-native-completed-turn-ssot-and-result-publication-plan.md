@@ -185,7 +185,7 @@ unavailable, the plan records the exact blocker and retains
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 1 | `completed` | current plan checkout plus existing isolated worktrees | `codex` | none | effective Project OS baseline and pinned LightRSI candidate identity | `84b043d`, `fedef2d`, focused/build evidence |
 | Task 2 | `completed` | LightRSI candidate worktree | `codex` | Task 1 | exact native completed-turn join or smallest reader | `fedef2d1`; reader/tests/build/typecheck passed; generated `dist` not edited |
-| Task 3 | `completed` | Project OS implementation worktree | `codex` | Task 2 | existing result-owner integration and regression proof | focused Project OS suite `388 passed`; native authority/session/turn validation and pane-only rejection |
+| Task 3 | `completed` | Project OS implementation worktree | `codex` | Task 2 | existing result-owner integration and regression proof | focused Project OS suite `390 passed`; native authority/session/turn validation, normalization, diagnostic-error, and pane-only rejection coverage |
 | Task 4 | `blocked` | both repositories plus probe workspace | `codex` | Task 3 | candidate-runtime live proof or blocker artifact | `artifacts/runtime-observation/2026-10-18-native-live-probe-evidence.json`; fresh probe `artifacts/runtime-observation/2026-10-18-native-completed-turn-live-probe.json` remains BLOCKED_CAPABILITY |
 | Task 5 | `completed` | implementation worktree | `codex` | Task 4 | final verification and reconciled plan state | focused/full tests, repository validators, planning validator, LightRSI typecheck/build/tests, and `git diff --check` passed; plan remains BLOCKED by Task 4 |
 
@@ -437,13 +437,13 @@ unavailable, the plan records the exact blocker and retains
 - [x] Step 4: Record immutable evidence paths, blockers, deferrals, and final status. Use `BLOCKED` for the unavailable native capability; no implementation/test failure was observed.
 
 **Verification:**
-- [x] `py -B -m pytest -q tests/test_secretary_results.py tests/test_secretary_live_runtime.py tests/test_secretary_receipts.py tests/test_herdr_main_launcher.py` — `408 passed`.
+- [x] `py -B -m pytest -q tests/test_secretary_results.py tests/test_secretary_live_runtime.py tests/test_secretary_receipts.py tests/test_herdr_main_launcher.py` — `390 passed`.
 - Expected: focused Project OS tests pass.
 - [x] `py -B scripts/validate_repo_contracts.py --repo-root .` — passed.
 - Expected: repository contracts pass.
 - [x] `py -B scripts/validate_planning_lifecycle.py --plan docs/superpowers/plans/2026-10-18-native-completed-turn-ssot-and-result-publication-plan.md` — passed after the ledger status correction.
 - Expected: plan contract, coordination schema, ledger, and status rules pass.
-- [x] `py -B -m pytest -q` — `1406 passed, 1 failed, 2 skipped` on the first run because this plan's completed-task checklist was stale; rerun required after this ledger-only fix.
+- [x] `py -B -m pytest -q` — `1409 passed, 2 skipped` after the review-fix commit; the earlier `1406 passed, 1 failed, 2 skipped` run was only a stale checklist mismatch.
 - Expected: full suite passes, or every unrelated pre-existing failure is recorded with immutable command/output evidence.
 - [x] `git diff --check` — passed.
 - Expected: no whitespace errors.
