@@ -134,6 +134,9 @@ _CODEX_PROMPT_REJECTION_CODES = {
     "invalid_prompt",
 }
 _CODEX_ACTIVE_AGENT_STATES = {"idle", "working"}
+_CODEX_NATIVE_HANDOFF_SCHEMA = "codex-native-session-handoff.v1"
+_CODEX_NATIVE_HANDOFF_ACK_SCHEMA = "codex-native-session-handoff-ack.v1"
+_CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS = 30.0
 _ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
     "herdr_launcher_metrics",
     default=None,
@@ -1264,6 +1267,103 @@ def _codex_assignment_command(
     ]
 
 
+def _codex_rollout_paths(codex_home: Path) -> set[Path]:
+    sessions_root = codex_home / "sessions"
+    if not sessions_root.is_dir():
+        return set()
+    return {
+        path.resolve()
+        for path in sessions_root.rglob("rollout-*.jsonl")
+        if path.is_file()
+    }
+
+
+def _native_cursor(native_session_id: str, turn_seq: int = 0) -> str:
+    payload = {
+        "schema": "lightrsi.codex.cursor/v1",
+        "sessionId": native_session_id,
+        "turnSeq": turn_seq,
+    }
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(encoded).decode("ascii").rstrip("=")
+
+
+def _discover_codex_native_handoff(
+    codex_home: Path,
+    *,
+    before_rollout_paths: set[Path],
+    expected_cwd: Path,
+) -> dict[str, Any]:
+    new_rollouts = sorted(_codex_rollout_paths(codex_home) - {path.resolve() for path in before_rollout_paths})
+    if len(new_rollouts) != 1:
+        raise LaunchBlocked(
+            f"Codex native session handoff requires exactly one new rollout; found {len(new_rollouts)}."
+        )
+    rollout_path = new_rollouts[0]
+    try:
+        first_line = rollout_path.read_text(encoding="utf-8").splitlines()[0]
+        payload = json.loads(first_line)
+    except (OSError, IndexError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LaunchBlocked("Codex native session handoff rollout is unreadable.") from exc
+    if not isinstance(payload, dict) or payload.get("type") != "session_meta":
+        raise LaunchBlocked("Codex native session handoff rollout metadata is invalid.")
+    session_meta = payload.get("payload")
+    native_session_id = session_meta.get("session_id") if isinstance(session_meta, dict) else None
+    native_cwd = session_meta.get("cwd") if isinstance(session_meta, dict) else None
+    if not isinstance(native_session_id, str) or not native_session_id.strip():
+        raise LaunchBlocked("Codex native session handoff is missing session_id.")
+    if not isinstance(native_cwd, str) or Path(native_cwd).resolve() != expected_cwd.resolve():
+        raise LaunchBlocked("Codex native session handoff cwd does not match the launched lane.")
+    return {
+        "schema": _CODEX_NATIVE_HANDOFF_SCHEMA,
+        "native_session_id": native_session_id,
+        "pre_submit_cursor": _native_cursor(native_session_id),
+        "turn_seq": 0,
+        "rollout_path": str(rollout_path),
+    }
+
+
+def _write_json_artifact(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as handle:
+            json.dump(dict(payload), handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _await_native_handoff_ack(
+    path: Path,
+    *,
+    attempt_id: str,
+    native_session_id: str,
+    pre_submit_cursor: str,
+) -> None:
+    deadline = time.monotonic() + _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if path.is_file():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise LaunchBlocked("Codex native session handoff acknowledgement is invalid.") from exc
+            if not isinstance(payload, dict) or payload.get("schema") != _CODEX_NATIVE_HANDOFF_ACK_SCHEMA:
+                raise LaunchBlocked("Codex native session handoff acknowledgement schema mismatch.")
+            if payload.get("attempt_id") != attempt_id:
+                raise LaunchBlocked("Codex native session handoff acknowledgement attempt mismatch.")
+            if payload.get("native_session_id") != native_session_id:
+                raise LaunchBlocked("Codex native session handoff acknowledgement session mismatch.")
+            if payload.get("pre_submit_cursor") != pre_submit_cursor:
+                raise LaunchBlocked("Codex native session handoff acknowledgement cursor mismatch.")
+            return
+        time.sleep(0.05)
+    raise LaunchBlocked("Timed out waiting for Project OS native session handoff acknowledgement.")
+
+
 def _confirm_codex_start(
     herdr: str,
     session: str,
@@ -1274,6 +1374,8 @@ def _confirm_codex_start(
     before_process_ids: set[int],
     expected_codex_executable: str,
     expected_cwd: Path,
+    codex_home: Path | None = None,
+    before_rollout_paths: set[Path] | None = None,
 ) -> dict[str, Any]:
     try:
         agent_payload = _json_command(
@@ -1320,12 +1422,19 @@ def _confirm_codex_start(
         raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
     raw_completion_seq = agent.get("completion_seq")
     completion_seq = raw_completion_seq if isinstance(raw_completion_seq, int) else None
-    return {
+    result = {
         "agent_status": agent_status,
         "completion_seq": completion_seq,
         "process_ids": sorted(owned_process_ids),
         "process_identities": sorted(process_identities),
     }
+    if codex_home is not None:
+        result["native_handoff"] = _discover_codex_native_handoff(
+            codex_home,
+            before_rollout_paths=before_rollout_paths or set(),
+            expected_cwd=expected_cwd,
+        )
+    return result
 
 
 def _agent_name_taken(result: subprocess.CompletedProcess[str]) -> bool:
@@ -2920,6 +3029,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task", required=True)
     parser.add_argument("--name")
     parser.add_argument("--codex-home", type=Path)
+    parser.add_argument("--native-handoff-path", type=Path)
+    parser.add_argument("--native-handoff-ack-path", type=Path)
     parser.add_argument("--assignment-id")
     parser.add_argument("--repository-identity")
     parser.add_argument("--plan-identity")
@@ -3366,6 +3477,16 @@ def _main_body(args: argparse.Namespace) -> int:
             attempt_started = time.monotonic()
             pane_run_duration_ms: float | None = None
             pane_run_started = time.monotonic()
+            native_handoff_enabled = (
+                args.executor == "codex"
+                and args.native_handoff_path is not None
+                and args.native_handoff_ack_path is not None
+            )
+            before_rollout_paths = (
+                _codex_rollout_paths(Path(str(evidence["codex"]["codex_home"])))
+                if native_handoff_enabled and isinstance(evidence.get("codex"), dict)
+                else set()
+            )
             try:
                 try:
                         result = _run_with_pane_ownership(
@@ -3563,6 +3684,12 @@ def _main_body(args: argparse.Namespace) -> int:
                     before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
                     expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
                     expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
+                    codex_home=(
+                        Path(str(evidence["codex"]["codex_home"]))
+                        if native_handoff_enabled
+                        else None
+                    ),
+                    before_rollout_paths=before_rollout_paths if native_handoff_enabled else None,
                 )
                 evidence["herdr"].update(start_identity)
                 evidence["herdr"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
@@ -3576,6 +3703,21 @@ def _main_body(args: argparse.Namespace) -> int:
                     "pane": resolved_pane,
                     "agent": agent_name,
                 }
+                native_handoff = start_identity.get("native_handoff")
+                if args.native_handoff_path is not None or args.native_handoff_ack_path is not None:
+                    if not isinstance(args.native_handoff_path, Path) or not isinstance(args.native_handoff_ack_path, Path):
+                        raise LaunchBlocked("Native session handoff requires both artifact paths.")
+                    if not isinstance(native_handoff, dict):
+                        raise LaunchBlocked("Codex native session handoff is unavailable before prompt delivery.")
+                    native_handoff = dict(native_handoff)
+                    native_handoff["attempt_id"] = attempt_id
+                    _write_json_artifact(args.native_handoff_path, native_handoff)
+                    _await_native_handoff_ack(
+                        args.native_handoff_ack_path,
+                        attempt_id=attempt_id,
+                        native_session_id=str(native_handoff["native_session_id"]),
+                        pre_submit_cursor=str(native_handoff["pre_submit_cursor"]),
+                    )
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)

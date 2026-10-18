@@ -52,10 +52,14 @@ try:
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
+        native_binding_path,
+        parse_native_binding,
         native_result_path,
         parse_native_result,
+        publish_native_binding,
         publish_native_result,
     )
+    from project_os_runtime.lightrsi_reader import LightRSIResultReader
 except ModuleNotFoundError:
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
@@ -67,10 +71,14 @@ except ModuleNotFoundError:
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
+        native_binding_path,
+        parse_native_binding,
         native_result_path,
         parse_native_result,
+        publish_native_binding,
         publish_native_result,
     )
+    from scripts.project_os_runtime.lightrsi_reader import LightRSIResultReader
 
 try:
     from scripts.observe_9router_usage import observe_run_usage, observe_window_usage
@@ -110,6 +118,17 @@ _CODEX_OBSERVATION_POLL_SECONDS = 0.5
 _PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _HERDR_SERVER_START_TIMEOUT_SECONDS = 10.0
 _HERDR_PREFLIGHT_RECHECK_SECONDS = 0.25
+_LIGHTRSI_CLI_PATH_ENV = "LIGHTRSI_CLI_PATH"
+_LIGHTRSI_NODE_ENV = "LIGHTRSI_NODE"
+_LIGHTRSI_NATIVE_SESSION_ENV = "LIGHTRSI_NATIVE_SESSION_ID"
+_LIGHTRSI_PRE_SUBMIT_CURSOR_ENV = "LIGHTRSI_PRE_SUBMIT_CURSOR"
+_LIGHTRSI_SOURCE_FINGERPRINT_ENV = "LIGHTRSI_SOURCE_FINGERPRINT"
+_LIGHTRSI_ARTIFACT_SHA256_ENV = "LIGHTRSI_ARTIFACT_SHA256"
+_LIGHTRSI_RESULT_TIMEOUT_SECONDS = 120.0
+_LIGHTRSI_RESULT_POLL_SECONDS = 0.5
+_CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS = 30.0
+_CODEX_NATIVE_HANDOFF_SCHEMA = "codex-native-session-handoff.v1"
+_CODEX_NATIVE_HANDOFF_ACK_SCHEMA = "codex-native-session-handoff-ack.v1"
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _ACCEPTED_RESULT_PRODUCERS = frozenset({"dcode-project", "deepagents-worker"})
 _SAFE_SOURCE_VALUE = re.compile(
@@ -255,6 +274,8 @@ def build_normal_launcher_command(
     request: SecretaryNormalRequest,
     *,
     expected_base: str,
+    native_handoff_path: Path | None = None,
+    native_handoff_ack_path: Path | None = None,
     dry_run: bool = False,
 ) -> list[str]:
     launcher = Path(__file__).with_name("herdr_main_launcher.py")
@@ -285,6 +306,15 @@ def build_normal_launcher_command(
     ]
     if dry_run:
         command.append("--dry-run")
+    if native_handoff_path is not None or native_handoff_ack_path is not None:
+        if native_handoff_path is None or native_handoff_ack_path is None:
+            raise ValueError("native handoff requires both artifact paths")
+        command.extend([
+            "--native-handoff-path",
+            str(native_handoff_path),
+            "--native-handoff-ack-path",
+            str(native_handoff_ack_path),
+        ])
     return command
 
 
@@ -656,9 +686,20 @@ def _observe_submitted_codex(
     payload: Mapping[str, Any],
     *,
     pre_submit: Mapping[str, Any] | None = None,
+    native_binding: Mapping[str, Any] | None = None,
+    native_reader: LightRSIResultReader | None = None,
     native_result_output: Path | None = None,
     env: dict[str, str],
 ) -> dict[str, Any]:
+    if isinstance(native_binding, Mapping) and native_reader is not None:
+        return _observe_bound_lightrsi_result(
+            request,
+            payload,
+            native_binding=native_binding,
+            native_reader=native_reader,
+            native_result_output=native_result_output,
+            env=env,
+        )
     herdr = payload.get("herdr")
     if not isinstance(herdr, Mapping):
         return {"state": "unknown", "error": "launcher Herdr evidence missing"}
@@ -786,75 +827,10 @@ def _observe_submitted_codex(
             )
         )
 
-    native_source: dict[str, Any] | None = None
     native_turn = _native_completed_turn(snapshot.get("native_completed_turn"), session=session)
     native_content = native_turn["assistantText"] if native_turn else None
-    if (
-        native_result_output is not None
-        and completed
-        and snapshot.get("state") in {"idle", "done"}
-        and freshness_proven
-        and native_boundary_captured
-        and isinstance(snapshot.get("completion_seq"), int)
-        and isinstance(attempt_id, str)
-        and native_turn is not None
-        and native_content
-    ):
-        native_source = {
-            "schema": "secretary-native-result.v1",
-            "producer": NATIVE_RESULT_PRODUCER,
-            "attempt_id": attempt_id,
-            "session": session,
-            "pane": pane,
-            "agent_name": agent_name,
-            "completion_seq": snapshot["completion_seq"],
-            "semantic_content": native_content,
-            "native_authority": NATIVE_RESULT_AUTHORITY,
-            "native_session_id": native_turn["sessionId"],
-            "native_turn_id": native_turn["turnId"],
-            "freshness_proven": True,
-            "assistant_owned": True,
-            "content_source": "native_completed_turn",
-            "observed_at": datetime.now(timezone.utc).isoformat(),
-        }
-        for source_key, result_key in (("requestId", "native_request_id"), ("responseId", "native_response_id")):
-            if native_turn.get(source_key):
-                native_source[result_key] = native_turn[source_key]
-        if assignment_id is not None:
-            native_source["assignment_id"] = assignment_id
-        try:
-            publication = publish_native_result(native_result_output, native_source)
-        except (OSError, ValueError, NativeResultConflictError) as exc:
-            native_source = None
-            snapshot["observation_error"] = f"native result publication failed: {type(exc).__name__}"
-        else:
-            try:
-                persisted = parse_native_result(native_result_output, attempt_id=attempt_id)
-                persisted_digest = hashlib.sha256(native_result_output.read_bytes()).hexdigest()
-                if (
-                    persisted.get("state") != "confirmed"
-                    or persisted.get("semantic_content") != native_source["semantic_content"]
-                    or persisted.get("session") != session
-                    or persisted.get("pane") != pane
-                    or persisted.get("agent_name") != agent_name
-                    or persisted.get("content_source") != "native_completed_turn"
-                    or persisted.get("native_authority") != NATIVE_RESULT_AUTHORITY
-                    or persisted.get("native_session_id") != native_source["native_session_id"]
-                    or persisted.get("native_turn_id") != native_source["native_turn_id"]
-                    or persisted.get("assignment_id") != native_source.get("assignment_id")
-                    or persisted_digest != publication.get("digest")
-                ):
-                    raise ValueError("native result read-back mismatch")
-            except (OSError, UnicodeDecodeError, ValueError, KeyError):
-                native_source = None
-                snapshot["observation_error"] = "native result read-back failed"
-            else:
-                native_source.update(
-                    {
-                        "result_reference": publication["path"],
-                        "source_digest": publication["digest"],
-                    }
-                )
+    if completed and native_turn is not None and native_content:
+        snapshot["diagnostic_content_source"] = "native_completed_turn"
 
     observation = {
         key: snapshot.get(key)
@@ -868,36 +844,10 @@ def _observe_submitted_codex(
             "observation_error",
             "producer",
             "content_source",
+            "diagnostic_content_source",
         )
         if key in snapshot
     }
-    if native_source is not None:
-        selected_source, semantic_content = native_source, native_source["semantic_content"]
-        observation["publication"] = publication
-    else:
-        selected_source, semantic_content = None, None
-    if completed and snapshot.get("state") in {"idle", "done"}:
-        if semantic_content:
-            observation["semantic_content"] = semantic_content
-            observation["assistant_owned"] = True
-            if isinstance(selected_source, Mapping):
-                for key in (
-                    "producer",
-                    "content_source",
-                    "native_authority",
-                    "native_session_id",
-                    "native_turn_id",
-                    "native_request_id",
-                    "native_response_id",
-                    "result_id",
-                    "result_reference",
-                    "reference",
-                    "source_ref",
-                    "result_ref",
-                    "completion_id",
-                ):
-                    if selected_source.get(key) not in (None, ""):
-                        observation[key] = selected_source[key]
     observation.update({"session": session, "pane": pane, "agent_name": agent_name})
     if assignment_id is not None:
         observation["assignment_id"] = assignment_id
@@ -916,6 +866,140 @@ def _observe_submitted_codex(
         )
     observation["cleanup"] = cleanup
     observation["observed_at"] = datetime.now(timezone.utc).isoformat()
+    return observation
+
+
+def _observe_bound_lightrsi_result(
+    request: SecretaryLaunchRequest | SecretaryNormalRequest,
+    payload: Mapping[str, Any],
+    *,
+    native_binding: Mapping[str, Any],
+    native_reader: LightRSIResultReader,
+    native_result_output: Path | None,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    herdr = payload.get("herdr")
+    assignment = payload.get("assignment")
+    if not isinstance(herdr, Mapping) or not isinstance(assignment, Mapping):
+        return {"state": "unknown", "observation_error": "native binding context missing"}
+    executable = herdr.get("executable")
+    transport_session = herdr.get("session")
+    pane = herdr.get("pane")
+    agent_name = herdr.get("agent_name")
+    native_session_id = native_binding.get("native_session_id")
+    after_cursor = native_binding.get("pre_submit_cursor")
+    attempt_id = native_binding.get("attempt_id")
+    if not all(isinstance(value, str) and value.strip() for value in (
+        executable, transport_session, pane, agent_name, native_session_id, after_cursor, attempt_id,
+    )):
+        return {"state": "unknown", "observation_error": "native binding identity incomplete"}
+
+    deadline = time.monotonic() + _LIGHTRSI_RESULT_TIMEOUT_SECONDS
+    native_result: Mapping[str, Any] | None = None
+    terminal_error: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            candidate = native_reader.read(
+                session_id=native_session_id,
+                after_cursor=after_cursor,
+            )
+        except Exception as exc:
+            terminal_error = f"LightRSI reader failed: {type(exc).__name__}"
+            break
+        state = candidate.get("state") if isinstance(candidate, Mapping) else None
+        if state == "completed":
+            native_result = candidate
+            break
+        if state in {"unavailable", "conflict"}:
+            reason = candidate.get("reason") if isinstance(candidate, Mapping) else None
+            terminal_error = f"LightRSI result {state}: {reason or 'unknown'}"
+            break
+        if state != "pending":
+            terminal_error = "LightRSI reader returned an invalid state"
+            break
+        time.sleep(min(_LIGHTRSI_RESULT_POLL_SECONDS, max(0.01, deadline - time.monotonic())))
+    if native_result is None and terminal_error is None:
+        terminal_error = "LightRSI result wait timed out"
+
+    observation: dict[str, Any] = {
+        "state": "done" if native_result is not None else "unknown",
+        "session": transport_session,
+        "pane": pane,
+        "agent_name": agent_name,
+        "attempt_id": attempt_id,
+        "native_session_id": native_session_id,
+        "pre_submit_cursor": after_cursor,
+        "freshness_proven": native_result is not None,
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if terminal_error:
+        observation["observation_error"] = terminal_error
+
+    publication: Mapping[str, Any] | None = None
+    if native_result is not None and native_result_output is not None:
+        native_source: dict[str, Any] = {
+            "schema": "secretary-native-result.v1",
+            "producer": NATIVE_RESULT_PRODUCER,
+            "attempt_id": attempt_id,
+            "session": transport_session,
+            "pane": pane,
+            "agent_name": agent_name,
+            "native_authority": NATIVE_RESULT_AUTHORITY,
+            "native_session_id": native_result["sessionId"],
+            "native_turn_id": native_result["turnId"],
+            "turn_seq": native_result["turnSeq"],
+            "semantic_complete": native_result["semanticComplete"],
+            "semantic_content": native_result["content"],
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "content_source": "lightrsi_completed_turn",
+            "observed_at": observation["observed_at"],
+        }
+        for source_key, result_key in (("requestId", "native_request_id"), ("responseId", "native_response_id")):
+            if native_result.get(source_key):
+                native_source[result_key] = native_result[source_key]
+        assignment_id = assignment.get("assignment_id")
+        if isinstance(assignment_id, str) and assignment_id.strip():
+            native_source["assignment_id"] = assignment_id
+        try:
+            publication = publish_native_result(native_result_output, native_source)
+            persisted = parse_native_result(native_result_output, attempt_id=attempt_id)
+            if persisted.get("state") != "confirmed":
+                raise ValueError("native result read-back unavailable")
+            if persisted.get("native_session_id") != native_source["native_session_id"]:
+                raise ValueError("native result native session mismatch")
+            if persisted.get("native_turn_id") != native_source["native_turn_id"]:
+                raise ValueError("native result native turn mismatch")
+            observation.update({
+                "semantic_content": persisted["semantic_content"],
+                "assistant_owned": True,
+                "producer": persisted["producer"],
+                "content_source": persisted["content_source"],
+                "native_authority": persisted["native_authority"],
+                "native_turn_id": persisted["native_turn_id"],
+                "native_request_id": persisted.get("native_request_id"),
+                "native_response_id": persisted.get("native_response_id"),
+                "turn_seq": persisted["turn_seq"],
+                "semantic_complete": persisted["semantic_complete"],
+                "result_reference": persisted["result_reference"],
+                "source_digest": publication["digest"],
+                "publication": publication,
+            })
+        except (OSError, ValueError, KeyError, NativeResultConflictError) as exc:
+            observation.pop("semantic_content", None)
+            observation["state"] = "unknown"
+            observation["observation_error"] = f"native result publication failed: {type(exc).__name__}"
+
+    if observation["state"] in {"done", "unknown"}:
+        observation["cleanup"] = _release_codex_agent(
+            executable,
+            transport_session,
+            agent_name,
+            pane,
+            env=env,
+        )
+    else:
+        observation["cleanup"] = {"state": "not_attempted"}
     return observation
 
 
@@ -2139,19 +2223,27 @@ def _result_source_authoritative(
         expected_assignment_id = assignment.get("assignment_id")
         if expected_assignment_id is not None and source.get("assignment_id") != expected_assignment_id:
             return False
-        return (
-            source.get("attempt_id") == assignment.get("attempt_id")
-            and isinstance(source.get("attempt_id"), str)
-            and isinstance(source.get("completion_seq"), int)
-            and source.get("native_authority") == NATIVE_RESULT_AUTHORITY
-            and source.get("native_session_id") == expected_context["session"]
-            and isinstance(source.get("native_turn_id"), str)
-            and bool(source.get("native_turn_id", "").strip())
-            and source.get("freshness_proven") is True
-            and source.get("assistant_owned") is True
-            and source.get("content_source") == "native_completed_turn"
-            and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
-        )
+        expected_attempt_id = assignment.get("project_os_attempt_id", assignment.get("attempt_id"))
+        if source.get("native_authority") != NATIVE_RESULT_AUTHORITY:
+            return False
+        if source.get("attempt_id") != expected_attempt_id or not isinstance(source.get("attempt_id"), str):
+            return False
+        if source.get("freshness_proven") is not True or source.get("assistant_owned") is not True:
+            return False
+        if source.get("content_source") == "lightrsi_completed_turn":
+            turn_seq = source.get("turn_seq")
+            native_session = source.get("native_session_id")
+            return (
+                isinstance(native_session, str)
+                and bool(native_session.strip())
+                and isinstance(turn_seq, int)
+                and not isinstance(turn_seq, bool)
+                and turn_seq > 0
+                and source.get("native_turn_id") == f"{native_session}:t{turn_seq}"
+                and source.get("semantic_complete") is True
+                and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
+            )
+        return False
     assignment_identity = {
         key: assignment.get(key)
         for key in ("assignment_id", "attempt_id")
@@ -2369,7 +2461,130 @@ def _normalize_invocation_outcome(
 
 
 def _normal_managed_result_capability_available() -> bool:
-    return all(callable(value) for value in (native_result_path, publish_native_result))
+    return all(callable(value) for value in (native_result_path, publish_native_result, LightRSIResultReader))
+
+
+def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) -> LightRSIResultReader | None:
+    values = dict(os.environ) if environment is None else dict(environment)
+    configured_path = values.get(_LIGHTRSI_CLI_PATH_ENV)
+    if not isinstance(configured_path, str) or not configured_path.strip():
+        return None
+    try:
+        cli_path = Path(configured_path).expanduser()
+        if not cli_path.is_absolute():
+            return None
+        return LightRSIResultReader(
+            cli_path,
+            timeout_seconds=5.0,
+            node_executable=values.get(_LIGHTRSI_NODE_ENV, "node"),
+            environment=values,
+        )
+    except (OSError, ValueError):
+        return None
+
+
+def _native_binding_for_submission(
+    *,
+    invocation_id: str,
+    launch_request: SecretaryNormalRequest,
+    output: Path,
+    environment: Mapping[str, str],
+    reader: LightRSIResultReader,
+    handoff: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if handoff is not None:
+        if handoff.get("schema") != _CODEX_NATIVE_HANDOFF_SCHEMA:
+            raise LaunchBlocked("Codex native session handoff schema mismatch")
+        cursor = handoff.get("pre_submit_cursor")
+        native_session_id = handoff.get("native_session_id")
+        if not isinstance(cursor, str) or not cursor.strip():
+            raise LaunchBlocked("Codex native session handoff cursor unavailable")
+        if not isinstance(native_session_id, str) or not native_session_id.strip():
+            raise LaunchBlocked("Codex native session handoff session unavailable")
+    else:
+        cursor = environment.get(_LIGHTRSI_PRE_SUBMIT_CURSOR_ENV)
+        if not isinstance(cursor, str) or not cursor.strip():
+            raise LaunchBlocked("LightRSI pre-submit cursor unavailable")
+        native_session_id = environment.get(_LIGHTRSI_NATIVE_SESSION_ENV)
+        if not isinstance(native_session_id, str) or not native_session_id.strip():
+            raise LaunchBlocked("LightRSI native session unavailable")
+    binding: dict[str, Any] = {
+        "schema": "secretary-native-binding.v1",
+        "attempt_id": invocation_id,
+        "native_session_id": native_session_id,
+        "pre_submit_cursor": cursor,
+        "lightrsi_cli_path": str(reader.cli_path),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "transport": {
+            "session": launch_request.session,
+            "pane": launch_request.pane,
+            "agent_name": "normal-secretary",
+        },
+    }
+    source_fingerprint = environment.get(_LIGHTRSI_SOURCE_FINGERPRINT_ENV)
+    if isinstance(source_fingerprint, str) and source_fingerprint.strip():
+        binding["lightrsi_source_fingerprint"] = source_fingerprint
+    artifact_sha256 = environment.get(_LIGHTRSI_ARTIFACT_SHA256_ENV)
+    if isinstance(artifact_sha256, str) and artifact_sha256.strip():
+        binding["lightrsi_artifact_sha256"] = artifact_sha256
+    publish_native_binding(native_binding_path(output), binding)
+    persisted = parse_native_binding(native_binding_path(output), attempt_id=invocation_id)
+    if persisted.get("state") != "confirmed":
+        raise LaunchBlocked("LightRSI native binding read-back unavailable")
+    return persisted
+
+
+def _read_native_handoff(path: Path, *, attempt_id: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LaunchBlocked("Codex native session handoff is invalid") from exc
+    if not isinstance(payload, dict) or payload.get("schema") != _CODEX_NATIVE_HANDOFF_SCHEMA:
+        raise LaunchBlocked("Codex native session handoff schema mismatch")
+    if payload.get("attempt_id") != attempt_id:
+        raise LaunchBlocked("Codex native session handoff attempt mismatch")
+    if not isinstance(payload.get("native_session_id"), str) or not payload["native_session_id"].strip():
+        raise LaunchBlocked("Codex native session handoff session unavailable")
+    if not isinstance(payload.get("pre_submit_cursor"), str) or not payload["pre_submit_cursor"].strip():
+        raise LaunchBlocked("Codex native session handoff cursor unavailable")
+    return payload
+
+
+def _wait_for_native_handoff(
+    path: Path,
+    process: subprocess.Popen[str],
+    *,
+    attempt_id: str,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if path.is_file():
+            return _read_native_handoff(path, attempt_id=attempt_id)
+        if process.poll() is not None:
+            process.communicate()
+            raise LaunchBlocked("Codex native session handoff was not captured before launcher exit")
+        time.sleep(0.05)
+    raise LaunchBlocked("Timed out waiting for Codex native session handoff")
+
+
+def _write_native_handoff_ack(path: Path, handoff: Mapping[str, Any]) -> None:
+    payload = {
+        "schema": _CODEX_NATIVE_HANDOFF_ACK_SCHEMA,
+        "attempt_id": handoff["attempt_id"],
+        "native_session_id": handoff["native_session_id"],
+        "pre_submit_cursor": handoff["pre_submit_cursor"],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
@@ -2399,6 +2614,14 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     request = replace(request, worktree=worktree)
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
+    native_reader = _configured_lightrsi_reader(environment)
+    if native_reader is None:
+        raise LaunchBlocked("LightRSI reader capability unavailable")
+    capability = native_reader.capability_check(
+        expected_artifact_sha256=environment.get(_LIGHTRSI_ARTIFACT_SHA256_ENV)
+    )
+    if capability.get("state") != "ready":
+        raise LaunchBlocked(f"LightRSI capability unavailable: {capability.get('reason', 'unknown')}")
     herdr = shutil.which("herdr")
     if not herdr:
         raise LaunchBlocked("Required executable unavailable on PATH: herdr")
@@ -2409,6 +2632,9 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
     submission_anchor: Mapping[str, Any] | None = None
+    native_binding: Mapping[str, Any] | None = None
+    native_handoff_path = output.with_name(f".{output.name}.{invocation_id}.native-handoff.json")
+    native_handoff_ack_path = output.with_name(f".{output.name}.{invocation_id}.native-handoff-ack.json")
     result: dict[str, Any] | None = None
     try:
         launch_request, preflight, workspace_id = _prepare_herdr_target(
@@ -2423,19 +2649,53 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
             launch_request.pane,
             env=environment,
         )
-        completed = subprocess.run(
-            build_normal_launcher_command(launch_request, expected_base=expected_base),
+        completed_process = subprocess.Popen(
+            build_normal_launcher_command(
+                launch_request,
+                expected_base=expected_base,
+                native_handoff_path=native_handoff_path,
+                native_handoff_ack_path=native_handoff_ack_path,
+            ),
             cwd=launch_request.worktree,
             env=environment,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
+        )
+        try:
+            native_handoff = _wait_for_native_handoff(
+                native_handoff_path,
+                completed_process,
+                attempt_id=invocation_id,
+            )
+            if native_reader is not None:
+                native_binding = _native_binding_for_submission(
+                    invocation_id=invocation_id,
+                    launch_request=launch_request,
+                    output=output,
+                    environment=environment,
+                    reader=native_reader,
+                    handoff=native_handoff,
+                )
+            _write_native_handoff_ack(native_handoff_ack_path, native_handoff)
+            stdout, stderr = completed_process.communicate()
+        except Exception:
+            if completed_process.poll() is None:
+                completed_process.terminate()
+            stdout, stderr = completed_process.communicate(timeout=5)
+            raise
+        completed = subprocess.CompletedProcess(
+            completed_process.args,
+            completed_process.returncode,
+            stdout,
+            stderr,
         )
         payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
         payload = select_launcher_payload(payloads) if payloads else None
         if isinstance(payload, dict):
             assignment_payload = payload.get("assignment")
             if isinstance(assignment_payload, dict):
+                assignment_payload.setdefault("project_os_attempt_id", invocation_id)
                 assignment_payload.setdefault("session", launch_request.session)
                 assignment_payload.setdefault("pane", launch_request.pane)
                 assignment_payload.setdefault(
@@ -2449,6 +2709,8 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                 launch_request,
                 payload,
                 pre_submit=submission_anchor,
+                native_binding=native_binding,
+                native_reader=native_reader,
                 native_result_output=native_result_path(output),
                 env=environment,
             )
@@ -2476,6 +2738,8 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         result["execution"]["state"] = "failed"
         result["execution"]["error"] = type(exc).__name__
     finally:
+        native_handoff_path.unlink(missing_ok=True)
+        native_handoff_ack_path.unlink(missing_ok=True)
         if workspace_id is not None:
             if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
                 workspace_close = _close_herdr_workspace(herdr, workspace_id, env=environment)

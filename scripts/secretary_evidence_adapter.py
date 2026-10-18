@@ -31,6 +31,7 @@ _TARGET_FIELDS = ("session", "pane", "pane_id", "workspace_id", "cwd")
 _LAUNCH_FIELDS = (
     "schema_version", "disposition", "evidence_provenance", "failure_kind", "returncode",
     "assignment", "preflight", "post_submit_observation", "runtime_identity", "timestamps",
+    "result", "semantic_outcome", "resource", "finalization_outcome", "observability",
 )
 
 
@@ -99,7 +100,7 @@ def load_reusable_target(path: Path) -> dict[str, str]:
 def _provider_usage(launcher: Mapping[str, Any], provider: Mapping[str, Any] | None) -> dict[str, Any]:
     if provider is None:
         return {
-            "state": "missing",
+            "state": "inconclusive",
             "secretary_attributed": False,
             "data": {"disposition": "inconclusive", "reason": "provider_usage_missing"},
         }
@@ -167,12 +168,29 @@ def build_evidence_bundle(
         embedded_provider = _mapping(launcher.get("provider_telemetry"))
         if embedded_provider:
             provider_usage = _provider_usage(launcher, embedded_provider)
+    semantic_result = _copy_fields(
+        _mapping(launcher.get("result")) or _mapping(launcher.get("semantic_outcome")) or {},
+        ("state", "status", "reference", "content"),
+    )
+    observability = _copy_fields(
+        _mapping(launcher.get("observability")) or {},
+        ("state", "reference", "completion_state", "cleanup_state", "observation_error"),
+    )
+    if not observability:
+        observability = {
+            "state": "inconclusive",
+            "reason": "runtime_observability_missing",
+        }
+    if provider_usage.get("state") == "inconclusive":
+        observability.setdefault("provider_usage", "inconclusive")
     probe_readiness = "READY" if launch.get("disposition") == "READY" and receipt["state"] == "present" else "BLOCKED_CAPABILITY"
     return {
         "schema_version": SCHEMA_VERSION,
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "identity": _identity(launcher),
         "launcher_evidence": launch,
+        "semantic_result": semantic_result,
+        "observability": observability,
         "provider_usage": provider_usage,
         "herdr_evidence": dict(herdr) if herdr else {},
         "probe_target": {

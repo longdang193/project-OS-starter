@@ -174,7 +174,17 @@ Herdr controller diagnostic observation uses bounded waits plus pull probes. Rea
 attempt-correlated receipt first. Confirmed terminal receipt is authoritative and
 skips pane `wait-output`, `process-info`, and `read`; unresolved receipt gets one
 bounded marker wait, then fresh final probes. Use pane probes only for diagnostics
-or legacy fallback. Use `agent get`/`agent read` for Codex.
+or legacy compatibility. Use `agent get`/`agent read` for Codex lifecycle
+diagnostics; do not promote their text or completion counters to normal semantic
+success. The normal Secretary semantic boundary is the pinned LightRSI
+`codex completed-turn --json` query, joined to a pre-submit cursor and persisted
+through `secretary-native-result.v1`.
+The worker-native session ID must be handed off explicitly to the Secretary
+runtime; the launcher captures exactly one new Codex rollout and the runtime
+acknowledges the resulting session/cursor before prompt delivery. A Herdr
+transport session, pane, or agent identity cannot stand in for that native
+session. If the upstream rollout is unavailable or ambiguous, normal dispatch
+blocks before prompt delivery rather than polling an unrelated session.
 `agent wait` is a documented Herdr capability, not current launcher integration.
 Normalize evidence fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
 repository identity, canonical plan identity, and stable lane identity across
@@ -207,8 +217,10 @@ new workspace per run. The adapter keeps `launcher_evidence`, `provider_usage`,
 and `secretary_receipt` separate; it joins provider usage only when an existing
 `run_id` or `attempt_id` matches and a validated live-attributed Secretary receipt
 is present, otherwise labels token, cache, and cost data
-`partial-unattributed`. It never creates or closes Herdr workspaces and never
-promotes provider telemetry into a Secretary receipt or `READY` result.
+`partial-unattributed`. Missing or incomplete 9router usage is observability
+`inconclusive`, not semantic failure. Strict receipt readiness remains probe-only;
+the adapter never creates or closes Herdr workspaces and never promotes provider
+telemetry into a Secretary receipt or `READY` result.
 
 ## Fallback
 

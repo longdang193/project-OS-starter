@@ -58,6 +58,26 @@ def normal_request(**overrides: object) -> SecretaryNormalRequest:
     return SecretaryNormalRequest(**values)
 
 
+@pytest.fixture(autouse=True)
+def fake_lightrsi_capability_for_normal_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> None:
+    if not request.node.name.startswith("test_run_normal_"):
+        return
+
+    class Reader:
+        cli_path = tmp_path / "lightrsi-cli.js"
+
+        def capability_check(self, **kwargs: object) -> dict[str, object]:
+            return {"state": "ready", "artifact_sha256": "test-artifact"}
+
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_configured_lightrsi_reader", lambda _: Reader())
+
+
 def test_normal_request_and_command_do_not_synthesize_governance_identity() -> None:
     command = build_normal_launcher_command(normal_request(), expected_base="head-1")
 
@@ -94,6 +114,441 @@ def test_normal_outcome_requires_correlated_result_reference() -> None:
     assert result["execution"]["state"] == "completed"
     assert result["result"]["state"] == "unavailable"
     assert result["resource"]["state"] == "settled"
+
+
+def test_observe_submitted_codex_publishes_bound_lightrsi_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    class Reader:
+        def read(self, **kwargs: object) -> dict[str, object]:
+            assert kwargs["session_id"] == "native-session"
+            assert kwargs["after_cursor"] == "cursor-1"
+            return {
+                "schema": "lightrsi.codex.completed-turn/v1",
+                "state": "completed",
+                "retryable": False,
+                "sessionId": "native-session",
+                "turnSeq": 2,
+                "turnId": "native-session:t2",
+                "requestId": "request-2",
+                "responseId": "response-2",
+                "content": "native answer",
+                "contentDigest": "a" * 64,
+                "semanticComplete": True,
+                "authority": "lightrsi",
+            }
+
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    output = tmp_path / "normal.json"
+    observation = runtime._observe_submitted_codex(
+        normal_request(worktree=tmp_path),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "transport-session",
+                "pane": "pane",
+                "agent_name": "agent",
+            },
+            "assignment": {"attempt_id": "herdr-attempt"},
+        },
+        native_binding={
+            "attempt_id": "project-attempt",
+            "native_session_id": "native-session",
+            "pre_submit_cursor": "cursor-1",
+        },
+        native_reader=Reader(),
+        native_result_output=output,
+        env={},
+    )
+
+    assert observation["content_source"] == "lightrsi_completed_turn"
+    assert observation["semantic_content"] == "native answer"
+    assert observation["native_turn_id"] == "native-session:t2"
+    from scripts.project_os_runtime.secretary_results import parse_native_result
+
+    assert parse_native_result(output, attempt_id="project-attempt")["state"] == "confirmed"
+
+
+@pytest.mark.parametrize("terminal_state", ["unavailable", "conflict"])
+def test_observe_bound_lightrsi_treats_non_pending_states_as_terminal(
+    terminal_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    class Reader:
+        def read(self, **kwargs: object) -> dict[str, object]:
+            return {
+                "state": terminal_state,
+                "reason": "wrong_session" if terminal_state == "conflict" else "aborted_turn",
+            }
+
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    observation = runtime._observe_submitted_codex(
+        normal_request(worktree=tmp_path),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "transport-session",
+                "pane": "pane",
+                "agent_name": "agent",
+            },
+            "assignment": {"attempt_id": "project-attempt"},
+        },
+        native_binding={
+            "attempt_id": "project-attempt",
+            "native_session_id": "native-session",
+            "pre_submit_cursor": "cursor-1",
+        },
+        native_reader=Reader(),
+        native_result_output=tmp_path / "normal.json",
+        env={},
+    )
+
+    assert observation["state"] == "unknown"
+    assert observation["observation_error"].startswith(f"LightRSI result {terminal_state}:")
+    assert "semantic_content" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
+
+
+def test_observe_bound_lightrsi_retries_pending_then_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    completed = {
+        "schema": "lightrsi.codex.completed-turn/v1",
+        "state": "completed",
+        "retryable": False,
+        "sessionId": "native-session",
+        "turnSeq": 3,
+        "turnId": "native-session:t3",
+        "content": "retried answer",
+        "contentDigest": "a" * 64,
+        "semanticComplete": True,
+        "authority": "lightrsi",
+    }
+    calls = 0
+
+    class Reader:
+        def read(self, **kwargs: object) -> dict[str, object]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {
+                    "state": "pending",
+                    "retryable": True,
+                    "sessionId": "native-session",
+                    "reason": "no_candidate",
+                }
+            return completed
+
+    monkeypatch.setattr(runtime, "_LIGHTRSI_RESULT_POLL_SECONDS", 0.001)
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    observation = runtime._observe_submitted_codex(
+        normal_request(worktree=tmp_path),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "transport-session",
+                "pane": "pane",
+                "agent_name": "agent",
+            },
+            "assignment": {"attempt_id": "project-attempt"},
+        },
+        native_binding={
+            "attempt_id": "project-attempt",
+            "native_session_id": "native-session",
+            "pre_submit_cursor": "cursor-1",
+        },
+        native_reader=Reader(),
+        native_result_output=tmp_path / "normal.json",
+        env={},
+    )
+
+    assert calls == 2
+    assert observation["state"] == "done"
+    assert observation["semantic_content"] == "retried answer"
+    assert observation["cleanup"] == {"state": "removed"}
+
+
+def test_observe_bound_lightrsi_duplicate_publication_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    class Reader:
+        def read(self, **kwargs: object) -> dict[str, object]:
+            return {
+                "schema": "lightrsi.codex.completed-turn/v1",
+                "state": "completed",
+                "retryable": False,
+                "sessionId": "native-session",
+                "turnSeq": 2,
+                "turnId": "native-session:t2",
+                "content": "same answer",
+                "contentDigest": "a" * 64,
+                "semanticComplete": True,
+                "authority": "lightrsi",
+            }
+
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    kwargs = {
+        "native_binding": {
+            "attempt_id": "project-attempt",
+            "native_session_id": "native-session",
+            "pre_submit_cursor": "cursor-1",
+        },
+        "native_reader": Reader(),
+        "native_result_output": tmp_path / "normal.json",
+        "env": {},
+    }
+    payload = {
+        "herdr": {
+            "executable": "herdr.exe",
+            "session": "transport-session",
+            "pane": "pane",
+            "agent_name": "agent",
+        },
+        "assignment": {"attempt_id": "project-attempt"},
+    }
+
+    first = runtime._observe_submitted_codex(normal_request(worktree=tmp_path), payload, **kwargs)
+    second = runtime._observe_submitted_codex(normal_request(worktree=tmp_path), payload, **kwargs)
+
+    assert first["publication"]["state"] == "published"
+    assert second["publication"]["state"] == "idempotent"
+    assert second["semantic_content"] == first["semantic_content"]
+
+
+def test_confirmed_bound_lightrsi_result_survives_cleanup_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    class Reader:
+        def read(self, **kwargs: object) -> dict[str, object]:
+            return {
+                "schema": "lightrsi.codex.completed-turn/v1",
+                "state": "completed",
+                "retryable": False,
+                "sessionId": "native-session",
+                "turnSeq": 2,
+                "turnId": "native-session:t2",
+                "content": "answer before cleanup failure",
+                "contentDigest": "a" * 64,
+                "semanticComplete": True,
+                "authority": "lightrsi",
+            }
+
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "unknown", "error": "retirement not observed"},
+    )
+    observation = runtime._observe_submitted_codex(
+        normal_request(worktree=tmp_path),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "transport-session",
+                "pane": "pane",
+                "agent_name": "agent",
+            },
+            "assignment": {"attempt_id": "project-attempt"},
+        },
+        native_binding={
+            "attempt_id": "project-attempt",
+            "native_session_id": "native-session",
+            "pre_submit_cursor": "cursor-1",
+        },
+        native_reader=Reader(),
+        native_result_output=tmp_path / "normal.json",
+        env={},
+    )
+    normalized = runtime._normalize_invocation_outcome(
+        invocation_id="project-attempt",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "project-attempt",
+                "session": "transport-session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation=observation,
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+    assert normalized["result"]["state"] == "reported"
+    assert normalized["resource"]["state"] == "quarantined"
+    assert normalized["recovery_required"] is True
+
+
+def test_run_normal_persists_lightrsi_binding_before_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    cli = tmp_path / "cli.js"
+    cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    monkeypatch.setenv("LIGHTRSI_CLI_PATH", str(cli))
+    monkeypatch.setenv("LIGHTRSI_NATIVE_SESSION_ID", "wrong-environment-session")
+    monkeypatch.setenv("LIGHTRSI_PRE_SUBMIT_CURSOR", "wrong-environment-cursor")
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "test"}, None),
+    )
+    monkeypatch.setattr(runtime, "_capture_submission_anchor", lambda *args, **kwargs: {"state": "idle"})
+    class FakeProcess:
+        args = ["launcher"]
+        returncode = 0
+
+        def poll(self) -> int | None:
+            return None
+
+        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+            return (
+                json.dumps(
+                    {
+                        "herdr": {
+                            "session": "transport-session",
+                            "pane": "pane",
+                            "agent_name": "agent",
+                        },
+                        "assignment": {
+                            "attempt_id": "herdr-attempt",
+                            "execution": {"state": "completed"},
+                        },
+                    }
+                ),
+                "",
+            )
+
+        def terminate(self) -> None:
+            self.returncode = 1
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeProcess:
+        handoff_path = Path(command[command.index("--native-handoff-path") + 1])
+        attempt_id = handoff_path.name.split(".")[3]
+        handoff_path.write_text(
+            json.dumps(
+                {
+                    "schema": "codex-native-session-handoff.v1",
+                    "attempt_id": attempt_id,
+                    "native_session_id": "native-session",
+                    "pre_submit_cursor": "cursor-1",
+                    "turn_seq": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    seen: dict[str, object] = {}
+
+    def fake_observe(*args: object, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        binding = kwargs["native_binding"]
+        assert isinstance(binding, dict)
+        return {
+            "state": "done",
+            "producer": runtime.NATIVE_RESULT_PRODUCER,
+            "attempt_id": binding["attempt_id"],
+            "session": "auto",
+            "pane": "auto",
+            "agent_name": "agent",
+            "native_authority": runtime.NATIVE_RESULT_AUTHORITY,
+            "native_session_id": "native-session",
+            "native_turn_id": "native-session:t2",
+            "turn_seq": 2,
+            "semantic_complete": True,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "content_source": "lightrsi_completed_turn",
+            "semantic_content": "native answer",
+            "result_reference": "native-result://transport-session:t2",
+            "cleanup": {"state": "removed"},
+        }
+
+    monkeypatch.setattr(runtime, "_observe_submitted_codex", fake_observe)
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    binding_path = tmp_path / "normal.json.native-binding.json"
+    assert binding_path.is_file()
+    binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    assert binding["pre_submit_cursor"] == "cursor-1"
+    assert binding["native_session_id"] == "native-session"
+    assert seen["native_binding"]["attempt_id"] == result["invocation_id"]
+    assert result["result"]["state"] == "reported"
+
+
+def test_run_normal_blocks_before_prompt_without_native_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.delenv("LIGHTRSI_PRE_SUBMIT_CURSOR", raising=False)
+    monkeypatch.delenv("LIGHTRSI_NATIVE_SESSION_ID", raising=False)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda request_value, **kwargs: (request_value, {"selector_mode": "test"}, None),
+    )
+    monkeypatch.setattr(runtime, "_capture_submission_anchor", lambda *args, **kwargs: {"state": "idle"})
+    launcher_started = False
+
+    class FailedLauncher:
+        args = ["launcher"]
+        returncode = 2
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+            return "", "blocked before native handoff"
+
+    def fake_popen(*args: object, **kwargs: object) -> FailedLauncher:
+        nonlocal launcher_started
+        launcher_started = True
+        return FailedLauncher()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert launcher_started is True
+    assert result["execution"]["state"] == "failed"
+    assert result["execution"]["error"] == "LaunchBlocked"
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 
 def test_normal_outcome_rejects_task_result_without_attempt_provenance() -> None:
@@ -742,12 +1197,7 @@ def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_ident
         finished_at="2026-10-18T10:00:01+00:00",
     )
 
-    assert result["result"] == {
-        "state": "reported",
-        "status": "completed",
-        "reference": "C:/tmp/native-result.json",
-        "content": "native answer",
-    }
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 
 def test_normal_outcome_rejects_native_result_with_mismatched_execution_context() -> None:
@@ -1356,9 +1806,8 @@ def test_observe_submitted_codex_passes_bound_pane_to_snapshot(
 
 
 
-def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_observe_submitted_codex_keeps_legacy_native_result_diagnostic_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import scripts.secretary_live_runtime as runtime
-    from scripts.project_os_runtime.secretary_results import parse_native_result
 
     monkeypatch.setattr(
         runtime,
@@ -1407,38 +1856,14 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
         env={},
     )
 
-    assert observation["producer"] == "codex-native"
-    assert observation["content_source"] == "native_completed_turn"
-    assert observation["native_authority"] == "lightrsi-codex-context-history"
-    assert observation["native_session_id"] == "session"
-    assert observation["native_turn_id"] == "turn-1"
-    assert observation["publication"]["state"] == "published"
+    assert observation["diagnostic_content_source"] == "native_completed_turn"
+    assert "semantic_content" not in observation
+    assert "publication" not in observation
     assert observation["cleanup"] == {"state": "removed"}
-    assert parse_native_result(result_path, attempt_id="attempt-1")["state"] == "confirmed"
-    normalized = runtime._normalize_invocation_outcome(
-        invocation_id="invoke-1",
-        returncode=0,
-        payload={
-            "assignment": {
-                "attempt_id": "attempt-1",
-                "session": "session",
-                "pane": "pane",
-                "agent_name": "agent",
-                "execution": {"state": "completed"},
-                "task_result": {"state": "unknown"},
-            }
-        },
-        observation=observation,
-        started_at="2026-10-18T00:00:00+00:00",
-        finished_at="2026-10-18T00:00:01+00:00",
-    )
-    assert normalized["result"]["state"] == "reported"
-    assert normalized["result"]["status"] == "completed"
-    assert normalized["result"]["content"] == "fresh native answer"
-    assert normalized["result"]["reference"] == str(result_path)
+    assert not result_path.exists()
 
 
-def test_observe_submitted_codex_publishes_native_result_when_diagnostic_read_fails(
+def test_observe_submitted_codex_keeps_legacy_result_diagnostic_when_read_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1484,8 +1909,9 @@ def test_observe_submitted_codex_publishes_native_result_when_diagnostic_read_fa
     )
 
     assert observation["observation_error"] == "agent read failed"
-    assert observation["publication"]["state"] == "published"
-    assert observation["content_source"] == "native_completed_turn"
+    assert observation["diagnostic_content_source"] == "native_completed_turn"
+    assert "semantic_content" not in observation
+    assert not result_path.exists()
 
 
 def test_observe_submitted_codex_rejects_persisted_result_without_fresh_reader_confirmation(
@@ -1542,7 +1968,8 @@ def test_observe_submitted_codex_rejects_persisted_result_without_fresh_reader_c
         env={},
     )
 
-    assert observation["observation_error"] == "native result read-back failed"
+    assert observation["observation_error"] is None
+    assert observation["diagnostic_content_source"] == "native_completed_turn"
     assert "semantic_content" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
@@ -1598,7 +2025,8 @@ def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: 
         env={},
     )
 
-    assert observation["observation_error"] == "native result publication failed: OSError"
+    assert observation["observation_error"] is None
+    assert observation["diagnostic_content_source"] == "native_completed_turn"
     assert "semantic_content" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
@@ -2681,7 +3109,7 @@ def test_run_normal_settles_resource_when_owned_workspace_closes(
 
     result = runtime.run_normal(request_value, output=tmp_path / "normal.json")
 
-    assert result["result"]["state"] == "reported"
+    assert result["result"] == {"state": "unavailable", "status": None}
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
 
 

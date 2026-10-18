@@ -128,18 +128,24 @@ resources remain caller-owned through `runtime.json`.
   Codex completion, launcher-owned `attempt_id`, and sanitized
   timestamps/outcomes. Missing launcher, attribution, or completion is
   `BLOCKED_CAPABILITY`, not provider fallback or synthetic live evidence.
-- Ordinary native Codex completion evidence is published by
+- Ordinary native Codex semantic completion is read from the pinned LightRSI
+  `codex completed-turn --json` boundary and published by
   `scripts/project_os_runtime/secretary_results.py` as the attempt-bound
-  `secretary-native-result.v1` contract with producer `codex-native`. The
-  launcher captures the pre-submit `completion_seq`; Secretary requires a
-  strictly newer sequence plus one `native_completed_turn` object marked by
-  LightRSI context history with the exact session, turn, and final assistant
-  text. Agent/pane text remains diagnostic-only and cannot publish semantic
-  content. Atomic replay is idempotent, conflicting publication fails closed,
-  and publication remains separate from runtime settlement, CoS acceptance,
-  strict receipts, and provider economics.
+  `secretary-native-result.v1` contract with producer `codex-native`. Secretary
+  persists an explicit worker-native session ID and pre-submit native cursor in
+  the per-invocation binding sidecar and accepts only a fresh, canonical
+  LightRSI session/turn with semantic completeness. The Herdr transport session
+  is diagnostic metadata only and never substitutes for the worker-native
+  session; the launcher captures exactly one new Codex rollout into an atomic
+  pre-submit handoff and waits for Project OS acknowledgement, while missing or
+  ambiguous handoff identity blocks before prompt delivery.
+  Herdr `agent get`/`agent read`, pane text, completion counters,
+  and legacy `native_completed_turn` values remain diagnostic-only and cannot
+  publish normal semantic content. Atomic replay is idempotent, conflicting
+  publication fails closed, and publication remains separate from runtime
+  settlement, CoS acceptance, strict receipts, and provider economics.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. Each dispatch has one `dispatch_id`; each launch attempt carries one `attempt_id` across delivery, observation, reconciliation, and retirement; coordinated DeepAgents also carries one stable `assignment_id` across retries. Preflight, target-resolution failures, and dry-runs retain dispatch correlation but never fabricate an execution attempt. Terminal results keep delivery, execution, observation, task result, cleanup, and performance sections independent. Runtime completion is not task acceptance: the launcher emits no new `task_result.accepted: true` path, and CoS retains `PASS | FAIL | BLOCKED` acceptance authority. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
-- Codex prompt submission is non-blocking; successful `agent start` also requires a live, newly observed Codex process before prompt delivery. `agent prompt` acknowledgement owns delivery evidence, while `agent get` owns the structured native completed-turn boundary and `agent read`/pane reads remain bounded diagnostics only. Observation timeout or stale output never rewrites confirmed delivery as rejection. A timed-out execution may retain `cleanup: unverified` and `reconciliation_required: true`; cleanup uncertainty does not erase timeout evidence.
+- Codex prompt submission is non-blocking; successful `agent start` also requires a live, newly observed Codex process before prompt delivery. `agent prompt` acknowledgement owns delivery evidence, while LightRSI owns the structured native completed-turn boundary and Herdr `agent get`/`agent read`/pane reads remain bounded diagnostics only. Observation timeout or stale output never rewrites confirmed delivery as rejection. A timed-out execution may retain `cleanup: unverified` and `reconciliation_required: true`; cleanup uncertainty does not erase a confirmed semantic result.
 - Preflight, target-resolution failures, and dry-runs retain `dispatch_id` correlation but never fabricate an execution `attempt_id`; only a real launcher commitment to execution allocates that attempt identity.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.
 - Bound `TaskResult` records carry assignment/attempt identity, progress, checkpoint, remaining work, and verification references through atomic publication; valid task results report evidence only and never grant acceptance or continuation.
