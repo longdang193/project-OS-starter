@@ -193,4 +193,3 @@ def test_reader_rejects_oversized_json_output(
 
     assert result["state"] == "unavailable"
     assert result["reason"] == "reader_malformed_output"
-

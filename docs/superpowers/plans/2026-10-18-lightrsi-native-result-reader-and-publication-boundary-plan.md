@@ -765,5 +765,3 @@ these criteria against repository evidence, and returns `verified`.
   bypassed by a competing module.
 - Stop before any persistent global installation, hook update, push, merge,
   production rollout, destructive recovery, or deletion of retained evidence.
-
-
