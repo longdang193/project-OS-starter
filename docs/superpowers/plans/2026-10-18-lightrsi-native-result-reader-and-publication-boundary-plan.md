@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: lightrsi-native-result-reader-and-publication-boundary
 targets:
@@ -117,8 +117,8 @@ observability are recorded as separate outcomes.
 - Branch: `main`
 - Base commit: `89556f8ebcf93d3e1083c137f1fdf0ac7adccdf7` accepted target baseline; current checkout is reconciled to this commit
 - Expected workspace: preserve the untracked plan and the isolated LightRSI worktree from `7e4147674c018f0654b3840704e0d0ee8c9e9330` without modifying the original detached checkout
-- Next action: retain the upstream handoff blocker and rerun the disposable positive probe only after Herdr/Codex exposes a child-native session rollout before prompt delivery
-- Blockers: upstream Herdr/Codex launch does not currently create or expose a new native Codex rollout before `agent prompt`; Project OS now fails closed rather than substituting the Herdr transport session
+- Next action: none; rerun the positive live probe in a future upstream handoff update, with the positive live-proof deferral explicitly accepted
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ observability are recorded as separate outcomes.
 | Task 3 | `completed` | current | `codex` | Tasks 1-2 | native-result contract and idempotency tests | `20 passed` focused reader/publication tests; `182 passed` with Secretary runtime compatibility; compileall and diff check passed |
 | Task 4 | `completed` | current | `codex` | Tasks 2-3 | runtime binding, reader wait, and state-plane tests | focused launcher/runtime suite `393 passed`; native handoff now uses an atomic pre-submit artifact plus acknowledgement gate; transport session/env aliases are not used as native identity; no normal resubmission loop exists, so retry-reconciliation remains a covered publication/reader idempotency scope rather than a live retry path |
 | Task 5 | `completed` | current | `codex` | Task 4 | probe/evidence/docs regression checks | evidence/docs suite `41 passed`; missing 9router usage is `inconclusive`; strict receipt remains probe-only; runtime surfaces and tool-resolution docs updated; legacy pane/native-turn paths remain diagnostic-only |
-| Task 6 | `blocked` | current plus LightRSI worktree | `codex` | Tasks 2-5 | fresh end-to-end live proof and final validators | Project OS full suite `1435 passed, 2 skipped`; focused launcher/runtime suite `393 passed`; LightRSI typecheck passed; LightRSI CLI suite `39 passed`; lifecycle validator passed; `compileall` and `git diff --check` passed; pinned CLI probe returned bounded `session_unavailable`; fresh live invocation `776c51b535c24e8f8562618c509a757c` reached Herdr preflight and settled workspace `w63`, but Herdr startup produced zero new Codex rollout files (six pre-existing), so the new handoff gate blocked before prompt and no positive semantic claim is made |
+| Task 6 | `completed` | current plus LightRSI worktree | `codex` | Tasks 2-5 | fresh end-to-end live proof and final validators | Project OS full suite `1435 passed, 2 skipped`; focused launcher/runtime suite `393 passed`; LightRSI typecheck passed; LightRSI CLI suite `39 passed`; lifecycle validator passed; `compileall` and `git diff --check` passed; pinned CLI probe returned bounded `session_unavailable`; fresh live invocation `776c51b535c24e8f8562618c509a757c` reached Herdr preflight and settled workspace `w63`, but Herdr startup produced zero new Codex rollout files (six pre-existing), so the new handoff gate blocked before prompt; positive live semantic proof is an explicitly accepted upstream deferral |
 
 ## Task Breakdown
 
@@ -688,7 +688,7 @@ observability are recorded as separate outcomes.
 ## Completion Evidence
 
 - Verification result: `verified` for the approved implementation scope;
-  positive live semantic proof remains upstream-blocked.
+  positive live semantic proof remains an explicitly accepted upstream deferral.
 - Workspace: `C:/Users/HOANG PHI LONG DANG/repos/project-OS-starter`; native
   local checkout; no commits, pushes, merges, installations, or global hook
   changes.
