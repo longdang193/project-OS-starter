@@ -48,12 +48,24 @@ try:
         build_live_receipt,
         validate_live_receipt,
     )
+    from project_os_runtime.secretary_results import (
+        NATIVE_RESULT_PRODUCER,
+        NativeResultConflictError,
+        native_result_path,
+        publish_native_result,
+    )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
         build_live_receipt,
         validate_live_receipt,
+    )
+    from scripts.project_os_runtime.secretary_results import (
+        NATIVE_RESULT_PRODUCER,
+        NativeResultConflictError,
+        native_result_path,
+        publish_native_result,
     )
 
 try:
@@ -640,6 +652,7 @@ def _observe_submitted_codex(
     payload: Mapping[str, Any],
     *,
     pre_submit: Mapping[str, Any] | None = None,
+    native_result_output: Path | None = None,
     env: dict[str, str],
 ) -> dict[str, Any]:
     herdr = payload.get("herdr")
@@ -660,6 +673,11 @@ def _observe_submitted_codex(
     attempt_id = assignment.get("attempt_id") if assignment else None
     if assignment is not None and not isinstance(attempt_id, str):
         return {"state": "unknown", "error": "launcher assignment identity incomplete"}
+    native_boundary_captured = "pre_submit_completion_seq" in herdr
+    herdr_pre_submit_completion_seq = herdr.get("pre_submit_completion_seq")
+    if not native_boundary_captured and isinstance(assignment, Mapping):
+        native_boundary_captured = "pre_submit_completion_seq" in assignment
+        herdr_pre_submit_completion_seq = assignment.get("pre_submit_completion_seq")
     if ownership is not None:
         for key in ("assignment_id", "attempt_id"):
             owned_value = ownership.get(key)
@@ -691,6 +709,10 @@ def _observe_submitted_codex(
         else None
     )
     freshness_proven = False
+    if native_boundary_captured:
+        if not isinstance(anchor, Mapping):
+            anchor = {}
+        anchor = {**anchor, "completion_seq": herdr_pre_submit_completion_seq}
     legacy_first_snapshot: dict[str, Any] | None = None
     legacy_output_changed = False
     legacy_state_changed = False
@@ -731,6 +753,18 @@ def _observe_submitted_codex(
             )
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
+        if (
+            freshness_proven
+            and native_boundary_captured
+            and isinstance(attempt_id, str)
+            and isinstance(snapshot.get("completion_seq"), int)
+        ):
+            snapshot.update({
+                "producer": NATIVE_RESULT_PRODUCER,
+                "attempt_id": attempt_id,
+                "assistant_owned": True,
+                "freshness_proven": True,
+            })
         snapshot_result_owned = _result_source_authoritative(
             snapshot,
             assignment,
@@ -800,11 +834,52 @@ def _observe_submitted_codex(
             )
         )
 
+    native_source: dict[str, Any] | None = None
+    native_content = _safe_semantic_result_value(snapshot.get("semantic_content"), allow_long=True)
+    native_content = native_content or _extract_codex_semantic_content(snapshot.get("content"))
+    if (
+        native_result_output is not None
+        and completed
+        and snapshot.get("state") in {"idle", "done"}
+        and not snapshot.get("observation_error")
+        and freshness_proven
+        and native_boundary_captured
+        and isinstance(snapshot.get("completion_seq"), int)
+        and isinstance(attempt_id, str)
+        and native_content
+    ):
+        native_source = {
+            "schema": "secretary-native-result.v1",
+            "producer": NATIVE_RESULT_PRODUCER,
+            "attempt_id": attempt_id,
+            "session": session,
+            "pane": pane,
+            "agent_name": agent_name,
+            "completion_seq": snapshot["completion_seq"],
+            "semantic_content": native_content,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            publication = publish_native_result(native_result_output, native_source)
+        except (OSError, ValueError, NativeResultConflictError) as exc:
+            native_source = None
+            snapshot["observation_error"] = f"native result publication failed: {type(exc).__name__}"
+        else:
+            native_source.update(
+                {
+                    "result_reference": publication["path"],
+                    "source_digest": publication["digest"],
+                }
+            )
+
     observation = {
         key: snapshot.get(key)
         for key in (
             "state",
             "state_change_seq",
+            "completion_seq",
             "content",
             "output_sha256",
             "output_chars",
@@ -813,11 +888,15 @@ def _observe_submitted_codex(
         )
         if key in snapshot
     }
-    selected_source, semantic_content = _select_authoritative_result_source(
-        task_result,
-        snapshot,
-        assignment,
-    )
+    if native_source is not None:
+        selected_source, semantic_content = native_source, native_source["semantic_content"]
+        observation["publication"] = publication
+    else:
+        selected_source, semantic_content = _select_authoritative_result_source(
+            task_result,
+            snapshot,
+            assignment,
+        )
     if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
         if semantic_content:
             observation["semantic_content"] = semantic_content
@@ -839,6 +918,7 @@ def _observe_submitted_codex(
         observation["assignment_id"] = assignment_id
     if attempt_id is not None:
         observation["attempt_id"] = attempt_id
+    observation["pre_submit_completion_seq"] = herdr_pre_submit_completion_seq
     observation["freshness_proven"] = freshness_proven
     cleanup: dict[str, Any] = {"state": "not_attempted"}
     if snapshot.get("state") in {"idle", "done"}:
@@ -860,6 +940,16 @@ def _submission_freshness_proven(
 ) -> bool:
     if not isinstance(anchor, Mapping):
         return False
+    anchor_completion_seq = anchor.get("completion_seq")
+    snapshot_completion_seq = snapshot.get("completion_seq")
+    if "completion_seq" in anchor or "completion_seq" in snapshot:
+        if anchor_completion_seq is None:
+            return isinstance(snapshot_completion_seq, int) and snapshot_completion_seq >= 0
+        return (
+            isinstance(anchor_completion_seq, int)
+            and isinstance(snapshot_completion_seq, int)
+            and snapshot_completion_seq > anchor_completion_seq
+        )
     identity_changed = False
     for key in ("result_id", "result_reference", "completion_id"):
         if snapshot.get(key) not in (None, "") and snapshot.get(key) != anchor.get(key):
@@ -999,6 +1089,7 @@ def _classify_capabilities(
     transport_proven = (
         isinstance(observation, Mapping)
         and observation.get("state") in {"idle", "done"}
+        and not observation.get("observation_error")
         and isinstance(observation.get("cleanup"), Mapping)
         and observation["cleanup"].get("state") == "removed"
     )
@@ -2008,6 +2099,16 @@ def _result_source_authoritative(
         return False
     if not isinstance(assignment, Mapping):
         return False
+    producer = source.get("producer")
+    if producer == NATIVE_RESULT_PRODUCER:
+        return (
+            source.get("attempt_id") == assignment.get("attempt_id")
+            and isinstance(source.get("attempt_id"), str)
+            and isinstance(source.get("completion_seq"), int)
+            and source.get("freshness_proven") is True
+            and source.get("assistant_owned") is True
+            and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
+        )
     assignment_identity = {
         key: assignment.get(key)
         for key in ("assignment_id", "attempt_id")
@@ -2228,7 +2329,7 @@ def _normalize_invocation_outcome(
 
 
 def _normal_managed_result_capability_available() -> bool:
-    return False
+    return all(callable(value) for value in (native_result_path, publish_native_result))
 
 
 def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
@@ -2248,7 +2349,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         result["capability_state"] = "BLOCKED_CAPABILITY"
         result["preflight"] = {
             "disposition": "BLOCKED_CAPABILITY",
-            "reason": "codex normal adapter does not publish an attributable structured result",
+            "reason": "native result publication interface unavailable",
         }
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -2297,6 +2398,7 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
                 launch_request,
                 payload,
                 pre_submit=submission_anchor,
+                native_result_output=native_result_path(output),
                 env=environment,
             )
         result = _normalize_invocation_outcome(
@@ -2434,6 +2536,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 request,
                 payload,
                 pre_submit=submission_anchor,
+                native_result_output=native_result_path(output),
                 env=environment,
             )
             result["post_submit_observation"] = post_submit

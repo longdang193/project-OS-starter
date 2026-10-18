@@ -25,9 +25,16 @@ def test_completion_rows_label_fake_boundary_evidence_and_unavailable_metrics(
     assert result == 0
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["evidence_kind"] == "fake_boundary_observation"
-    assert payload["implementation_delta"]["status"] == "characterization_only"
-    assert payload["implementation_delta"]["optimization_claim_allowed"] is False
-    assert payload["retention_gate"]["status"] == "not_evaluated"
+    source_hashes_identical = (
+        benchmark.source_at_revision("HEAD")
+        == Path(benchmark.__file__).read_text(encoding="utf-8")
+    )
+    expected_delta_status = "characterization_only" if source_hashes_identical else "before_after"
+    assert payload["implementation_delta"]["status"] == expected_delta_status
+    assert payload["implementation_delta"]["optimization_claim_allowed"] is not source_hashes_identical
+    assert payload["retention_gate"]["status"] == (
+        "not_evaluated" if source_hashes_identical else "eligible_for_before_after"
+    )
     assert payload["repetitions_per_case_and_side"] == 1
     assert "busy_worker_three_intervals_late_receipt" in payload["cases"]
     busy_rows = [
