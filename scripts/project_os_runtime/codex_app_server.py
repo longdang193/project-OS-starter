@@ -53,6 +53,12 @@ _ASSISTANT_ITEM_TYPES = frozenset(
 _EXCLUDED_ITEM_TYPES = frozenset(
     {"reasoning", "toolCall", "tool_call", "toolResult", "tool_result", "progress", "status"}
 )
+_RELEVANT_EVENT_METHODS = frozenset({"item/completed", "item/finalized", "turn/completed"})
+_MAX_MESSAGE_BYTES = 256 * 1024
+_MAX_ITEMS = 256
+_MAX_ITEM_TEXT_BYTES = 64 * 1024
+_MAX_TOTAL_CONTENT_BYTES = 256 * 1024
+_MAX_QUEUED_EVENTS = 256
 
 
 def _required_text(value: object, label: str) -> str:
@@ -91,6 +97,17 @@ def _item_text(item: Mapping[str, Any]) -> str:
     return result
 
 
+def _is_final_answer_item(item: Mapping[str, Any], params: Mapping[str, Any]) -> bool:
+    provenance = item.get("provenance", params.get("provenance"))
+    if provenance == "final_answer":
+        return True
+    if isinstance(provenance, Mapping) and provenance.get("phase") == "final_answer":
+        return True
+    if item.get("phase") == "final_answer" or item.get("finalAnswer") is True:
+        return True
+    return False
+
+
 class CodexAppServerClient:
     """Own one app-server process and one stdout reader until publication ends."""
 
@@ -102,6 +119,7 @@ class CodexAppServerClient:
         codex_home: Path,
         environment: Mapping[str, str] | None = None,
         timeout_seconds: float = 120.0,
+        attempt_deadline: float | None = None,
         process_factory: Callable[..., Any] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -113,6 +131,7 @@ class CodexAppServerClient:
         self.environment = dict(os.environ if environment is None else environment)
         self.environment["CODEX_HOME"] = str(codex_home.resolve())
         self.timeout_seconds = timeout_seconds
+        self._attempt_deadline = attempt_deadline
         self._process_factory = process_factory or subprocess.Popen
         self._clock = clock
         self._process: Any | None = None
@@ -121,17 +140,22 @@ class CodexAppServerClient:
         self._write_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._responses: dict[int, queue.Queue[object]] = {}
-        self._events: queue.Queue[object] = queue.Queue()
+        self._events: queue.Queue[object] = queue.Queue(maxsize=_MAX_QUEUED_EVENTS)
         self._next_request_id = 1
         self._fatal: NativeAppServerError | None = None
         self._started = False
         self._retired = False
+        self._retirement_evidence: dict[str, Any] = {"state": "not_attempted"}
 
     @property
     def process(self) -> Any:
         if self._process is None:
             raise NativeAppServerError("Codex app-server process is not started.")
         return self._process
+
+    @property
+    def retirement_evidence(self) -> dict[str, Any]:
+        return dict(self._retirement_evidence)
 
     def __enter__(self) -> "CodexAppServerClient":
         self.start()
@@ -217,7 +241,7 @@ class CodexAppServerClient:
         return NativeTurn(thread_id=thread.thread_id, turn_id=_required_text(turn.get("id"), "turn identity"))
 
     def wait_for_turn(self, turn: NativeTurn) -> NativeTurnEvidence:
-        deadline = self._clock() + self.timeout_seconds
+        deadline = self._deadline()
         items: dict[str, tuple[int, dict[str, Any]]] = {}
         completion: Mapping[str, Any] | None = None
         arrival = 0
@@ -252,10 +276,39 @@ class CodexAppServerClient:
             item_type = item.get("type")
             if item_type in _EXCLUDED_ITEM_TYPES or item_type not in _ASSISTANT_ITEM_TYPES:
                 continue
+            if method != "item/completed" and item.get("finalized") is not True:
+                continue
+            if not _is_final_answer_item(item, params):
+                continue
             item_id = _required_text(item.get("id"), "assistant item identity")
             order_value = item.get("order", item.get("index", arrival))
             order = order_value if isinstance(order_value, int) else arrival
-            items[item_id] = (order, {"id": item_id, "order": order, "text": _item_text(item)})
+            text = _item_text(item)
+            if len(text.encode("utf-8")) > _MAX_ITEM_TEXT_BYTES:
+                raise NativeAppServerError(
+                    "Codex app-server assistant item exceeds the content limit.",
+                    failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+                )
+            record = {"id": item_id, "order": order, "text": text}
+            existing = items.get(item_id)
+            if existing is not None:
+                if existing[1] != record:
+                    raise NativeAppServerError(
+                        "Codex app-server assistant item replay conflicts.",
+                        failure_kind="NATIVE_PROTOCOL_INCOMPATIBLE",
+                    )
+                continue
+            if len(items) >= _MAX_ITEMS:
+                raise NativeAppServerError(
+                    "Codex app-server finalized item limit exceeded.",
+                    failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+                )
+            if sum(len(value[1]["text"].encode("utf-8")) for value in items.values()) + len(text.encode("utf-8")) > _MAX_TOTAL_CONTENT_BYTES:
+                raise NativeAppServerError(
+                    "Codex app-server semantic content limit exceeded.",
+                    failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+                )
+            items[item_id] = (order, record)
             arrival += 1
         if completion is None:
             raise NativeAppServerError(
@@ -275,27 +328,43 @@ class CodexAppServerClient:
             semantic_content="".join(item["text"] for item in ordered),
         )
 
-    def close(self) -> None:
+    def close(self) -> dict[str, Any]:
         if self._retired:
-            return
+            return self.retirement_evidence
         self._retired = True
         process = self._process
         if process is None:
-            return
+            self._retirement_evidence = {"state": "retired", "method": "not_started"}
+            return self.retirement_evidence
+        method = "already_exited"
+        state = "retired"
+        error: str | None = None
         try:
             if process.poll() is None:
+                method = "terminate"
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except (OSError, subprocess.TimeoutExpired):
+                    method = "kill"
                     process.kill()
                     process.wait(timeout=5)
+            if process.poll() is None:
+                state = "unknown"
+                error = "process remained alive after retirement"
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            state = "unknown"
+            error = type(exc).__name__
         finally:
             for stream_name in ("stdin", "stdout", "stderr"):
                 stream = getattr(process, stream_name, None)
                 close = getattr(stream, "close", None)
                 if callable(close):
                     close()
+        self._retirement_evidence = {"state": state, "method": method}
+        if error is not None:
+            self._retirement_evidence["error"] = error
+        return self.retirement_evidence
 
     def _request(self, method: str, params: Mapping[str, Any]) -> Mapping[str, Any]:
         request_id = self._next_request_id
@@ -306,7 +375,7 @@ class CodexAppServerClient:
             self._responses[request_id] = response_queue
         try:
             self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": dict(params)})
-            response = self._wait_queue(response_queue, self._clock() + self.timeout_seconds)
+            response = self._wait_queue(response_queue, self._deadline())
             if response is _EOF:
                 raise NativeAppServerError(
                     f"Codex app-server {method} closed without a response.", failure_kind="NATIVE_INITIALIZATION_FAILED"
@@ -353,10 +422,19 @@ class CodexAppServerClient:
             while True:
                 line = stdout.readline()
                 if not line:
-                    self._events.put(_EOF)
+                    self._put_event(_EOF)
                     with self._state_lock:
                         for response in self._responses.values():
-                            response.put(_EOF)
+                            try:
+                                response.put_nowait(_EOF)
+                            except queue.Full:
+                                pass
+                    return
+                if len(line.encode("utf-8")) > _MAX_MESSAGE_BYTES:
+                    self._set_fatal(
+                        "Codex app-server message exceeds the content limit.",
+                        failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+                    )
                     return
                 try:
                     message = json.loads(line)
@@ -367,16 +445,23 @@ class CodexAppServerClient:
                     self._set_fatal("Codex app-server emitted a non-object message.")
                     return
                 message_id = message.get("id")
-                if isinstance(message_id, int) and message_id in self._responses:
-                    self._responses[message_id].put(message)
-                    continue
-                if isinstance(message.get("method"), str) and message_id is not None:
+                method = message.get("method")
+                if isinstance(method, str) and message_id is not None:
                     self._set_fatal(
-                        f"Unsupported Codex app-server request: {message['method']}",
+                        f"Unsupported Codex app-server request: {method}",
                         failure_kind="NATIVE_PROTOCOL_INCOMPATIBLE",
                     )
                     return
-                self._events.put(message)
+                if method is None and isinstance(message_id, int) and message_id in self._responses:
+                    self._responses[message_id].put_nowait(message)
+                    continue
+                if isinstance(method, str):
+                    if method not in _RELEVANT_EVENT_METHODS:
+                        continue
+                    self._put_event(message)
+                    continue
+                self._set_fatal("Codex app-server emitted an unsupported JSON-RPC envelope.")
+                return
         except Exception as exc:
             self._set_fatal("Codex app-server stdout reader failed.", cause=exc)
 
@@ -398,12 +483,32 @@ class CodexAppServerClient:
         error = NativeAppServerError(message, failure_kind=failure_kind)
         if cause is not None:
             error.__cause__ = cause
+        response_queues: tuple[queue.Queue[object], ...] = ()
+        publish = False
         with self._state_lock:
             if self._fatal is None:
                 self._fatal = error
-                for response in self._responses.values():
-                    response.put(_ERROR)
-        self._events.put(_ERROR)
+                response_queues = tuple(self._responses.values())
+                publish = True
+        if publish:
+            for response in response_queues:
+                try:
+                    response.put_nowait(_ERROR)
+                except queue.Full:
+                    pass
+            self._put_event(_ERROR)
+
+    def _put_event(self, event: object) -> None:
+        try:
+            self._events.put_nowait(event)
+        except queue.Full:
+            self._set_fatal(
+                "Codex app-server event queue limit exceeded.",
+                failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+            )
+
+    def _deadline(self) -> float:
+        return self._attempt_deadline if self._attempt_deadline is not None else self._clock() + self.timeout_seconds
 
     def _raise_fatal(self) -> None:
         if self._fatal is not None:

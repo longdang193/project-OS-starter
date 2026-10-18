@@ -128,24 +128,31 @@ resources remain caller-owned through `runtime.json`.
   Codex completion, launcher-owned `attempt_id`, and sanitized
   timestamps/outcomes. Missing launcher, attribution, or completion is
   `BLOCKED_CAPABILITY`, not provider fallback or synthetic live evidence.
-- Ordinary native Codex semantic completion is read from the pinned LightRSI
-  `codex completed-turn --json` boundary and published by
-  `scripts/project_os_runtime/secretary_results.py` as the attempt-bound
-  `secretary-native-result.v1` contract with producer `codex-native`. Secretary
-  persists an explicit worker-native session ID and pre-submit native cursor in
-  the per-invocation binding sidecar and accepts only a fresh, canonical
-  LightRSI session/turn with semantic completeness. The Herdr transport session
-  is diagnostic metadata only and never substitutes for the worker-native
-  session; the launcher captures exactly one new Codex rollout into an atomic
-  pre-submit handoff and waits for Project OS acknowledgement, while missing or
-  ambiguous handoff identity blocks before prompt delivery.
+- Ordinary native Codex semantic completion uses the owned app-server client by
+  default and is published by `scripts/project_os_runtime/secretary_results.py`
+  as the attempt-bound `secretary-native-result.v2` contract. The client binds
+  one ephemeral thread, persists binding before `turn/start`, records the
+  accepted opaque turn ID, and accepts only exact-turn, assistant-owned,
+  finalized final-answer content. The request fingerprint is checked across
+  binding, submission, and result artifacts before recovery or read-back.
+  `PROJECT_OS_SECRETARY_LEGACY_MODE=1` explicitly selects the compatibility
+  LightRSI/Herdr Secretary path; its historical `v1` artifacts are read-only
+  evidence for the current path. The Herdr transport session is diagnostic
+  metadata only and never substitutes for the worker-native session.
   Herdr `agent get`/`agent read`, pane text, completion counters,
   and legacy `native_completed_turn` values remain diagnostic-only and cannot
   publish normal semantic content. Atomic replay is idempotent, conflicting
   publication fails closed, and publication remains separate from runtime
   settlement, CoS acceptance, strict receipts, and provider economics.
 - Launcher evidence separates registry/runtime projection, Git identity, Herdr observation, and launch-request binding facts; developer instructions are represented by digest, not raw text. Each dispatch has one `dispatch_id`; each launch attempt carries one `attempt_id` across delivery, observation, reconciliation, and retirement; coordinated DeepAgents also carries one stable `assignment_id` across retries. Preflight, target-resolution failures, and dry-runs retain dispatch correlation but never fabricate an execution attempt. Terminal results keep delivery, execution, observation, task result, cleanup, and performance sections independent. Runtime completion is not task acceptance: the launcher emits no new `task_result.accepted: true` path, and CoS retains `PASS | FAIL | BLOCKED` acceptance authority. The launcher and its tests own task-delivery mechanics; CoS accepts only final delivery evidence, never readiness or intent alone. The launcher does not use `--until working` because that can match unrelated active work.
-- Codex prompt submission is non-blocking; successful `agent start` also requires a live, newly observed Codex process before prompt delivery. `agent prompt` acknowledgement owns delivery evidence, while LightRSI owns the structured native completed-turn boundary and Herdr `agent get`/`agent read`/pane reads remain bounded diagnostics only. Observation timeout or stale output never rewrites confirmed delivery as rejection. A timed-out execution may retain `cleanup: unverified` and `reconciliation_required: true`; cleanup uncertainty does not erase a confirmed semantic result.
+- Codex prompt submission is non-blocking; successful native app-server execution
+  consumes one bounded attempt deadline through initialization, submission,
+  completion collection, publication, and read-back. Retirement evidence is
+  captured independently: confirmed semantic content remains reported when
+  process retirement is unknown, while the invocation is marked
+  `NATIVE_RETIREMENT_UNVERIFIED`, quarantined, and recovery-required. Legacy
+  LightRSI observation remains available only under the explicit compatibility
+  mode above.
 - The native Secretary app-server path is selected with `PROJECT_OS_CODEX_NATIVE_APP_SERVER=1`. One owned client performs `initialize` -> `initialized` -> `thread/start`, requires an ephemeral idle thread with zero prior turns, atomically persists `secretary-native-binding.v1`, and only then performs one `turn/start`; `secretary-native-submission.v1` records the opaque turn acknowledgement before completion collection. Only finalized assistant content for that exact thread/turn and terminal `status=completed` can publish `secretary-native-result.v1`, which is read back before the owned process is retired. Native success does not require LightRSI; LightRSI and the older Herdr handoff path remain compatibility, diagnostic, audit, or recovery surfaces only.
 - Preflight, target-resolution failures, and dry-runs retain `dispatch_id` correlation but never fabricate an execution `attempt_id`; only a real launcher commitment to execution allocates that attempt identity.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.

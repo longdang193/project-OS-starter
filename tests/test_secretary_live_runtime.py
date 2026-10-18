@@ -23,6 +23,7 @@ from scripts.secretary_live_runtime import (
     _smoke_receipt,
     build_launcher_command,
     build_normal_launcher_command,
+    _reconcile_native_artifacts,
     run_normal,
     run_probe,
     run_smoke,
@@ -67,6 +68,8 @@ def fake_lightrsi_capability_for_normal_runs(
     if not request.node.name.startswith("test_run_normal_"):
         return
 
+    monkeypatch.setenv("PROJECT_OS_SECRETARY_LEGACY_MODE", "1")
+
     class Reader:
         cli_path = tmp_path / "lightrsi-cli.js"
 
@@ -93,6 +96,93 @@ def test_normal_request_and_command_do_not_synthesize_governance_identity() -> N
     assert "--plan-identity" not in command
 
 
+def test_reconcile_native_artifacts_requires_current_request_fingerprint(
+    tmp_path: Path,
+) -> None:
+    from scripts.project_os_runtime.secretary_results import (
+        native_binding_path,
+        native_result_path,
+        native_submission_path,
+        publish_native_binding,
+        publish_native_result,
+        publish_native_submission,
+        request_fingerprint,
+    )
+    import scripts.secretary_live_runtime as runtime
+
+    fingerprint = request_fingerprint(
+        {
+            "task_sha256": "task",
+            "repository_identity": "repo",
+            "git_revision": "rev",
+            "execution_role": "secretary",
+            "model_identity": "model",
+            "runtime_grant_digest": "",
+        }
+    )
+    output = tmp_path / "normal.json"
+    publish_native_binding(
+        native_binding_path(output),
+        {
+            "schema": "secretary-native-binding.v2",
+            "attempt_id": "attempt-1",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session",
+            "pre_submit_boundary": "fresh-zero-prior-turn",
+            "created_at": "2026-10-18T10:00:00+00:00",
+            "transport": {"session": "codex-app-server", "pane": "native", "agent_name": "normal-secretary"},
+        },
+    )
+    publish_native_submission(
+        native_submission_path(output),
+        {
+            "schema": "secretary-native-submission.v2",
+            "attempt_id": "attempt-1",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session",
+            "native_thread_id": "thread",
+            "native_turn_id": "turn",
+            "accepted_at": "2026-10-18T10:00:01+00:00",
+            "status": "accepted",
+        },
+    )
+    publish_native_result(
+        native_result_path(output),
+        {
+            "schema": "secretary-native-result.v2",
+            "producer": "codex-native",
+            "attempt_id": "attempt-1",
+            "request_fingerprint": fingerprint,
+            "observed_at": "2026-10-18T10:00:02+00:00",
+            "native_authority": "codex-app-server",
+            "native_session_id": "session",
+            "native_thread_id": "thread",
+            "native_turn_id": "turn",
+            "terminal_status": "completed",
+            "content_source": "native_app_server_completed_turn",
+            "semantic_complete": True,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "answer",
+        },
+    )
+
+    reconciled = _reconcile_native_artifacts(
+        output=output,
+        invocation_id="invocation-1",
+        started_at="2026-10-18T10:00:03+00:00",
+        request_fingerprint_value=fingerprint,
+    )
+    assert reconciled is not None
+    assert reconciled["execution"]["state"] == "completed"
+
+    with pytest.raises(runtime.NativeAppServerError, match="request fingerprint"):
+        _reconcile_native_artifacts(
+            output=output,
+            invocation_id="invocation-2",
+            started_at="2026-10-18T10:00:04+00:00",
+            request_fingerprint_value="0" * 64,
+        )
 def test_normal_command_can_select_codex_app_server_binding_path(tmp_path: Path) -> None:
     command = build_normal_launcher_command(
         normal_request(worktree=tmp_path),
@@ -616,22 +706,126 @@ def test_run_normal_native_app_server_uses_bound_turn_identity(
     assert persisted["native_authority"] == runtime.NATIVE_APP_SERVER_AUTHORITY
 
 
+def test_run_normal_native_result_survives_unverified_retirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.delenv("PROJECT_OS_SECRETARY_LEGACY_MODE", raising=False)
+    monkeypatch.setenv("PROJECT_OS_CODEX_NATIVE_APP_SERVER", "1")
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "codex.exe" if name == "codex" else None)
+
+    from scripts.project_os_runtime.codex_app_server import NativeThread, NativeTurn, NativeTurnEvidence
+
+    class FakeNativeClient:
+        retirement_evidence = {"state": "unknown", "method": "kill", "error": "still alive"}
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        def __enter__(self) -> "FakeNativeClient":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def start_thread(self) -> NativeThread:
+            return NativeThread("thread-1", "session-1", True, "fresh-zero-prior-turn")
+
+        def start_turn(self, thread: NativeThread, task: str) -> NativeTurn:
+            return NativeTurn(thread.thread_id, "turn-1")
+
+        def wait_for_turn(self, turn: NativeTurn) -> NativeTurnEvidence:
+            return NativeTurnEvidence(turn.thread_id, turn.turn_id, "completed", (), "native answer")
+
+    monkeypatch.setattr(runtime, "CodexAppServerClient", FakeNativeClient)
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert result["result"]["state"] == "reported"
+    assert result["result"]["status"] == "completed"
+    assert result["result"]["content"] == "native answer"
+    assert result["failure_kind"] == "NATIVE_RETIREMENT_UNVERIFIED"
+    assert result["recovery_required"] is True
+    assert result["resource"] == {"state": "quarantined", "reuse_blocked": True}
+    assert result["finalization_outcome"] == {"state": "recovery_required", "recovery_required": True}
+    assert result["preflight"]["retirement"]["state"] == "unknown"
+
+
+def test_run_normal_defaults_to_native_app_server_and_legacy_mode_is_explicit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.delenv("PROJECT_OS_SECRETARY_LEGACY_MODE", raising=False)
+    monkeypatch.delenv("PROJECT_OS_CODEX_NATIVE_APP_SERVER", raising=False)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    seen: list[str] = []
+
+    def fake_native(*args: object, **kwargs: object) -> dict[str, object]:
+        seen.append("native")
+        return {"path": "native"}
+
+    def fail_legacy(*args: object, **kwargs: object) -> dict[str, object]:
+        raise AssertionError("legacy mode must be explicit")
+
+    monkeypatch.setattr(runtime, "_run_normal_via_native_app_server", fake_native)
+    monkeypatch.setattr(runtime, "_configured_lightrsi_reader", fail_legacy)
+
+    assert runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "native.json") == {"path": "native"}
+    assert seen == ["native"]
+
+    monkeypatch.setenv("PROJECT_OS_SECRETARY_LEGACY_MODE", "1")
+    monkeypatch.setattr(runtime, "_configured_lightrsi_reader", lambda _: object())
+    monkeypatch.setattr(runtime, "_run_normal_via_legacy_lightrsi", lambda *args, **kwargs: {"path": "legacy"})
+
+    assert runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "legacy.json") == {"path": "legacy"}
+
+
 def test_native_run_reconciles_published_result_without_starting_new_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import scripts.secretary_live_runtime as runtime
 
     output = tmp_path / "normal.json"
+    normal = normal_request(worktree=tmp_path)
+    fingerprint = runtime._normal_request_fingerprint(normal, {})
+    runtime.publish_native_binding(
+        runtime.native_binding_path(output),
+        {
+            "schema": "secretary-native-binding.v2",
+            "attempt_id": "attempt-existing",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session-existing",
+            "pre_submit_boundary": "fresh-zero-prior-turn",
+            "created_at": "2026-10-18T10:00:00+00:00",
+            "transport": {"session": "codex-app-server", "pane": "native", "agent_name": "normal-secretary"},
+        },
+    )
+    runtime.publish_native_submission(
+        runtime.native_submission_path(output),
+        {
+            "schema": "secretary-native-submission.v2",
+            "attempt_id": "attempt-existing",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session-existing",
+            "native_thread_id": "thread-existing",
+            "native_turn_id": "turn-existing",
+            "accepted_at": "2026-10-18T10:00:00+00:00",
+            "status": "accepted",
+        },
+    )
     persisted = {
-        "schema": "secretary-native-result.v1",
+        "schema": "secretary-native-result.v2",
         "producer": runtime.NATIVE_RESULT_PRODUCER,
         "attempt_id": "attempt-existing",
+        "request_fingerprint": fingerprint,
         "observed_at": "2026-10-18T10:00:00+00:00",
         "native_authority": runtime.NATIVE_APP_SERVER_AUTHORITY,
         "native_session_id": "session-existing",
         "native_thread_id": "thread-existing",
         "native_turn_id": "turn-existing",
-        "completion_seq": 1,
         "terminal_status": "completed",
         "content_source": "native_app_server_completed_turn",
         "semantic_complete": True,
@@ -647,7 +841,7 @@ def test_native_run_reconciles_published_result_without_starting_new_client(
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
     monkeypatch.setattr(runtime.shutil, "which", lambda _: pytest.fail("client must not start"))
 
-    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+    result = runtime.run_normal(normal, output=output)
 
     assert result["result"]["state"] == "reported"
     assert result["preflight"]["reconciled"] is True
@@ -687,6 +881,9 @@ def test_native_not_required_cleanup_does_not_quarantine_empty_inventory() -> No
 
     assert result["resource"] == {"state": "settled", "reuse_blocked": False}
     assert result["resource_inventory"]["resources"] == []
+    assert result["resource_inventory"]["state"] == "settled"
+    assert result["resource_inventory"]["reuse_blocked"] is False
+    assert result["resource_inventory"]["recovery_required"] is False
 
 
 def test_normal_outcome_uses_launcher_attempt_not_project_os_alias() -> None:
