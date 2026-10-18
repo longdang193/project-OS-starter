@@ -1279,8 +1279,11 @@ def _confirm_codex_start(
     }
     if not owned_process_ids:
         raise LaunchBlocked("Codex process ownership is unconfirmed before prompt delivery.")
+    raw_completion_seq = agent.get("completion_seq")
+    completion_seq = raw_completion_seq if isinstance(raw_completion_seq, int) else None
     return {
         "agent_status": agent_status,
+        "completion_seq": completion_seq,
         "process_ids": sorted(owned_process_ids),
         "process_identities": sorted(process_identities),
     }
@@ -1348,6 +1351,7 @@ def _codex_completion_snapshot(
     read_result: subprocess.CompletedProcess[str] | None = None
     state = "unknown"
     state_change_seq: int | None = None
+    completion_seq: int | None = None
     pane_id: str | None = pane if isinstance(pane, str) and pane.strip() else None
     observation_error: str | None = None
     try:
@@ -1370,6 +1374,9 @@ def _codex_completion_snapshot(
             raw_seq = agent.get("state_change_seq")
             if isinstance(raw_seq, int):
                 state_change_seq = raw_seq
+            raw_completion_seq = agent.get("completion_seq")
+            if isinstance(raw_completion_seq, int):
+                completion_seq = raw_completion_seq
             raw_pane_id = agent.get("pane_id")
             if isinstance(raw_pane_id, str) and raw_pane_id.strip():
                 pane_id = raw_pane_id
@@ -1380,9 +1387,9 @@ def _codex_completion_snapshot(
             herdr,
             "--session",
             session,
-            "pane" if pane_id else "agent",
+            "agent",
             "read",
-            pane_id or agent_name,
+            agent_name,
             "--source",
             "recent-unwrapped",
             "--lines",
@@ -1390,7 +1397,8 @@ def _codex_completion_snapshot(
             "--format",
             "text",
         ]
-        read_kind = "pane" if pane_id else "agent"
+        read_kind = "agent"
+        read_error: str | None = None
         try:
             read_result = _run(
                 read_command,
@@ -1398,13 +1406,47 @@ def _codex_completion_snapshot(
                 timeout=remaining_timeout(),
             )
         except CommandTransportTimeout:
-            observation_error = observation_error or f"{read_kind} read transport timeout"
+            read_error = f"{read_kind} read transport timeout"
         if read_result is not None and read_result.returncode:
-            observation_error = observation_error or f"{read_kind} read failed"
+            read_error = f"{read_kind} read failed"
+        if read_error and pane_id:
+            pane_read_command = [
+                herdr,
+                "--session",
+                session,
+                "pane",
+                "read",
+                pane_id,
+                "--source",
+                "recent-unwrapped",
+                "--lines",
+                "200",
+                "--format",
+                "text",
+            ]
+            try:
+                pane_result = _run(
+                    pane_read_command,
+                    env=env,
+                    timeout=remaining_timeout(),
+                )
+            except CommandTransportTimeout:
+                pane_result = None
+                observation_error = f"pane read transport timeout"
+            else:
+                if pane_result.returncode:
+                    observation_error = "pane read failed"
+                else:
+                    read_result = pane_result
+                    read_error = None
+                    observation_error = None
+        if read_error:
+            observation_error = observation_error or read_error
     output = _pane_output(read_result) if read_result is not None else ""
     return {
         "state": state,
         "state_change_seq": state_change_seq,
+        "completion_seq": completion_seq,
         "content": output,
         "output_sha256": _sha256_text(output),
         "output_chars": len(output),
@@ -3465,6 +3507,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
                 )
                 evidence["herdr"].update(start_identity)
+                evidence["herdr"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
+                evidence["observation"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
                 evidence["herdr"]["ownership"] = {
                     "repository_identity": args.repository_identity,
                     "plan_identity": args.plan_identity,
@@ -3512,6 +3556,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
+                        "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
                         "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
@@ -3540,6 +3585,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
+                        "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
                         "attempt_id": attempt_id,
                         "delivery_state": "delivery_uncertain",
                         "delivery_certainty": "unknown",
@@ -3562,6 +3608,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(json.dumps(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
+                        "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
                         "attempt_id": attempt_id,
                         "delivery_state": "delivery_failed",
                         "delivery_certainty": "not_delivered",
@@ -3594,6 +3641,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 "assignment": {
                     "agent_name": agent_name,
                     "attempt_id": attempt_id,
+                    "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
                     "completion_observed": False,
                     "delivery_state": "delivered",
                     "delivery_certainty": "confirmed",

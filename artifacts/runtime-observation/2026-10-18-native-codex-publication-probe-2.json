@@ -1,0 +1,194 @@
+{
+  "assignment": {
+    "agent_name": "normal-main-d4118886",
+    "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+    "launcher_exit_code": 0,
+    "reconciliation_required": false,
+    "status": "submitted"
+  },
+  "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+  "disposition": "BLOCKED_CAPABILITY",
+  "evidence_provenance": "capability-probe",
+  "failure_kind": "runtime_structured_receipt_missing",
+  "git_revision": "09d2ab26a6329569cc9c2ea84cadfc313a4f8bef",
+  "metrics": {
+    "acceptance_decision": "unknown",
+    "cos_turns": "unknown",
+    "cost": "unknown",
+    "human_interventions": "unknown",
+    "publication_success": "unknown",
+    "secretary_turns": "unknown",
+    "settlement_proven": "unknown",
+    "token_usage": "unknown"
+  },
+  "missing_capabilities": [
+    "transport_completion_or_cleanup",
+    "secretary_runtime_receipt"
+  ],
+  "owned_resources": [
+    {
+      "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+      "authority": "secretary_live_runtime._release_codex_agent",
+      "identity": "normal-main-d4118886",
+      "kind": "agent",
+      "state": "settled"
+    },
+    {
+      "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+      "authority": "herdr.workspace.close",
+      "identity": "w62:p1",
+      "kind": "pane",
+      "state": "settled"
+    },
+    {
+      "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+      "authority": "herdr.workspace.close",
+      "identity": "w62",
+      "kind": "workspace",
+      "state": "settled"
+    }
+  ],
+  "plan_identity": "native-codex-result-publication-unblock",
+  "plan_revision": "native-codex-result-publication-unblock",
+  "post_submit_observation": {
+    "agent_name": "normal-main-d4118886",
+    "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+    "cleanup": {
+      "state": "removed"
+    },
+    "completion_seq": 48,
+    "content": ">_ OpenAI Codex (v0.162.1)\n     ~\\.codex\\worktrees\\native-codex-result-publication\\project-OS-starter\n  permissions: YOLO mode\n\n\n\u203a For this bounded capability probe, reply with exactly: NATIVE_PUBLICATION_PROBE_OK. Do not modify files. [Runtime\n  Grant: delegation.child_agents = deny]\n\n\n\u2022 NATIVE_PUBLICATION_PROBE_OK\n\n  Worked for 4s \u2022 02:04\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u203a Ask Codex to do anything\n\n  combo-normal medium \u00b7 ~\\.codex\\worktrees\\native-codex-result-publication\\project-OS-starter\n  ? for shortcuts                                                                             \u26a0 4 warnings \u00b7 f2 to view",
+    "freshness_proven": false,
+    "observation_error": "submission freshness not proven",
+    "observed_at": "2026-10-18T00:06:52.413634+00:00",
+    "output_chars": 607,
+    "output_sha256": "7f41ae182506a8d2b05815509e79f20db0bb94acca4fa8a0ce4de4dc6a0ad89e",
+    "pane": "w62:p1",
+    "pre_submit_completion_seq": null,
+    "session": "default",
+    "state": "done",
+    "state_change_seq": 48
+  },
+  "preflight": {
+    "pane": "w62:p1",
+    "pane_cwd_verified": true,
+    "selector_mode": "bootstrapped",
+    "server": "ready",
+    "server_started": false,
+    "session": "default",
+    "workspace_close": {
+      "authority": "herdr.workspace.get",
+      "state": "closed",
+      "verified": true
+    },
+    "workspace_created": true,
+    "workspace_id": "w62"
+  },
+  "provider": "9router",
+  "provider_telemetry": {
+    "attribution": "window",
+    "availability": "inconclusive",
+    "coverage": "partial",
+    "disposition": "inconclusive",
+    "excluded_count": 10,
+    "excluded_row_reasons": {
+      "missing_usage": 5,
+      "unattributed_request": 5
+    },
+    "measured_count": 0,
+    "metrics": {
+      "progress_calls": 8,
+      "query_count": 3
+    },
+    "observation_window": {
+      "end": "2026-10-18T00:06:52.505508+00:00",
+      "lookback_seconds": 0.0,
+      "start": "2026-10-18T00:04:42.352577+00:00"
+    },
+    "observed_session_count": 2,
+    "reason": "missing_usage",
+    "schema_version": "9router-usage-observation-v1",
+    "selected_count": 5,
+    "source": "9router-local-read-only"
+  },
+  "receipt": {
+    "disposition": "BLOCKED_CAPABILITY",
+    "evidence_provenance": "capability-probe",
+    "reason": "runtime_structured_receipt_missing",
+    "schema_version": "secretary-live-runtime-receipt-v1"
+  },
+  "recovery_required": false,
+  "repository_identity": "project-os-starter",
+  "resource": {
+    "reuse_blocked": false,
+    "state": "settled"
+  },
+  "resource_inventory": {
+    "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+    "recovery_required": false,
+    "resources": [
+      {
+        "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+        "authority": "secretary_live_runtime._release_codex_agent",
+        "identity": "normal-main-d4118886",
+        "kind": "agent",
+        "state": "settled"
+      },
+      {
+        "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+        "authority": "herdr.workspace.close",
+        "identity": "w62:p1",
+        "kind": "pane",
+        "state": "settled"
+      },
+      {
+        "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+        "authority": "herdr.workspace.close",
+        "identity": "w62",
+        "kind": "workspace",
+        "state": "settled"
+      }
+    ],
+    "reuse_blocked": false,
+    "schema": "secretary-resource-inventory/v1",
+    "state": "settled"
+  },
+  "returncode": 0,
+  "run_id": "native-publication-probe-run-2",
+  "runtime_identity": {
+    "agent_name": "normal-main-d4118886",
+    "codex_version": "codex-cli 0.162.1",
+    "controller_id": null,
+    "model": null,
+    "pane": "w62:p1",
+    "provider": null,
+    "secretary_runtime": {
+      "attempt_id": "3a0da8a234884ec5a3c27ca94e9d2ce9",
+      "metrics": {
+        "acceptance_decision": "unknown",
+        "cos_turns": "unknown",
+        "cost": "unknown",
+        "human_interventions": "unknown",
+        "publication_success": "unknown",
+        "secretary_turns": "unknown",
+        "settlement_proven": "unknown",
+        "token_usage": "unknown"
+      },
+      "observed": false,
+      "plan_revision": "native-codex-result-publication-unblock",
+      "run_id": "native-publication-probe-run-2",
+      "task_id": "native-publication-probe-task-2",
+      "timestamps": {}
+    },
+    "session": "default",
+    "session_id": null
+  },
+  "schema_version": "secretary-live-runtime-v1",
+  "task_id": "native-publication-probe-task-2",
+  "timestamps": {
+    "run_finished": "2026-10-18T00:04:51.591616+00:00",
+    "run_started": "2026-10-18T00:04:42.352577+00:00"
+  },
+  "transport_evidence": "unproven",
+  "worktree": "C:\\Users\\HOANG PHI LONG DANG\\.codex\\worktrees\\native-codex-result-publication\\project-OS-starter"
+}

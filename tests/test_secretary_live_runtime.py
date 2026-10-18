@@ -680,6 +680,7 @@ def test_run_normal_blocks_before_launch_without_structured_result_capability(
 ) -> None:
     import scripts.secretary_live_runtime as runtime
 
+    monkeypatch.setattr(runtime, "_normal_managed_result_capability_available", lambda: False)
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
     monkeypatch.setattr(
         runtime,
@@ -699,9 +700,39 @@ def test_run_normal_blocks_before_launch_without_structured_result_capability(
     assert result["result"] == {"state": "unavailable", "status": None}
     assert result["preflight"] == {
         "disposition": "BLOCKED_CAPABILITY",
-        "reason": "codex normal adapter does not publish an attributable structured result",
+        "reason": "native result publication interface unavailable",
     }
 
+
+
+def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_identity() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"attempt_id": "attempt-1", "execution": {"state": "completed"}}},
+        observation={
+            "state": "idle",
+            "attempt_id": "attempt-1",
+            "producer": "codex-native",
+            "completion_seq": 5,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "native answer",
+            "result_reference": "C:/tmp/native-result.json",
+            "cleanup": {"state": "removed"},
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "C:/tmp/native-result.json",
+        "content": "native answer",
+    }
 
 def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
     import scripts.secretary_live_runtime as runtime
@@ -1234,6 +1265,101 @@ def test_observe_submitted_codex_passes_bound_pane_to_snapshot(
     assert seen["pane"] == "pane"
 
 
+
+def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.secretary_live_runtime as runtime
+    from scripts.project_os_runtime.secretary_results import parse_native_result
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "semantic_content": "fresh native answer",
+            "content": "",
+            "output_sha256": "b" * 64,
+            "output_chars": 0,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    payload = {
+        "herdr": {
+            "executable": "herdr.exe",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
+
+        },
+        "assignment": {"attempt_id": "attempt-1", "pre_submit_completion_seq": 4},
+    }
+    result_path = tmp_path / "native-result.json"
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        payload,
+        native_result_output=result_path,
+        env={},
+    )
+
+    assert observation["producer"] == "codex-native"
+    assert observation["publication"]["state"] == "published"
+    assert observation["cleanup"] == {"state": "removed"}
+    assert parse_native_result(result_path, attempt_id="attempt-1")["state"] == "confirmed"
+
+
+def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "semantic_content": "fresh native answer",
+            "content": "",
+            "output_sha256": "b" * 64,
+            "output_chars": 0,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "publish_native_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=tmp_path / "native-result.json",
+        env={},
+    )
+
+    assert observation["observation_error"] == "native result publication failed: OSError"
+    assert "semantic_content" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
+
 def _submission_anchor() -> dict[str, object]:
     return {
         "state": "idle",
@@ -1246,6 +1372,32 @@ def _submission_anchor() -> dict[str, object]:
         "producer": "dcode-project",
     }
 
+
+def test_submission_freshness_requires_a_new_native_completion_sequence() -> None:
+    import scripts.secretary_live_runtime as runtime
+    anchor = {**_submission_anchor(), "completion_seq": 4}
+    snapshot = {
+        **anchor,
+        "state": "idle",
+        "content": "Codex screen\n• FRESH ANSWER",
+        "output_sha256": "b" * 64,
+        "output_chars": 29,
+    }
+
+    assert runtime._submission_freshness_proven(anchor, snapshot) is False
+
+    snapshot["completion_seq"] = 5
+    assert runtime._submission_freshness_proven(anchor, snapshot) is True
+
+
+
+def test_submission_freshness_accepts_first_completion_after_null_native_baseline() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    anchor = {"completion_seq": None}
+    snapshot = {"completion_seq": 0}
+
+    assert runtime._submission_freshness_proven(anchor, snapshot) is True
 
 def _correlated_payload() -> dict[str, object]:
     return {
@@ -2885,6 +3037,27 @@ def test_done_transport_names_only_remaining_secretary_blocker() -> None:
     assert result == {
         "transport_evidence": "proven",
         "missing_capabilities": ["secretary_runtime_receipt"],
+    }
+
+
+def test_transport_observation_error_keeps_completion_capability_blocked() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._classify_capabilities(
+        "BLOCKED_CAPABILITY",
+        {
+            "state": "done",
+            "cleanup": {"state": "removed"},
+            "observation_error": "pane read transport timeout",
+        },
+    )
+
+    assert result == {
+        "transport_evidence": "unproven",
+        "missing_capabilities": [
+            "transport_completion_or_cleanup",
+            "secretary_runtime_receipt",
+        ],
     }
 
 

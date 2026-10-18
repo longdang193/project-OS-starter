@@ -577,7 +577,7 @@ def test_codex_completion_snapshot_reads_status_and_output(
             return subprocess.CompletedProcess(
                 command,
                 0,
-                '{"result":{"agent":{"agent_status":"idle","state_change_seq":7}}}',
+                '{"result":{"agent":{"agent_status":"idle","state_change_seq":7,"completion_seq":11}}}',
                 "",
             )
         return subprocess.CompletedProcess(command, 0, '{"result":"work output"}', "")
@@ -590,6 +590,7 @@ def test_codex_completion_snapshot_reads_status_and_output(
 
     assert snapshot["state"] == "idle"
     assert snapshot["state_change_seq"] == 7
+    assert snapshot["completion_seq"] == 11
     assert snapshot["output_chars"] == len("work output")
     assert snapshot["observation_error"] is None
     assert calls == [
@@ -626,7 +627,37 @@ def test_codex_completion_snapshot_skips_terminal_read_while_working(
     assert calls == [["herdr.exe", "--session", "session", "agent", "get", "xhigh-main"]]
 
 
-def test_codex_completion_snapshot_prefers_authoritative_pane_read(
+def test_codex_completion_snapshot_prefers_agent_read_for_pane_bound_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","state_change_seq":8,"pane_id":"w1:p1"}}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"result":"fresh agent output"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
+    )
+
+    assert snapshot["content"] == "fresh agent output"
+    assert snapshot["observation_error"] is None
+    assert calls[-1] == [
+        "herdr.exe", "--session", "session", "agent", "read", "xhigh-main",
+        "--source", "recent-unwrapped", "--lines", "200", "--format", "text",
+    ]
+
+
+def test_codex_completion_snapshot_falls_back_to_bound_pane_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
@@ -658,7 +689,7 @@ def test_codex_completion_snapshot_prefers_authoritative_pane_read(
     ]
 
 
-def test_codex_completion_snapshot_uses_bound_pane_when_agent_metadata_omits_pane(
+def test_codex_completion_snapshot_uses_agent_read_when_agent_metadata_omits_pane(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
@@ -683,7 +714,7 @@ def test_codex_completion_snapshot_uses_bound_pane_when_agent_metadata_omits_pan
     assert snapshot["content"] == "bound pane output"
     assert snapshot["observation_error"] is None
     assert calls[-1][:7] == [
-        "herdr.exe", "--session", "session", "pane", "read", "w1:p1", "--source",
+        "herdr.exe", "--session", "session", "agent", "read", "xhigh-main", "--source",
     ]
 
 
@@ -1610,6 +1641,7 @@ def test_main_starts_with_selected_codex_home(
             "agent_name": "xhigh-main",
             "session": "codex-probe",
             "pane": "w1:p5",
+            "pre_submit_completion_seq": 11,
         },
     }
     captured: dict[str, object] = {}
@@ -1660,6 +1692,7 @@ def test_main_starts_with_selected_codex_home(
     assert result["delivery_certainty"] == "confirmed"
     assert result["prompt_accepted"] is True
     assert result["status"] == "submitted"
+    assert result["pre_submit_completion_seq"] == 11
     assert result["completion_observed"] is False
 
 
@@ -4626,7 +4659,7 @@ def test_confirm_codex_start_accepts_matching_process_identity(
     tmp_path: Path,
 ) -> None:
     responses = iter([
-        {"result": {"agent": {"agent_status": "working"}}},
+        {"result": {"agent": {"agent_status": "working", "completion_seq": 12}}},
         {"result": {"process_info": {"foreground_processes": [
             {"pid": 2, "name": "codex.exe", "argv0": "C:/bin/codex.exe", "cwd": str(tmp_path), "children": []},
         ]}}},
@@ -4639,6 +4672,7 @@ def test_confirm_codex_start_accepts_matching_process_identity(
     )
 
     assert result["process_ids"] == [2]
+    assert result["completion_seq"] == 12
 
 
 def test_confirm_codex_start_records_owned_descendants(
@@ -4646,7 +4680,7 @@ def test_confirm_codex_start_records_owned_descendants(
     tmp_path: Path,
 ) -> None:
     responses = iter([
-        {"result": {"agent": {"agent_status": "working"}}},
+        {"result": {"agent": {"agent_status": "working", "completion_seq": 12}}},
         {"result": {"process_info": {"foreground_processes": [{
             "pid": 2,
             "name": "codex.exe",
