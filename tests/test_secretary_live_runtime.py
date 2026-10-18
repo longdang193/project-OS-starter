@@ -711,11 +711,26 @@ def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_ident
     result = runtime._normalize_invocation_outcome(
         invocation_id="invoke-1",
         returncode=0,
-        payload={"assignment": {"attempt_id": "attempt-1", "execution": {"state": "completed"}}},
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
         observation={
             "state": "idle",
             "attempt_id": "attempt-1",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
             "producer": "codex-native",
+            "content_source": "native_completed_turn",
+            "native_authority": "lightrsi-codex-context-history",
+            "native_session_id": "session",
+            "native_turn_id": "turn-1",
             "completion_seq": 5,
             "freshness_proven": True,
             "assistant_owned": True,
@@ -733,6 +748,81 @@ def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_ident
         "reference": "C:/tmp/native-result.json",
         "content": "native answer",
     }
+
+
+def test_normal_outcome_rejects_native_result_with_mismatched_execution_context() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "idle",
+            "attempt_id": "attempt-1",
+            "session": "other-session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "producer": "codex-native",
+            "content_source": "native_completed_turn",
+            "native_authority": "lightrsi-codex-context-history",
+            "native_session_id": "other-session",
+            "native_turn_id": "turn-1",
+            "completion_seq": 5,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "native answer",
+            "result_reference": "C:/tmp/native-result.json",
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_pane_only_native_result() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "idle",
+            "attempt_id": "attempt-1",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "producer": "codex-native",
+            "content_source": "pane",
+            "completion_seq": 5,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "pane text",
+            "result_reference": "C:/tmp/pane-result.json",
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
     import scripts.secretary_live_runtime as runtime
@@ -1062,7 +1152,7 @@ def test_observe_submitted_codex_rejects_recovered_stale_output_without_state_ch
         env={},
     )
 
-    assert observation["state"] == "failed"
+    assert observation["state"] == "idle"
     assert "semantic_content" not in observation
 
 
@@ -1110,7 +1200,7 @@ def test_observe_submitted_codex_rejects_unknown_recovery_as_activity(
     )
 
     assert observation["state"] == "idle"
-    assert observation["observation_error"] == "completion output not observed"
+    assert observation["observation_error"] == "submission freshness not proven"
     assert "semantic_content" not in observation
 
 
@@ -1203,7 +1293,7 @@ def test_observe_submitted_codex_waits_past_initial_idle_without_semantic_promot
         env={},
     )
 
-    assert observation["state"] == "done"
+    assert observation["state"] == "idle"
     assert "semantic_content" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
@@ -1281,6 +1371,16 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
             "output_sha256": "b" * 64,
             "output_chars": 0,
             "observation_error": None,
+            "content_source": "agent",
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": "lightrsi-codex-context-history",
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh native answer",
+                "requestId": "request-1",
+                "responseId": "response-1",
+            },
         },
     )
     monkeypatch.setattr(
@@ -1308,9 +1408,143 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
     )
 
     assert observation["producer"] == "codex-native"
+    assert observation["content_source"] == "native_completed_turn"
+    assert observation["native_authority"] == "lightrsi-codex-context-history"
+    assert observation["native_session_id"] == "session"
+    assert observation["native_turn_id"] == "turn-1"
     assert observation["publication"]["state"] == "published"
     assert observation["cleanup"] == {"state": "removed"}
     assert parse_native_result(result_path, attempt_id="attempt-1")["state"] == "confirmed"
+    normalized = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation=observation,
+        started_at="2026-10-18T00:00:00+00:00",
+        finished_at="2026-10-18T00:00:01+00:00",
+    )
+    assert normalized["result"]["state"] == "reported"
+    assert normalized["result"]["status"] == "completed"
+    assert normalized["result"]["content"] == "fresh native answer"
+    assert normalized["result"]["reference"] == str(result_path)
+
+
+def test_observe_submitted_codex_publishes_native_result_when_diagnostic_read_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "observation_error": "agent read failed",
+            "content_source": "agent",
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": "lightrsi-codex-context-history",
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh native answer",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    result_path = tmp_path / "native-result.json"
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=result_path,
+        env={},
+    )
+
+    assert observation["observation_error"] == "agent read failed"
+    assert observation["publication"]["state"] == "published"
+    assert observation["content_source"] == "native_completed_turn"
+
+
+def test_observe_submitted_codex_rejects_persisted_result_without_fresh_reader_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "semantic_content": "fresh native answer",
+            "content": "",
+            "output_sha256": "b" * 64,
+            "output_chars": 0,
+            "observation_error": None,
+            "content_source": "agent",
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": "lightrsi-codex-context-history",
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh native answer",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "parse_native_result",
+        lambda *args, **kwargs: {"state": "unknown", "detail": "native result unavailable"},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=tmp_path / "native-result.json",
+        env={},
+    )
+
+    assert observation["observation_error"] == "native result read-back failed"
+    assert "semantic_content" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
 
 
 def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1327,6 +1561,14 @@ def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: 
             "output_sha256": "b" * 64,
             "output_chars": 0,
             "observation_error": None,
+            "content_source": "agent",
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": "lightrsi-codex-context-history",
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh native answer",
+            },
         },
     )
     monkeypatch.setattr(
@@ -1357,6 +1599,77 @@ def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: 
     )
 
     assert observation["observation_error"] == "native result publication failed: OSError"
+    assert "semantic_content" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
+
+
+@pytest.mark.parametrize(
+    "native_turn",
+    [
+        {"kind": "rejected", "reason": "turn_aborted"},
+        {
+            "kind": "completed",
+            "authority": "lightrsi-codex-context-history",
+            "sessionId": "other-session",
+            "turnId": "turn-1",
+            "assistantText": "stale answer",
+        },
+        {
+            "kind": "completed",
+            "authority": "lightrsi-codex-context-history",
+            "sessionId": "session",
+            "turnId": "turn-1",
+            "assistantText": "tool call continuation",
+            "toolCallContinuation": True,
+        },
+        {
+            "kind": "completed",
+            "sessionId": "session",
+            "turnId": "turn-1",
+            "assistantText": "missing authority",
+        },
+    ],
+)
+def test_observe_submitted_codex_rejects_invalid_native_completed_turn(
+    native_turn: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "native_completed_turn": native_turn,
+            "content": "diagnostic pane text",
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=tmp_path / "native-result.json",
+        env={},
+    )
+
     assert "semantic_content" not in observation
     assert observation["cleanup"] == {"state": "removed"}
 
@@ -1502,8 +1815,7 @@ def test_observe_submitted_codex_uses_bound_structured_content_over_terminal_tex
         env={},
     )
 
-    assert observation["semantic_content"] == "structured answer"
-    assert "USER-INJECTED TERMINAL TEXT" not in observation["semantic_content"]
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_terminal_bullet(
@@ -1541,8 +1853,8 @@ def test_observe_submitted_codex_uses_bound_snapshot_semantic_content_without_te
         env={},
     )
 
-    assert observation["semantic_content"] == "accepted snapshot answer"
-    assert observation["source_ref"] == "task-result://snapshot"
+    assert "semantic_content" not in observation
+    assert "source_ref" not in observation
 
 
 def test_observe_submitted_codex_rejects_terminal_content_without_snapshot_provenance(
@@ -1636,9 +1948,14 @@ def test_observe_submitted_codex_preserves_snapshot_conflict_for_normalization(
         finished_at="2026-10-11T10:00:01+00:00",
     )
 
-    assert observation["semantic_content"] == "answer from B"
-    assert observation["result_reference"] == "task-result://B"
-    assert result["result"] == {"state": "ambiguous", "status": None}
+    assert "semantic_content" not in observation
+    assert "result_reference" not in observation
+    assert result["result"] == {
+        "state": "reported",
+        "status": "completed",
+        "reference": "task-result://A",
+        "content": "answer from A",
+    }
 
 
 def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
@@ -1677,8 +1994,7 @@ def test_observe_submitted_codex_does_not_publish_unrelated_terminal_bullet(
         env={},
     )
 
-    assert observation["semantic_content"] == "accepted snapshot answer"
-    assert "unrelated terminal text" not in observation["semantic_content"]
+    assert "semantic_content" not in observation
 
 
 def test_observe_submitted_codex_keeps_task_result_source_ref_over_rejected_snapshot_ref(
@@ -1798,7 +2114,7 @@ def test_observe_submitted_codex_rejects_read_error_recovery_with_old_output(
     )
 
     assert observation["state"] == "idle"
-    assert observation["observation_error"] == "submission freshness not proven"
+    assert observation["observation_error"] == "agent read transport timeout"
     assert "semantic_content" not in observation
 
 

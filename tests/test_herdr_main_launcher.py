@@ -602,6 +602,67 @@ def test_codex_completion_snapshot_reads_status_and_output(
     ]
 
 
+def test_codex_completion_snapshot_passes_only_valid_native_completed_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(command, **kwargs):
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","completion_seq":12,'
+                '"native_completed_turn":{"kind":"completed",'
+                '"authority":"lightrsi-codex-context-history",'
+                '"sessionId":"session","turnId":"turn-12",'
+                '"assistantText":"native answer"}}}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"result":"pane text"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
+    )
+
+    assert snapshot["native_completed_turn"] == {
+        "kind": "completed",
+        "authority": "lightrsi-codex-context-history",
+        "sessionId": "session",
+        "turnId": "turn-12",
+        "assistantText": "native answer",
+    }
+    assert "pane text" == snapshot["content"]
+
+
+def test_codex_completion_snapshot_rejects_tool_call_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(command, **kwargs):
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","completion_seq":12,'
+                '"native_completed_turn":{"kind":"completed",'
+                '"authority":"lightrsi-codex-context-history",'
+                '"sessionId":"session","turnId":"turn-12",'
+                '"assistantText":"tool call continuation",'
+                '"toolCallContinuation":true}}}}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"result":"pane text"}', "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    snapshot = LAUNCHER._codex_completion_snapshot(
+        "herdr.exe", "session", "xhigh-main", env={},
+    )
+
+    assert "native_completed_turn" not in snapshot
+    assert snapshot["native_completed_turn_error"] == "native completed turn is a tool-call continuation"
+
+
 def test_codex_completion_snapshot_skips_terminal_read_while_working(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -682,7 +743,8 @@ def test_codex_completion_snapshot_falls_back_to_bound_pane_read(
     )
 
     assert snapshot["content"] == "fresh pane output"
-    assert snapshot["observation_error"] is None
+    assert snapshot["content_source"] == "pane"
+    assert snapshot["observation_error"] == "agent read failed"
     assert calls[-1] == [
         "herdr.exe", "--session", "session", "pane", "read", "w1:p1",
         "--source", "recent-unwrapped", "--lines", "200", "--format", "text",

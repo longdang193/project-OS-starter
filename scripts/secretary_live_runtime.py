@@ -50,8 +50,10 @@ try:
     )
     from project_os_runtime.secretary_results import (
         NATIVE_RESULT_PRODUCER,
+        NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
         native_result_path,
+        parse_native_result,
         publish_native_result,
     )
 except ModuleNotFoundError:
@@ -63,8 +65,10 @@ except ModuleNotFoundError:
     )
     from scripts.project_os_runtime.secretary_results import (
         NATIVE_RESULT_PRODUCER,
+        NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
         native_result_path,
+        parse_native_result,
         publish_native_result,
     )
 
@@ -667,6 +671,11 @@ def _observe_submitted_codex(
 
     assignment = payload.get("assignment")
     assignment = assignment if isinstance(assignment, Mapping) else None
+    if assignment is not None:
+        assignment = dict(assignment)
+        assignment.setdefault("session", session)
+        assignment.setdefault("pane", pane)
+        assignment.setdefault("agent_name", agent_name)
     ownership = herdr.get("ownership")
     ownership = ownership if isinstance(ownership, Mapping) else None
     assignment_id = assignment.get("assignment_id") if assignment else None
@@ -701,23 +710,11 @@ def _observe_submitted_codex(
         "observation_error": "completion observation deadline expired",
     }
     completed = False
-    task_result = assignment.get("task_result") if assignment else None
-    structured_result_owned = _result_source_authoritative(task_result, assignment)
-    structured_result_content = (
-        _result_source_content(task_result)
-        if structured_result_owned and isinstance(task_result, Mapping)
-        else None
-    )
     freshness_proven = False
     if native_boundary_captured:
         if not isinstance(anchor, Mapping):
             anchor = {}
         anchor = {**anchor, "completion_seq": herdr_pre_submit_completion_seq}
-    legacy_first_snapshot: dict[str, Any] | None = None
-    legacy_output_changed = False
-    legacy_state_changed = False
-    legacy_state_seq_changed = False
-    legacy_activity = False
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
         snapshot = _codex_completion_snapshot(
@@ -736,23 +733,21 @@ def _observe_submitted_codex(
                 snapshot["observation_error"] = "completion identity mismatch"
                 snapshot["state"] = "unknown"
                 break
-        if anchor is None and legacy_first_snapshot is None:
-            legacy_first_snapshot = dict(snapshot)
-            legacy_activity = snapshot.get("state") == "working" or (
-                snapshot.get("state") == "idle" and bool(snapshot.get("observation_error"))
-            )
-        elif anchor is None and legacy_first_snapshot is not None:
-            legacy_output_changed = any(
-                snapshot.get(key) != legacy_first_snapshot.get(key)
-                for key in ("content", "output_sha256", "output_chars")
-            )
-            legacy_state_changed = snapshot.get("state") != legacy_first_snapshot.get("state")
-            legacy_state_seq_changed = (
-                snapshot.get("state_change_seq") is not None
-                and snapshot.get("state_change_seq") != legacy_first_snapshot.get("state_change_seq")
-            )
-        freshness_anchor = anchor or legacy_first_snapshot
+        native_turn = _native_completed_turn(
+            snapshot.get("native_completed_turn"),
+            session=session,
+        )
+        if snapshot.get("native_completed_turn_error"):
+            snapshot["observation_error"] = snapshot["native_completed_turn_error"]
+            break
+        if snapshot.get("native_completed_turn") is not None and native_turn is None:
+            snapshot["observation_error"] = "native completed turn invalid"
+            break
+        freshness_anchor = anchor
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
+        snapshot.update({"session": session, "pane": pane, "agent_name": agent_name})
+        if assignment_id is not None:
+            snapshot["assignment_id"] = assignment_id
         if (
             freshness_proven
             and native_boundary_captured
@@ -765,57 +760,16 @@ def _observe_submitted_codex(
                 "assistant_owned": True,
                 "freshness_proven": True,
             })
-        snapshot_result_owned = _result_source_authoritative(
-            snapshot,
-            assignment,
-            require_assistant_provenance=True,
-        )
-        snapshot_explicit_content = _safe_semantic_result_value(
-            snapshot.get("semantic_content"),
-            allow_long=True,
-        )
-        terminal_semantic_content = _extract_codex_semantic_content(snapshot.get("content"))
-        snapshot_semantic_content = (
-            snapshot_explicit_content or terminal_semantic_content
-            if snapshot_result_owned
-            else None
-        )
-        semantic_content = snapshot_semantic_content or structured_result_content
-        initial_prompt_content = _codex_initial_prompt_bullet(snapshot.get("content"))
-        if (
-            structured_result_content is None
-            and snapshot_explicit_content is None
-            and terminal_semantic_content
-            and initial_prompt_content == terminal_semantic_content
-        ):
-            completion_identity = any(
-                snapshot.get(key) not in (None, "")
-                for key in ("result_id", "result_reference", "completion_id")
-            )
-            anchor_semantic = (
-                _extract_codex_semantic_content(anchor.get("content"))
-                if isinstance(anchor, Mapping)
-                else None
-            )
-            if not completion_identity and anchor_semantic != terminal_semantic_content:
-                snapshot_semantic_content = None
-                semantic_content = structured_result_content
+        semantic_content = native_turn["assistantText"] if native_turn else None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
+        if not native_boundary_captured and snapshot.get("state") in {"idle", "done"}:
+            break
         if (
-            (
-                snapshot.get("state") in {"idle", "done"}
-                and freshness_proven
-                and semantic_content
-            )
-            or (
-                anchor is None
-                and legacy_activity
-                and snapshot.get("state") in {"idle", "done", "failed", "stopped"}
-                and legacy_output_changed
-                and (legacy_state_changed or legacy_state_seq_changed)
-            )
-            and not snapshot.get("observation_error")
+            snapshot.get("state") in {"idle", "done"}
+            and freshness_proven
+            and native_turn is not None
+            and semantic_content
         ):
             completed = True
             break
@@ -828,24 +782,22 @@ def _observe_submitted_codex(
             else (
                 "completion provenance not established"
                 if snapshot.get("state") == "done"
-                and terminal_semantic_content
-                and terminal_semantic_content != initial_prompt_content
                 else "completion output not observed"
             )
         )
 
     native_source: dict[str, Any] | None = None
-    native_content = _safe_semantic_result_value(snapshot.get("semantic_content"), allow_long=True)
-    native_content = native_content or _extract_codex_semantic_content(snapshot.get("content"))
+    native_turn = _native_completed_turn(snapshot.get("native_completed_turn"), session=session)
+    native_content = native_turn["assistantText"] if native_turn else None
     if (
         native_result_output is not None
         and completed
         and snapshot.get("state") in {"idle", "done"}
-        and not snapshot.get("observation_error")
         and freshness_proven
         and native_boundary_captured
         and isinstance(snapshot.get("completion_seq"), int)
         and isinstance(attempt_id, str)
+        and native_turn is not None
         and native_content
     ):
         native_source = {
@@ -857,22 +809,52 @@ def _observe_submitted_codex(
             "agent_name": agent_name,
             "completion_seq": snapshot["completion_seq"],
             "semantic_content": native_content,
+            "native_authority": NATIVE_RESULT_AUTHORITY,
+            "native_session_id": native_turn["sessionId"],
+            "native_turn_id": native_turn["turnId"],
             "freshness_proven": True,
             "assistant_owned": True,
+            "content_source": "native_completed_turn",
             "observed_at": datetime.now(timezone.utc).isoformat(),
         }
+        for source_key, result_key in (("requestId", "native_request_id"), ("responseId", "native_response_id")):
+            if native_turn.get(source_key):
+                native_source[result_key] = native_turn[source_key]
+        if assignment_id is not None:
+            native_source["assignment_id"] = assignment_id
         try:
             publication = publish_native_result(native_result_output, native_source)
         except (OSError, ValueError, NativeResultConflictError) as exc:
             native_source = None
             snapshot["observation_error"] = f"native result publication failed: {type(exc).__name__}"
         else:
-            native_source.update(
-                {
-                    "result_reference": publication["path"],
-                    "source_digest": publication["digest"],
-                }
-            )
+            try:
+                persisted = parse_native_result(native_result_output, attempt_id=attempt_id)
+                persisted_digest = hashlib.sha256(native_result_output.read_bytes()).hexdigest()
+                if (
+                    persisted.get("state") != "confirmed"
+                    or persisted.get("semantic_content") != native_source["semantic_content"]
+                    or persisted.get("session") != session
+                    or persisted.get("pane") != pane
+                    or persisted.get("agent_name") != agent_name
+                    or persisted.get("content_source") != "native_completed_turn"
+                    or persisted.get("native_authority") != NATIVE_RESULT_AUTHORITY
+                    or persisted.get("native_session_id") != native_source["native_session_id"]
+                    or persisted.get("native_turn_id") != native_source["native_turn_id"]
+                    or persisted.get("assignment_id") != native_source.get("assignment_id")
+                    or persisted_digest != publication.get("digest")
+                ):
+                    raise ValueError("native result read-back mismatch")
+            except (OSError, UnicodeDecodeError, ValueError, KeyError):
+                native_source = None
+                snapshot["observation_error"] = "native result read-back failed"
+            else:
+                native_source.update(
+                    {
+                        "result_reference": publication["path"],
+                        "source_digest": publication["digest"],
+                    }
+                )
 
     observation = {
         key: snapshot.get(key)
@@ -885,6 +867,7 @@ def _observe_submitted_codex(
             "output_chars",
             "observation_error",
             "producer",
+            "content_source",
         )
         if key in snapshot
     }
@@ -892,18 +875,20 @@ def _observe_submitted_codex(
         selected_source, semantic_content = native_source, native_source["semantic_content"]
         observation["publication"] = publication
     else:
-        selected_source, semantic_content = _select_authoritative_result_source(
-            task_result,
-            snapshot,
-            assignment,
-        )
-    if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
+        selected_source, semantic_content = None, None
+    if completed and snapshot.get("state") in {"idle", "done"}:
         if semantic_content:
             observation["semantic_content"] = semantic_content
             observation["assistant_owned"] = True
             if isinstance(selected_source, Mapping):
                 for key in (
                     "producer",
+                    "content_source",
+                    "native_authority",
+                    "native_session_id",
+                    "native_turn_id",
+                    "native_request_id",
+                    "native_response_id",
                     "result_id",
                     "result_reference",
                     "reference",
@@ -1932,6 +1917,45 @@ def _safe_semantic_result_value(value: object, *, allow_long: bool = False) -> s
     return text
 
 
+def _native_completed_turn(
+    value: object,
+    *,
+    session: str,
+) -> dict[str, str] | None:
+    if not isinstance(value, Mapping) or value.get("kind") != "completed":
+        return None
+    if value.get("authority") != NATIVE_RESULT_AUTHORITY:
+        return None
+    if value.get("toolCallContinuation") is True:
+        return None
+    session_id = value.get("sessionId")
+    turn_id = value.get("turnId")
+    assistant_text = _safe_semantic_result_value(value.get("assistantText"), allow_long=True)
+    if (
+        not isinstance(session_id, str)
+        or not session_id.strip()
+        or session_id != session
+        or not isinstance(turn_id, str)
+        or not turn_id.strip()
+        or not assistant_text
+    ):
+        return None
+    normalized = {
+        "kind": "completed",
+        "authority": NATIVE_RESULT_AUTHORITY,
+        "sessionId": session_id.strip(),
+        "turnId": turn_id.strip(),
+        "assistantText": assistant_text,
+    }
+    for key in ("requestId", "responseId"):
+        optional = value.get(key)
+        if optional is not None:
+            if not isinstance(optional, str) or not optional.strip():
+                return None
+            normalized[key] = optional.strip()
+    return normalized
+
+
 def _extract_codex_semantic_content(value: object) -> str | None:
     text = _redact_semantic_content(value, _configured_semantic_secrets())
     if text is None or "› Ask Codex" not in text:
@@ -2101,12 +2125,31 @@ def _result_source_authoritative(
         return False
     producer = source.get("producer")
     if producer == NATIVE_RESULT_PRODUCER:
+        expected_context = {
+            key: assignment.get(key)
+            for key in ("session", "pane", "agent_name")
+        }
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in expected_context.values()
+        ):
+            return False
+        if any(source.get(key) != value for key, value in expected_context.items()):
+            return False
+        expected_assignment_id = assignment.get("assignment_id")
+        if expected_assignment_id is not None and source.get("assignment_id") != expected_assignment_id:
+            return False
         return (
             source.get("attempt_id") == assignment.get("attempt_id")
             and isinstance(source.get("attempt_id"), str)
             and isinstance(source.get("completion_seq"), int)
+            and source.get("native_authority") == NATIVE_RESULT_AUTHORITY
+            and source.get("native_session_id") == expected_context["session"]
+            and isinstance(source.get("native_turn_id"), str)
+            and bool(source.get("native_turn_id", "").strip())
             and source.get("freshness_proven") is True
             and source.get("assistant_owned") is True
+            and source.get("content_source") == "native_completed_turn"
             and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
         )
     assignment_identity = {
@@ -2186,10 +2229,7 @@ def _normalize_invocation_outcome(
 
     reference: str | None = None
     content: str | None = None
-    observation_reportable = (
-        observed.get("state") in {"idle", "done"}
-        and not observed.get("observation_error")
-    )
+    observation_reportable = observed.get("state") in {"idle", "done"}
     observed_evidence: Mapping[str, Any] = (
         {key: value for key, value in observed.items() if key != "content"}
         if observation_reportable
@@ -2393,6 +2433,17 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         )
         payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
         payload = select_launcher_payload(payloads) if payloads else None
+        if isinstance(payload, dict):
+            assignment_payload = payload.get("assignment")
+            if isinstance(assignment_payload, dict):
+                assignment_payload.setdefault("session", launch_request.session)
+                assignment_payload.setdefault("pane", launch_request.pane)
+                assignment_payload.setdefault(
+                    "agent_name",
+                    payload.get("herdr", {}).get("agent_name")
+                    if isinstance(payload.get("herdr"), Mapping)
+                    else None,
+                )
         if completed.returncode == 0 and isinstance(payload, Mapping):
             observation = _observe_submitted_codex(
                 launch_request,

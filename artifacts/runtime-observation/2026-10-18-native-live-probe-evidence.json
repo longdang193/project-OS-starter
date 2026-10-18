@@ -1,0 +1,233 @@
+{
+  "schema_version": "native-live-probe-evidence-v1",
+  "captured_at": "2026-10-18T10:53:48.1870107Z",
+  "implementation_head": "4b4562d61065579ac7a56f06e9516e04798f982c",
+  "classifier_patch": "committed-on-branch",
+  "probes": [
+    {
+      "label": "successful-native-observation",
+      "source_path": "C:\\tmp\\secretary-live-probe-20261018-031447.json",
+      "disposition": "BLOCKED_CAPABILITY",
+      "failure_kind": "runtime_structured_receipt_missing",
+      "transport_evidence": "proven",
+      "missing_capabilities": [
+        "secretary_runtime_receipt"
+      ],
+      "recovery_required": false,
+      "attempt_id": "attempt-live-verification-20261018-031447",
+      "run_id": "run-live-verification-20261018-031447",
+      "task_id": "live-verification-20261018-031447",
+      "post_submit_observation": {
+        "state": "done",
+        "observation_error": "completion provenance not established",
+        "freshness_proven": true,
+        "output_sha256": "e4cd207932c1f855c037e39d855882c658ea91df8526000745a987c205a5b1aa",
+        "output_chars": 731,
+        "cleanup": {
+          "state": "removed"
+        }
+      },
+      "provider_telemetry": {
+        "disposition": "inconclusive",
+        "availability": "inconclusive",
+        "coverage": "partial",
+        "measured_count": 0,
+        "selected_count": 4,
+        "reason": "missing_usage",
+        "excluded_row_reasons": {
+          "missing_usage": 5,
+          "unattributed_request": 4
+        }
+      },
+      "resource_inventory": {
+        "attempt_id": "9306709271a84a4f9249203b9f03d0f2",
+        "recovery_required": false,
+        "resources": [
+          {
+            "attempt_id": "9306709271a84a4f9249203b9f03d0f2",
+            "authority": "secretary_live_runtime._release_codex_agent",
+            "identity": "normal-main-4f7c9095",
+            "kind": "agent",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "9306709271a84a4f9249203b9f03d0f2",
+            "authority": "herdr.workspace.close",
+            "identity": "w67:p1",
+            "kind": "pane",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "9306709271a84a4f9249203b9f03d0f2",
+            "authority": "herdr.workspace.close",
+            "identity": "w67",
+            "kind": "workspace",
+            "state": "settled"
+          }
+        ],
+        "reuse_blocked": false,
+        "schema": "secretary-resource-inventory/v1",
+        "state": "settled"
+      }
+    },
+    {
+      "label": "transport-timeout-negative",
+      "source_path": "C:\\tmp\\secretary-live-probe-fixed-20261018-032041.json",
+      "disposition": "BLOCKED_CAPABILITY",
+      "failure_kind": "runtime_structured_receipt_missing",
+      "transport_evidence": "unproven",
+      "missing_capabilities": [
+        "transport_completion_or_cleanup",
+        "secretary_runtime_receipt"
+      ],
+      "recovery_required": false,
+      "attempt_id": "attempt-live-verification-fixed-20261018-032041",
+      "run_id": "run-live-verification-fixed-20261018-032041",
+      "task_id": "live-verification-fixed-20261018-032041",
+      "post_submit_observation": {
+        "state": "done",
+        "observation_error": "pane read transport timeout",
+        "freshness_proven": false,
+        "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output_chars": 0,
+        "cleanup": {
+          "state": "removed"
+        }
+      },
+      "provider_telemetry": {
+        "disposition": "inconclusive",
+        "availability": "inconclusive",
+        "coverage": "partial",
+        "measured_count": 0,
+        "selected_count": 4,
+        "reason": "missing_usage",
+        "excluded_row_reasons": {
+          "missing_usage": 4,
+          "unattributed_request": 4
+        }
+      },
+      "resource_inventory": {
+        "attempt_id": "f641b3a694b84944ae8348eeb930a442",
+        "recovery_required": false,
+        "resources": [
+          {
+            "attempt_id": "f641b3a694b84944ae8348eeb930a442",
+            "authority": "secretary_live_runtime._release_codex_agent",
+            "identity": "normal-main-01accdc1",
+            "kind": "agent",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "f641b3a694b84944ae8348eeb930a442",
+            "authority": "herdr.workspace.close",
+            "identity": "w68:p1",
+            "kind": "pane",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "f641b3a694b84944ae8348eeb930a442",
+            "authority": "herdr.workspace.close",
+            "identity": "w68",
+            "kind": "workspace",
+            "state": "settled"
+          }
+        ],
+        "reuse_blocked": false,
+        "schema": "secretary-resource-inventory/v1",
+        "state": "settled"
+      }
+    },
+    {
+      "label": "current-branch-native-observation",
+      "source_path": "artifacts/runtime-observation/2026-10-18-native-completed-turn-live-probe.json",
+      "disposition": "BLOCKED_CAPABILITY",
+      "failure_kind": "runtime_structured_receipt_missing",
+      "transport_evidence": "unproven",
+      "missing_capabilities": [
+        "transport_completion_or_cleanup",
+        "secretary_runtime_receipt"
+      ],
+      "recovery_required": false,
+      "attempt_id": "179be0f993de478c8da321450cd7c071",
+      "run_id": "run-live-native-probe-20261018-122012",
+      "task_id": "live-native-probe-20261018-122012",
+      "post_submit_observation": {
+        "agent_name": "normal-main-3c8ae830",
+        "attempt_id": "179be0f993de478c8da321450cd7c071",
+        "cleanup": {
+          "state": "removed"
+        },
+        "completion_seq": 3,
+        "content": ">_ OpenAI Codex (v0.162.1)\n     ~\\.codex\\worktrees\\native-codex-result-publication\\project-OS-starter\n  permissions: YOLO mode\n\n\n› Return exactly the word PROBE_OK and no tool calls. [Runtime Grant: delegation.child_agents = deny]\n\n\n• PROBE_OK\n\n  Worked for 5s • 12:20\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  combo-normal medium · ~\\.codex\\worktrees\\native-codex-result-publication\\project-OS-starter\n  ? for shortcuts                                                                             ⚠ 4 warnings · f2 to view",
+        "content_source": "agent",
+        "freshness_proven": true,
+        "observation_error": "completion provenance not established",
+        "observed_at": "2026-10-18T12:22:23.158033+02:00",
+        "output_chars": 534,
+        "output_sha256": "619704f43445e9c30f76c4624813263afea608d8540cedd865eca171f07915d2",
+        "pane": "w5T:p1",
+        "pre_submit_completion_seq": null,
+        "producer": "codex-native",
+        "session": "default",
+        "state": "done",
+        "state_change_seq": 3
+      },
+      "provider_telemetry": {
+        "attribution": "window",
+        "availability": "inconclusive",
+        "coverage": "partial",
+        "disposition": "inconclusive",
+        "excluded_count": 28,
+        "excluded_row_reasons": {
+          "missing_usage": 15,
+          "unattributed_request": 13
+        },
+        "measured_count": 0,
+        "metrics": {
+          "progress_calls": 12,
+          "query_count": 3
+        },
+        "observation_window": {
+          "end": "2026-10-18T12:22:23.22277+02:00",
+          "lookback_seconds": 0.0,
+          "start": "2026-10-18T12:20:13.116443+02:00"
+        },
+        "observed_session_count": 3,
+        "reason": "missing_usage",
+        "schema_version": "9router-usage-observation-v1",
+        "selected_count": 13,
+        "source": "9router-local-read-only"
+      },
+      "resource_inventory": {
+        "attempt_id": "179be0f993de478c8da321450cd7c071",
+        "recovery_required": false,
+        "resources": [
+          {
+            "attempt_id": "179be0f993de478c8da321450cd7c071",
+            "authority": "secretary_live_runtime._release_codex_agent",
+            "identity": "normal-main-3c8ae830",
+            "kind": "agent",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "179be0f993de478c8da321450cd7c071",
+            "authority": "herdr.workspace.close",
+            "identity": "w5T:p1",
+            "kind": "pane",
+            "state": "settled"
+          },
+          {
+            "attempt_id": "179be0f993de478c8da321450cd7c071",
+            "authority": "herdr.workspace.close",
+            "identity": "w5T",
+            "kind": "workspace",
+            "state": "settled"
+          }
+        ],
+        "reuse_blocked": false,
+        "schema": "secretary-resource-inventory/v1",
+        "state": "settled"
+      }
+    }
+  ]
+}
