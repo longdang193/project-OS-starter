@@ -49,16 +49,21 @@ try:
         validate_live_receipt,
     )
     from project_os_runtime.secretary_results import (
+        NATIVE_APP_SERVER_AUTHORITY,
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
         native_binding_path,
+        native_submission_path,
         parse_native_binding,
+        parse_native_submission,
         native_result_path,
         parse_native_result,
         publish_native_binding,
+        publish_native_submission,
         publish_native_result,
     )
+    from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
     from project_os_runtime.lightrsi_reader import LightRSIResultReader
 except ModuleNotFoundError:
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
@@ -68,16 +73,21 @@ except ModuleNotFoundError:
         validate_live_receipt,
     )
     from scripts.project_os_runtime.secretary_results import (
+        NATIVE_APP_SERVER_AUTHORITY,
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
         native_binding_path,
+        native_submission_path,
         parse_native_binding,
+        parse_native_submission,
         native_result_path,
         parse_native_result,
         publish_native_binding,
+        publish_native_submission,
         publish_native_result,
     )
+    from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
     from scripts.project_os_runtime.lightrsi_reader import LightRSIResultReader
 
 try:
@@ -1851,6 +1861,9 @@ def _reduce_resource_evidence(*evidence: Mapping[str, Any] | None) -> dict[str, 
         if candidate in {"removed", "closed", "settled"} and verified:
             if state in {"unknown", "present"}:
                 state = "removed"
+        elif candidate in {"not_required", "not_attempted", "already_absent"}:
+            if state == "unknown":
+                state = "removed"
         elif candidate in {"present", "preserved"}:
             if state == "removed":
                 return {
@@ -2244,12 +2257,19 @@ def _result_source_authoritative(
         if expected_assignment_id is not None and source.get("assignment_id") != expected_assignment_id:
             return False
         expected_attempt_id = assignment.get("attempt_id")
-        if source.get("native_authority") != NATIVE_RESULT_AUTHORITY:
+        if source.get("native_authority") not in {NATIVE_RESULT_AUTHORITY, NATIVE_APP_SERVER_AUTHORITY}:
             return False
         if source.get("attempt_id") != expected_attempt_id or not isinstance(source.get("attempt_id"), str):
             return False
         if source.get("freshness_proven") is not True or source.get("assistant_owned") is not True:
             return False
+        if source.get("content_source") == "native_app_server_completed_turn":
+            return (
+                source.get("terminal_status") == "completed"
+                and isinstance(source.get("native_turn_id"), str)
+                and bool(source.get("native_turn_id", "").strip())
+                and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
+            )
         if source.get("content_source") == "lightrsi_completed_turn":
             turn_seq = source.get("turn_seq")
             native_session = source.get("native_session_id")
@@ -2481,7 +2501,7 @@ def _normalize_invocation_outcome(
 
 
 def _normal_managed_result_capability_available() -> bool:
-    return all(callable(value) for value in (native_result_path, publish_native_result, LightRSIResultReader))
+    return all(callable(value) for value in (native_result_path, publish_native_result, CodexAppServerClient))
 
 
 def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) -> LightRSIResultReader | None:
@@ -2503,75 +2523,165 @@ def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) ->
         return None
 
 
+def _reconcile_native_artifacts(*, output: Path, invocation_id: str, started_at: str) -> dict[str, Any] | None:
+    result_path = native_result_path(output)
+    if result_path.is_file():
+        try:
+            raw = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise NativeAppServerError(
+                "Existing native result is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
+            ) from exc
+        attempt_id = raw.get("attempt_id") if isinstance(raw, Mapping) else None
+        if not isinstance(attempt_id, str) or not attempt_id.strip():
+            raise NativeAppServerError("Existing native result has no attempt identity.", failure_kind="NATIVE_RESULT_CONFLICT")
+        persisted = parse_native_result(result_path, attempt_id=attempt_id)
+        if persisted.get("state") != "confirmed":
+            raise NativeAppServerError("Existing native result is malformed.", failure_kind="NATIVE_RESULT_CONFLICT")
+        assignment = {
+            "attempt_id": attempt_id,
+            "session": persisted.get("session", "codex-app-server"),
+            "pane": persisted.get("pane", "native"),
+            "agent_name": persisted.get("agent_name", "normal-secretary"),
+            "execution": {"state": "completed", "worker_exit_code": 0},
+            "task_result": {"state": "unknown"},
+        }
+        observation = {
+            **persisted,
+            "state": "done",
+            "cleanup": {"state": "not_required", "reason": "reconciled published native result"},
+        }
+        result = _normalize_invocation_outcome(
+            invocation_id=invocation_id,
+            returncode=0,
+            payload={"assignment": assignment},
+            observation=observation,
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        result["preflight"] = {"transport": "codex-app-server", "reconciled": True, "attempt_id": attempt_id}
+        return result
+    binding_path = native_binding_path(output)
+    submission_path = native_submission_path(output)
+    if binding_path.is_file() or submission_path.is_file():
+        raise NativeAppServerError(
+            "Native submission evidence exists without a published result; delivery is uncertain and will not be retried automatically.",
+            failure_kind="NATIVE_SUBMISSION_FAILED",
+        )
+    return None
+
+
 def _run_normal_via_native_app_server(
     request: SecretaryNormalRequest,
     *,
     output: Path,
     environment: Mapping[str, str],
-    native_reader: LightRSIResultReader,
     invocation_id: str,
 ) -> dict[str, Any]:
     started = datetime.now(timezone.utc).isoformat()
-    process: subprocess.Popen[str] | None = None
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
     preflight: dict[str, Any] = {"transport": "codex-app-server"}
     try:
-        worktree, expected_base = _read_only_git_anchor(request.worktree)
+        worktree, _ = _read_only_git_anchor(request.worktree)
+        reconciled = _reconcile_native_artifacts(output=output, invocation_id=invocation_id, started_at=started)
+        if reconciled is not None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(reconciled, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            return reconciled
         codex_executable = environment.get("CODEX_EXECUTABLE") or shutil.which("codex")
         if not isinstance(codex_executable, str) or not codex_executable.strip():
             raise LaunchBlocked("Required executable unavailable on PATH: codex")
+        attempt_id = uuid.uuid4().hex
         binding_path = native_binding_path(output)
-        if binding_path.exists():
-            raise LaunchBlocked("Codex app-server native binding already exists")
-        command = build_normal_launcher_command(
-            replace(request, worktree=worktree),
-            expected_base=expected_base,
-            native_app_server=True,
-            native_binding_path=binding_path,
-            lightrsi_cli_path=native_reader.cli_path,
-        )
-        process = subprocess.Popen(
-            command,
+        submission_path = native_submission_path(output)
+        if binding_path.exists() or submission_path.exists() or native_result_path(output).exists():
+            raise NativeAppServerError("Codex app-server native evidence already exists", failure_kind="NATIVE_RESULT_CONFLICT")
+        with CodexAppServerClient(
+            codex_executable,
             cwd=worktree,
-            env=dict(environment),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        native_binding = _wait_for_native_binding(binding_path, process)
-        stdout, stderr = process.communicate()
-        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-        payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
-        payload = select_launcher_payload(payloads) if payloads else None
-        if completed.returncode != 0 or not isinstance(payload, Mapping):
-            raise LaunchBlocked("Codex app-server did not return a successful assignment")
-        assignment = payload.get("assignment")
-        if not isinstance(assignment, Mapping):
-            raise LaunchBlocked("Codex app-server assignment evidence is missing")
-        if assignment.get("attempt_id") != native_binding.get("attempt_id"):
-            raise LaunchBlocked("Codex app-server binding and assignment attempts do not match")
-        bound = dict(native_binding)
-        for key in ("native_request_id", "native_turn_id"):
-            value = assignment.get(key)
-            if isinstance(value, str) and value.strip():
-                bound[key] = value
-        observation = _observe_submitted_codex(
-            replace(request, worktree=worktree),
-            payload,
-            native_binding=bound,
-            native_reader=native_reader,
-            native_result_output=native_result_path(output),
-            env=dict(environment),
-        )
-        result = _normalize_invocation_outcome(
-            invocation_id=invocation_id,
-            returncode=completed.returncode,
-            payload=payload,
-            observation=observation,
-            started_at=started,
-            finished_at=datetime.now(timezone.utc).isoformat(),
-        )
+            codex_home=request.codex_home,
+            environment=environment,
+            timeout_seconds=_CODEX_OBSERVATION_TIMEOUT_SECONDS,
+        ) as client:
+            thread = client.start_thread()
+            binding = {
+                "schema": "secretary-native-binding.v1",
+                "attempt_id": attempt_id,
+                "native_session_id": thread.session_id,
+                "native_thread_id": thread.thread_id,
+                "pre_submit_boundary": thread.pre_submit_boundary,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "fresh_session": thread.ephemeral,
+                "transport": {
+                    "session": "codex-app-server",
+                    "pane": "native",
+                    "agent_name": "normal-secretary",
+                },
+            }
+            publish_native_binding(binding_path, binding)
+            turn = client.start_turn(thread, request.task)
+            submission = {
+                "schema": "secretary-native-submission.v1",
+                "attempt_id": attempt_id,
+                "native_session_id": thread.session_id,
+                "native_thread_id": thread.thread_id,
+                "native_turn_id": turn.turn_id,
+                "accepted_at": datetime.now(timezone.utc).isoformat(),
+                "status": "accepted",
+            }
+            publish_native_submission(submission_path, submission)
+            evidence = client.wait_for_turn(turn)
+            native_payload = {
+                "schema": "secretary-native-result.v1",
+                "producer": NATIVE_RESULT_PRODUCER,
+                "attempt_id": attempt_id,
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "native_authority": NATIVE_APP_SERVER_AUTHORITY,
+                "native_session_id": thread.session_id,
+                "native_thread_id": thread.thread_id,
+                "native_turn_id": evidence.turn_id,
+                "completion_seq": 1,
+                "terminal_status": evidence.status,
+                "content_source": "native_app_server_completed_turn",
+                "semantic_complete": True,
+                "freshness_proven": True,
+                "assistant_owned": True,
+                "semantic_content": evidence.semantic_content,
+                "session": "codex-app-server",
+                "pane": "native",
+                "agent_name": "normal-secretary",
+            }
+            publish_native_result(native_result_path(output), native_payload)
+            persisted = parse_native_result(native_result_path(output), attempt_id=attempt_id)
+            if persisted.get("state") != "confirmed":
+                raise LaunchBlocked("Codex app-server native result read-back failed")
+            observation = {
+                **persisted,
+                "state": "done",
+                "cleanup": {"state": "not_required", "reason": "owned app-server scope"},
+            }
+            payload = {
+                "assignment": {
+                    "attempt_id": attempt_id,
+                    "assignment_id": None,
+                    "agent_name": "normal-secretary",
+                    "session": "codex-app-server",
+                    "pane": "native",
+                    "execution": {"state": "completed", "worker_exit_code": 0},
+                    "task_result": {"state": "unknown"},
+                    "status": "completed",
+                    "transport": "codex-app-server",
+                }
+            }
+            result = _normalize_invocation_outcome(
+                invocation_id=invocation_id,
+                returncode=0,
+                payload=payload,
+                observation=observation,
+                started_at=started,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
     except Exception as exc:
         result = _normalize_invocation_outcome(
             invocation_id=invocation_id,
@@ -2583,14 +2693,13 @@ def _run_normal_via_native_app_server(
         )
         result["execution"]["state"] = "failed"
         result["execution"]["error"] = type(exc).__name__
+        if isinstance(exc, NativeAppServerError):
+            result["failure_kind"] = exc.failure_kind
+        elif isinstance(exc, NativeResultConflictError):
+            result["failure_kind"] = "NATIVE_RESULT_CONFLICT"
+        elif isinstance(exc, (OSError, ValueError)):
+            result["failure_kind"] = "NATIVE_RESULT_PUBLICATION_FAILED"
         preflight["error"] = str(exc)
-    finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.communicate(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                process.kill()
     result["preflight"] = preflight
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -2751,6 +2860,13 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     request = replace(request, worktree=worktree)
     environment = dict(os.environ)
     environment["CODEX_HOME"] = str(request.codex_home.resolve())
+    if environment.get(_CODEX_NATIVE_APP_SERVER_ENV, "").strip().lower() in {"1", "true", "yes"}:
+        return _run_normal_via_native_app_server(
+            request,
+            output=output,
+            environment=environment,
+            invocation_id=invocation_id,
+        )
     native_reader = _configured_lightrsi_reader(environment)
     if native_reader is None:
         raise LaunchBlocked("LightRSI reader capability unavailable")
@@ -2759,14 +2875,6 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
     )
     if capability.get("state") != "ready":
         raise LaunchBlocked(f"LightRSI capability unavailable: {capability.get('reason', 'unknown')}")
-    if environment.get(_CODEX_NATIVE_APP_SERVER_ENV, "").strip().lower() in {"1", "true", "yes"}:
-        return _run_normal_via_native_app_server(
-            request,
-            output=output,
-            environment=environment,
-            native_reader=native_reader,
-            invocation_id=invocation_id,
-        )
     herdr = shutil.which("herdr")
     if not herdr:
         raise LaunchBlocked("Required executable unavailable on PATH: herdr")

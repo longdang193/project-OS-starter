@@ -7,6 +7,7 @@ import importlib.util
 import json
 import math
 from pathlib import Path
+import queue
 import subprocess
 import time
 
@@ -4771,26 +4772,44 @@ class _FakeAppServerStdout:
         self.process = process
 
     def readline(self) -> str:
-        if not self.process.responses:
-            raise AssertionError("app-server client read without a queued response")
-        return self.process.responses.pop(0)
+        value = self.process.responses.get(timeout=2)
+        return "" if value is None else value
+
+    def close(self) -> None:
+        self.process.responses.put(None)
 
 
 class _FakeAppServerProcess:
     def __init__(self, *, fail_turn: bool = False) -> None:
         self.requests: list[dict[str, object]] = []
-        self.responses: list[str] = []
+        self.responses: queue.Queue[str | None] = queue.Queue()
         self.stdin = _FakeAppServerStdin(self)
         self.stdout = _FakeAppServerStdout(self)
         self.stderr = _FakeAppServerStdout(self)
         self.returncode = None
         self.fail_turn = fail_turn
 
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = 0
+        self.responses.put(None)
+
+    def kill(self) -> None:
+        self.returncode = -9
+        self.responses.put(None)
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode or 0
+
     def queue_response(self, request: dict[str, object]) -> None:
         method = request["method"]
-        request_id = request["id"]
+        request_id = request.get("id")
         if method == "initialize":
             payload = {"id": request_id, "result": {"codexHome": "C:/codex"}}
+        elif method == "initialized":
+            return
         elif method == "thread/start":
             payload = {
                 "id": request_id,
@@ -4813,7 +4832,7 @@ class _FakeAppServerProcess:
             }
         else:
             raise AssertionError(f"unexpected app-server method: {method}")
-        self.responses.append(json.dumps(payload) + "\n")
+        self.responses.put(json.dumps(payload) + "\n")
 
 
 def test_native_app_server_binds_before_exactly_one_turn_start(
@@ -4835,6 +4854,7 @@ def test_native_app_server_binds_before_exactly_one_turn_start(
 
     assert [request["method"] for request in process.requests] == [
         "initialize",
+        "initialized",
         "thread/start",
         "turn/start",
     ]
@@ -4846,7 +4866,7 @@ def test_native_app_server_binds_before_exactly_one_turn_start(
     assert result["native_turn_id"] == "turn-1"
     assert result["native_session_id"] == "session-1"
     assert "native_request_id" not in result
-    assert process.requests[2]["params"]["threadId"] == "thread-1"
+    assert process.requests[3]["params"]["threadId"] == "thread-1"
 
 
 def test_native_app_server_does_not_submit_when_binding_fails(
@@ -4873,6 +4893,7 @@ def test_native_app_server_does_not_submit_when_binding_fails(
 
     assert [request["method"] for request in process.requests] == [
         "initialize",
+        "initialized",
         "thread/start",
     ]
 
@@ -4897,6 +4918,7 @@ def test_native_app_server_rejects_turn_start_failure_after_binding(
     assert (tmp_path / "native-binding.json").is_file()
     assert [request["method"] for request in process.requests] == [
         "initialize",
+        "initialized",
         "thread/start",
         "turn/start",
     ]
