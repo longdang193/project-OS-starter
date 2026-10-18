@@ -52,6 +52,7 @@ try:
         NATIVE_RESULT_PRODUCER,
         NativeResultConflictError,
         native_result_path,
+        parse_native_result,
         publish_native_result,
     )
 except ModuleNotFoundError:
@@ -65,6 +66,7 @@ except ModuleNotFoundError:
         NATIVE_RESULT_PRODUCER,
         NativeResultConflictError,
         native_result_path,
+        parse_native_result,
         publish_native_result,
     )
 
@@ -667,6 +669,11 @@ def _observe_submitted_codex(
 
     assignment = payload.get("assignment")
     assignment = assignment if isinstance(assignment, Mapping) else None
+    if assignment is not None:
+        assignment = dict(assignment)
+        assignment.setdefault("session", session)
+        assignment.setdefault("pane", pane)
+        assignment.setdefault("agent_name", agent_name)
     ownership = herdr.get("ownership")
     ownership = ownership if isinstance(ownership, Mapping) else None
     assignment_id = assignment.get("assignment_id") if assignment else None
@@ -753,6 +760,9 @@ def _observe_submitted_codex(
             )
         freshness_anchor = anchor or legacy_first_snapshot
         freshness_proven = _submission_freshness_proven(freshness_anchor, snapshot)
+        snapshot.update({"session": session, "pane": pane, "agent_name": agent_name})
+        if assignment_id is not None:
+            snapshot["assignment_id"] = assignment_id
         if (
             freshness_proven
             and native_boundary_captured
@@ -846,6 +856,7 @@ def _observe_submitted_codex(
         and native_boundary_captured
         and isinstance(snapshot.get("completion_seq"), int)
         and isinstance(attempt_id, str)
+        and snapshot.get("content_source") == "agent"
         and native_content
     ):
         native_source = {
@@ -859,20 +870,41 @@ def _observe_submitted_codex(
             "semantic_content": native_content,
             "freshness_proven": True,
             "assistant_owned": True,
+            "content_source": "agent",
             "observed_at": datetime.now(timezone.utc).isoformat(),
         }
+        if assignment_id is not None:
+            native_source["assignment_id"] = assignment_id
         try:
             publication = publish_native_result(native_result_output, native_source)
         except (OSError, ValueError, NativeResultConflictError) as exc:
             native_source = None
             snapshot["observation_error"] = f"native result publication failed: {type(exc).__name__}"
         else:
-            native_source.update(
-                {
-                    "result_reference": publication["path"],
-                    "source_digest": publication["digest"],
-                }
-            )
+            try:
+                persisted = parse_native_result(native_result_output, attempt_id=attempt_id)
+                persisted_digest = hashlib.sha256(native_result_output.read_bytes()).hexdigest()
+                if (
+                    persisted.get("state") != "confirmed"
+                    or persisted.get("semantic_content") != native_source["semantic_content"]
+                    or persisted.get("session") != session
+                    or persisted.get("pane") != pane
+                    or persisted.get("agent_name") != agent_name
+                    or persisted.get("content_source") != "agent"
+                    or persisted.get("assignment_id") != native_source.get("assignment_id")
+                    or persisted_digest != publication.get("digest")
+                ):
+                    raise ValueError("native result read-back mismatch")
+            except (OSError, UnicodeDecodeError, ValueError, KeyError):
+                native_source = None
+                snapshot["observation_error"] = "native result read-back failed"
+            else:
+                native_source.update(
+                    {
+                        "result_reference": publication["path"],
+                        "source_digest": publication["digest"],
+                    }
+                )
 
     observation = {
         key: snapshot.get(key)
@@ -885,6 +917,7 @@ def _observe_submitted_codex(
             "output_chars",
             "observation_error",
             "producer",
+            "content_source",
         )
         if key in snapshot
     }
@@ -2101,12 +2134,27 @@ def _result_source_authoritative(
         return False
     producer = source.get("producer")
     if producer == NATIVE_RESULT_PRODUCER:
+        expected_context = {
+            key: assignment.get(key)
+            for key in ("session", "pane", "agent_name")
+        }
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in expected_context.values()
+        ):
+            return False
+        if any(source.get(key) != value for key, value in expected_context.items()):
+            return False
+        expected_assignment_id = assignment.get("assignment_id")
+        if expected_assignment_id is not None and source.get("assignment_id") != expected_assignment_id:
+            return False
         return (
             source.get("attempt_id") == assignment.get("attempt_id")
             and isinstance(source.get("attempt_id"), str)
             and isinstance(source.get("completion_seq"), int)
             and source.get("freshness_proven") is True
             and source.get("assistant_owned") is True
+            and source.get("content_source") == "agent"
             and bool(_result_evidence(source)[0] or _result_evidence(source)[1])
         )
     assignment_identity = {
@@ -2393,6 +2441,17 @@ def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, An
         )
         payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
         payload = select_launcher_payload(payloads) if payloads else None
+        if isinstance(payload, dict):
+            assignment_payload = payload.get("assignment")
+            if isinstance(assignment_payload, dict):
+                assignment_payload.setdefault("session", launch_request.session)
+                assignment_payload.setdefault("pane", launch_request.pane)
+                assignment_payload.setdefault(
+                    "agent_name",
+                    payload.get("herdr", {}).get("agent_name")
+                    if isinstance(payload.get("herdr"), Mapping)
+                    else None,
+                )
         if completed.returncode == 0 and isinstance(payload, Mapping):
             observation = _observe_submitted_codex(
                 launch_request,

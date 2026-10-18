@@ -1354,6 +1354,7 @@ def _codex_completion_snapshot(
     completion_seq: int | None = None
     pane_id: str | None = pane if isinstance(pane, str) and pane.strip() else None
     observation_error: str | None = None
+    content_source: str | None = None
     try:
         get_result = _run(
             [herdr, "--session", session, "agent", "get", agent_name],
@@ -1409,6 +1410,8 @@ def _codex_completion_snapshot(
             read_error = f"{read_kind} read transport timeout"
         if read_result is not None and read_result.returncode:
             read_error = f"{read_kind} read failed"
+        elif read_result is not None:
+            content_source = "agent"
         if read_error and pane_id:
             pane_read_command = [
                 herdr,
@@ -1438,8 +1441,7 @@ def _codex_completion_snapshot(
                     observation_error = "pane read failed"
                 else:
                     read_result = pane_result
-                    read_error = None
-                    observation_error = None
+                    content_source = "pane"
         if read_error:
             observation_error = observation_error or read_error
     output = _pane_output(read_result) if read_result is not None else ""
@@ -1451,6 +1453,7 @@ def _codex_completion_snapshot(
         "output_sha256": _sha256_text(output),
         "output_chars": len(output),
         "observation_error": observation_error,
+        "content_source": content_source,
     }
 
 

@@ -682,7 +682,8 @@ def test_codex_completion_snapshot_falls_back_to_bound_pane_read(
     )
 
     assert snapshot["content"] == "fresh pane output"
-    assert snapshot["observation_error"] is None
+    assert snapshot["content_source"] == "pane"
+    assert snapshot["observation_error"] == "agent read failed"
     assert calls[-1] == [
         "herdr.exe", "--session", "session", "pane", "read", "w1:p1",
         "--source", "recent-unwrapped", "--lines", "200", "--format", "text",

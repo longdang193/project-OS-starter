@@ -711,11 +711,23 @@ def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_ident
     result = runtime._normalize_invocation_outcome(
         invocation_id="invoke-1",
         returncode=0,
-        payload={"assignment": {"attempt_id": "attempt-1", "execution": {"state": "completed"}}},
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
         observation={
             "state": "idle",
             "attempt_id": "attempt-1",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
             "producer": "codex-native",
+            "content_source": "agent",
             "completion_seq": 5,
             "freshness_proven": True,
             "assistant_owned": True,
@@ -733,6 +745,78 @@ def test_normal_outcome_accepts_attempt_bound_native_result_without_worker_ident
         "reference": "C:/tmp/native-result.json",
         "content": "native answer",
     }
+
+
+def test_normal_outcome_rejects_native_result_with_mismatched_execution_context() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "idle",
+            "attempt_id": "attempt-1",
+            "session": "other-session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "producer": "codex-native",
+            "content_source": "agent",
+            "completion_seq": 5,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "native answer",
+            "result_reference": "C:/tmp/native-result.json",
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
+
+
+def test_normal_outcome_rejects_pane_only_native_result() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "idle",
+            "attempt_id": "attempt-1",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "producer": "codex-native",
+            "content_source": "pane",
+            "completion_seq": 5,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "pane text",
+            "result_reference": "C:/tmp/pane-result.json",
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["result"] == {"state": "unavailable", "status": None}
 
 def test_normal_outcome_accepts_distinct_assignment_and_attempt_ids() -> None:
     import scripts.secretary_live_runtime as runtime
@@ -1281,6 +1365,7 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
             "output_sha256": "b" * 64,
             "output_chars": 0,
             "observation_error": None,
+            "content_source": "agent",
         },
     )
     monkeypatch.setattr(
@@ -1313,6 +1398,58 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
     assert parse_native_result(result_path, attempt_id="attempt-1")["state"] == "confirmed"
 
 
+def test_observe_submitted_codex_rejects_persisted_result_without_fresh_reader_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "semantic_content": "fresh native answer",
+            "content": "",
+            "output_sha256": "b" * 64,
+            "output_chars": 0,
+            "observation_error": None,
+            "content_source": "agent",
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "parse_native_result",
+        lambda *args, **kwargs: {"state": "unknown", "detail": "native result unavailable"},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=tmp_path / "native-result.json",
+        env={},
+    )
+
+    assert observation["observation_error"] == "native result read-back failed"
+    assert "semantic_content" not in observation
+    assert observation["cleanup"] == {"state": "removed"}
+
+
 def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -1327,6 +1464,7 @@ def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: 
             "output_sha256": "b" * 64,
             "output_chars": 0,
             "observation_error": None,
+            "content_source": "agent",
         },
     )
     monkeypatch.setattr(

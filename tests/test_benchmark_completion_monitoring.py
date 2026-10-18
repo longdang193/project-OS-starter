@@ -8,6 +8,9 @@ import pytest
 import scripts.benchmark_completion_monitoring as benchmark
 
 
+LAUNCHER_SOURCE = Path(__file__).parents[1] / "scripts" / "herdr_main_launcher.py"
+
+
 def test_completion_rows_label_fake_boundary_evidence_and_unavailable_metrics(
     tmp_path: Path,
 ) -> None:
@@ -27,7 +30,7 @@ def test_completion_rows_label_fake_boundary_evidence_and_unavailable_metrics(
     assert payload["evidence_kind"] == "fake_boundary_observation"
     source_hashes_identical = (
         benchmark.source_at_revision("HEAD")
-        == Path(benchmark.__file__).read_text(encoding="utf-8")
+        == LAUNCHER_SOURCE.read_text(encoding="utf-8")
     )
     expected_delta_status = "characterization_only" if source_hashes_identical else "before_after"
     assert payload["implementation_delta"]["status"] == expected_delta_status
@@ -60,7 +63,7 @@ def test_completion_monitoring_returns_nonzero_for_incorrect_row(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(benchmark, "source_at_revision", lambda _: Path(benchmark.__file__).read_text(encoding="utf-8"))
+    monkeypatch.setattr(benchmark, "source_at_revision", lambda _: LAUNCHER_SOURCE.read_text(encoding="utf-8"))
     monkeypatch.setattr(benchmark, "revision", lambda: "candidate")
     monkeypatch.setattr(
         benchmark,
@@ -109,7 +112,7 @@ def test_completion_monitoring_marks_different_sources_as_before_after(
     monkeypatch.setattr(
         benchmark,
         "source_at_revision",
-        lambda _: Path(benchmark.__file__).read_text(encoding="utf-8") + "\n# baseline revision\n",
+        lambda _: LAUNCHER_SOURCE.read_text(encoding="utf-8") + "\n# baseline revision\n",
     )
     monkeypatch.setattr(benchmark, "revision", lambda: "candidate")
     monkeypatch.setattr(

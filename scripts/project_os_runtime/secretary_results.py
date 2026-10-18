@@ -46,6 +46,8 @@ def _validate(payload: object) -> dict[str, Any]:
         raise ValueError("native result producer invalid")
     for field in ("attempt_id", "session", "pane", "agent_name", "semantic_content", "observed_at"):
         _text(payload.get(field), field)
+    if payload.get("assignment_id") is not None:
+        _text(payload.get("assignment_id"), "assignment_id")
     completion_seq = payload.get("completion_seq")
     if isinstance(completion_seq, bool) or not isinstance(completion_seq, int) or completion_seq < 0:
         raise ValueError("native result completion_seq invalid")
