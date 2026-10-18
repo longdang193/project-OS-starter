@@ -770,7 +770,6 @@ def _observe_submitted_codex(
             and freshness_proven
             and native_turn is not None
             and semantic_content
-            and not snapshot.get("observation_error")
         ):
             completed = True
             break
@@ -794,7 +793,6 @@ def _observe_submitted_codex(
         native_result_output is not None
         and completed
         and snapshot.get("state") in {"idle", "done"}
-        and not snapshot.get("observation_error")
         and freshness_proven
         and native_boundary_captured
         and isinstance(snapshot.get("completion_seq"), int)
@@ -878,13 +876,19 @@ def _observe_submitted_codex(
         observation["publication"] = publication
     else:
         selected_source, semantic_content = None, None
-    if completed and snapshot.get("state") in {"idle", "done"} and not snapshot.get("observation_error"):
+    if completed and snapshot.get("state") in {"idle", "done"}:
         if semantic_content:
             observation["semantic_content"] = semantic_content
             observation["assistant_owned"] = True
             if isinstance(selected_source, Mapping):
                 for key in (
                     "producer",
+                    "content_source",
+                    "native_authority",
+                    "native_session_id",
+                    "native_turn_id",
+                    "native_request_id",
+                    "native_response_id",
                     "result_id",
                     "result_reference",
                     "reference",
@@ -1922,6 +1926,8 @@ def _native_completed_turn(
         return None
     if value.get("authority") != NATIVE_RESULT_AUTHORITY:
         return None
+    if value.get("toolCallContinuation") is True:
+        return None
     session_id = value.get("sessionId")
     turn_id = value.get("turnId")
     assistant_text = _safe_semantic_result_value(value.get("assistantText"), allow_long=True)
@@ -2223,10 +2229,7 @@ def _normalize_invocation_outcome(
 
     reference: str | None = None
     content: str | None = None
-    observation_reportable = (
-        observed.get("state") in {"idle", "done"}
-        and not observed.get("observation_error")
-    )
+    observation_reportable = observed.get("state") in {"idle", "done"}
     observed_evidence: Mapping[str, Any] = (
         {key: value for key, value in observed.items() if key != "content"}
         if observation_reportable

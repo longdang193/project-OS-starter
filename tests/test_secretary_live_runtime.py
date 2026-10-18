@@ -1408,9 +1408,84 @@ def test_observe_submitted_codex_publishes_native_result_before_cleanup(tmp_path
     )
 
     assert observation["producer"] == "codex-native"
+    assert observation["content_source"] == "native_completed_turn"
+    assert observation["native_authority"] == "lightrsi-codex-context-history"
+    assert observation["native_session_id"] == "session"
+    assert observation["native_turn_id"] == "turn-1"
     assert observation["publication"]["state"] == "published"
     assert observation["cleanup"] == {"state": "removed"}
     assert parse_native_result(result_path, attempt_id="attempt-1")["state"] == "confirmed"
+    normalized = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+                "task_result": {"state": "unknown"},
+            }
+        },
+        observation=observation,
+        started_at="2026-10-18T00:00:00+00:00",
+        finished_at="2026-10-18T00:00:01+00:00",
+    )
+    assert normalized["result"]["state"] == "reported"
+    assert normalized["result"]["status"] == "completed"
+    assert normalized["result"]["content"] == "fresh native answer"
+    assert normalized["result"]["reference"] == str(result_path)
+
+
+def test_observe_submitted_codex_publishes_native_result_when_diagnostic_read_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 5,
+            "observation_error": "agent read failed",
+            "content_source": "agent",
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": "lightrsi-codex-context-history",
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh native answer",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+    result_path = tmp_path / "native-result.json"
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": 4,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        native_result_output=result_path,
+        env={},
+    )
+
+    assert observation["observation_error"] == "agent read failed"
+    assert observation["publication"]["state"] == "published"
+    assert observation["content_source"] == "native_completed_turn"
 
 
 def test_observe_submitted_codex_rejects_persisted_result_without_fresh_reader_confirmation(
@@ -1557,6 +1632,7 @@ def test_observe_submitted_codex_blocks_when_native_publication_fails(tmp_path: 
 )
 def test_observe_submitted_codex_rejects_invalid_native_completed_turn(
     native_turn: dict[str, object],
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import scripts.secretary_live_runtime as runtime
@@ -1590,7 +1666,7 @@ def test_observe_submitted_codex_rejects_invalid_native_completed_turn(
             },
             "assignment": {"attempt_id": "attempt-1"},
         },
-        native_result_output=None,
+        native_result_output=tmp_path / "native-result.json",
         env={},
     )
 

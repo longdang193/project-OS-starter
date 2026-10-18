@@ -244,6 +244,8 @@ def _native_completed_turn(value: object, *, session: str) -> tuple[dict[str, st
         return None, "native completed turn not completed"
     if value.get("authority") != "lightrsi-codex-context-history":
         return None, "native completed turn authority invalid"
+    if value.get("toolCallContinuation") is True:
+        return None, "native completed turn is a tool-call continuation"
     session_id = value.get("sessionId")
     turn_id = value.get("turnId")
     assistant_text = value.get("assistantText")
