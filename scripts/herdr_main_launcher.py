@@ -235,6 +235,43 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _native_completed_turn(value: object, *, session: str) -> tuple[dict[str, str] | None, str | None]:
+    if value is None:
+        return None, None
+    if not isinstance(value, Mapping):
+        return None, "native completed turn malformed"
+    if value.get("kind") != "completed":
+        return None, "native completed turn not completed"
+    if value.get("authority") != "lightrsi-codex-context-history":
+        return None, "native completed turn authority invalid"
+    session_id = value.get("sessionId")
+    turn_id = value.get("turnId")
+    assistant_text = value.get("assistantText")
+    if not all(
+        isinstance(field, str) and field.strip()
+        for field in (session_id, turn_id, assistant_text)
+    ):
+        return None, "native completed turn identity or output missing"
+    if session_id != session:
+        return None, "native completed turn session mismatch"
+    if len(assistant_text) > 64 * 1024:
+        return None, "native completed turn output too large"
+    normalized = {
+        "kind": "completed",
+        "authority": "lightrsi-codex-context-history",
+        "sessionId": session_id.strip(),
+        "turnId": turn_id.strip(),
+        "assistantText": assistant_text,
+    }
+    for key in ("requestId", "responseId"):
+        optional = value.get(key)
+        if optional is not None:
+            if not isinstance(optional, str) or not optional.strip():
+                return None, f"native completed turn {key} invalid"
+            normalized[key] = optional.strip()
+    return normalized, None
+
+
 def _normalize_local_capabilities(values: object) -> list[str]:
     try:
         return normalize_local_capabilities(values)
@@ -1355,6 +1392,8 @@ def _codex_completion_snapshot(
     pane_id: str | None = pane if isinstance(pane, str) and pane.strip() else None
     observation_error: str | None = None
     content_source: str | None = None
+    native_completed_turn: dict[str, str] | None = None
+    native_completed_turn_error: str | None = None
     try:
         get_result = _run(
             [herdr, "--session", session, "agent", "get", agent_name],
@@ -1381,6 +1420,10 @@ def _codex_completion_snapshot(
             raw_pane_id = agent.get("pane_id")
             if isinstance(raw_pane_id, str) and raw_pane_id.strip():
                 pane_id = raw_pane_id
+            native_completed_turn, native_completed_turn_error = _native_completed_turn(
+                agent.get("native_completed_turn"),
+                session=session,
+            )
         except (LaunchBlocked, json.JSONDecodeError) as exc:
             observation_error = str(exc)
     if state != "working":
@@ -1454,6 +1497,16 @@ def _codex_completion_snapshot(
         "output_chars": len(output),
         "observation_error": observation_error,
         "content_source": content_source,
+        **(
+            {"native_completed_turn": native_completed_turn}
+            if native_completed_turn is not None
+            else {}
+        ),
+        **(
+            {"native_completed_turn_error": native_completed_turn_error}
+            if native_completed_turn_error is not None
+            else {}
+        ),
     }
 
 

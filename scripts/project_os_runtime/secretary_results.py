@@ -13,6 +13,7 @@ from .results import evidence_path_lock
 
 NATIVE_RESULT_SCHEMA = "secretary-native-result.v1"
 NATIVE_RESULT_PRODUCER = "codex-native"
+NATIVE_RESULT_AUTHORITY = "lightrsi-codex-context-history"
 NATIVE_RESULT_MAX_BYTES = 64 * 1024
 
 
@@ -44,8 +45,28 @@ def _validate(payload: object) -> dict[str, Any]:
         raise ValueError("native result schema mismatch")
     if payload.get("producer") != NATIVE_RESULT_PRODUCER:
         raise ValueError("native result producer invalid")
-    for field in ("attempt_id", "session", "pane", "agent_name", "semantic_content", "observed_at"):
+    for field in (
+        "attempt_id",
+        "session",
+        "pane",
+        "agent_name",
+        "semantic_content",
+        "observed_at",
+        "native_authority",
+        "native_session_id",
+        "native_turn_id",
+        "content_source",
+    ):
         _text(payload.get(field), field)
+    if payload.get("native_authority") != NATIVE_RESULT_AUTHORITY:
+        raise ValueError("native result authority invalid")
+    if payload.get("content_source") != "native_completed_turn":
+        raise ValueError("native result content source invalid")
+    if payload["native_session_id"] != payload["session"]:
+        raise ValueError("native result session mismatch")
+    for field in ("native_request_id", "native_response_id"):
+        if payload.get(field) is not None:
+            _text(payload.get(field), field)
     if payload.get("assignment_id") is not None:
         _text(payload.get("assignment_id"), "assignment_id")
     completion_seq = payload.get("completion_seq")
@@ -123,6 +144,7 @@ def parse_native_result(path: Path, *, attempt_id: str) -> dict[str, Any]:
 
 __all__ = [
     "NATIVE_RESULT_PRODUCER",
+    "NATIVE_RESULT_AUTHORITY",
     "NATIVE_RESULT_SCHEMA",
     "NativeResultConflictError",
     "native_result_path",

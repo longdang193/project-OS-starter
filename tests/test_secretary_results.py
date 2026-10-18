@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts.project_os_runtime.secretary_results import (
+    NATIVE_RESULT_AUTHORITY,
     NATIVE_RESULT_PRODUCER,
     NativeResultConflictError,
     native_result_path,
@@ -19,6 +20,10 @@ def payload(content: str = "native answer") -> dict[str, object]:
         "session": "session",
         "pane": "pane",
         "agent_name": "agent",
+        "native_authority": NATIVE_RESULT_AUTHORITY,
+        "native_session_id": "session",
+        "native_turn_id": "turn-1",
+        "content_source": "native_completed_turn",
         "completion_seq": 8,
         "semantic_content": content,
         "freshness_proven": True,
@@ -67,3 +72,24 @@ def test_native_result_rejects_wrong_attempt(tmp_path: Path) -> None:
     parsed = parse_native_result(path, attempt_id="attempt-2")
 
     assert parsed == {"state": "unknown", "detail": "native result attempt mismatch"}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("native_authority", "terminal-screen"),
+        ("native_session_id", "other-session"),
+        ("native_turn_id", ""),
+        ("content_source", "agent"),
+    ],
+)
+def test_native_result_rejects_non_native_provenance(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    invalid = payload()
+    invalid[field] = value
+
+    with pytest.raises(ValueError):
+        publish_native_result(tmp_path / "native-result.json", invalid)
