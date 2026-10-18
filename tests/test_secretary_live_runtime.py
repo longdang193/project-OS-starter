@@ -93,6 +93,20 @@ def test_normal_request_and_command_do_not_synthesize_governance_identity() -> N
     assert "--plan-identity" not in command
 
 
+def test_normal_command_can_select_codex_app_server_binding_path(tmp_path: Path) -> None:
+    command = build_normal_launcher_command(
+        normal_request(worktree=tmp_path),
+        expected_base="head-1",
+        native_app_server=True,
+        native_binding_path=tmp_path / "binding.json",
+        lightrsi_cli_path=tmp_path / "cli.js",
+    )
+
+    assert "--native-app-server" in command
+    assert command[command.index("--native-binding-path") + 1].endswith("binding.json")
+    assert command[command.index("--lightrsi-cli-path") + 1].endswith("cli.js")
+
+
 def test_normal_outcome_requires_correlated_result_reference() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -125,6 +139,8 @@ def test_observe_submitted_codex_publishes_bound_lightrsi_result(
         def read(self, **kwargs: object) -> dict[str, object]:
             assert kwargs["session_id"] == "native-session"
             assert kwargs["after_cursor"] == "cursor-1"
+            assert kwargs["request_id"] is None
+            assert kwargs["turn_id"] is None
             return {
                 "schema": "lightrsi.codex.completed-turn/v1",
                 "state": "completed",
@@ -454,12 +470,11 @@ def test_run_normal_persists_lightrsi_binding_before_dispatch(
 
     def fake_popen(command: list[str], **kwargs: object) -> FakeProcess:
         handoff_path = Path(command[command.index("--native-handoff-path") + 1])
-        attempt_id = handoff_path.name.split(".")[3]
         handoff_path.write_text(
             json.dumps(
                 {
                     "schema": "codex-native-session-handoff.v1",
-                    "attempt_id": attempt_id,
+                    "attempt_id": "herdr-attempt",
                     "native_session_id": "native-session",
                     "pre_submit_cursor": "cursor-1",
                     "turn_seq": 0,
@@ -505,7 +520,143 @@ def test_run_normal_persists_lightrsi_binding_before_dispatch(
     binding = json.loads(binding_path.read_text(encoding="utf-8"))
     assert binding["pre_submit_cursor"] == "cursor-1"
     assert binding["native_session_id"] == "native-session"
-    assert seen["native_binding"]["attempt_id"] == result["invocation_id"]
+    assert seen["native_binding"]["attempt_id"] == "herdr-attempt"
+    assert seen["native_binding"]["attempt_id"] != result["invocation_id"]
+    assert result["result"]["state"] == "reported"
+
+
+def test_run_normal_native_app_server_uses_bound_turn_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    cli = tmp_path / "cli.js"
+    cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    monkeypatch.setenv("LIGHTRSI_CLI_PATH", str(cli))
+    monkeypatch.setenv("PROJECT_OS_CODEX_NATIVE_APP_SERVER", "1")
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "codex.exe" if name == "codex" else None)
+
+    class FakeProcess:
+        returncode = 0
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+            return (
+                json.dumps({
+                    "herdr": {
+                        "executable": "codex.exe",
+                        "session": "codex-app-server",
+                        "pane": "native",
+                        "agent_name": "normal-main",
+                        "transport": "codex-app-server",
+                    },
+                    "assignment": {
+                        "attempt_id": "attempt-1",
+                        "session": "codex-app-server",
+                        "pane": "native",
+                        "agent_name": "normal-main",
+                        "native_turn_id": "turn-1",
+                        "execution": {"state": "completed"},
+                    },
+                }),
+                "",
+            )
+
+        def terminate(self) -> None:
+            self.returncode = 1
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeProcess:
+        binding_path = Path(command[command.index("--native-binding-path") + 1])
+        binding_path.write_text(
+            json.dumps({
+                "schema": "secretary-native-binding.v1",
+                "attempt_id": "attempt-1",
+                "native_session_id": "session-1",
+                "native_thread_id": "thread-1",
+                "pre_submit_cursor": "cursor-1",
+                "lightrsi_cli_path": str(cli),
+            }),
+            encoding="utf-8",
+        )
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    seen: dict[str, object] = {}
+
+    def fake_observe(*args: object, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        binding = kwargs["native_binding"]
+        assert isinstance(binding, dict)
+        assert binding["native_turn_id"] == "turn-1"
+        assert "native_request_id" not in binding
+        return {
+            "state": "done",
+            "producer": runtime.NATIVE_RESULT_PRODUCER,
+            "attempt_id": binding["attempt_id"],
+            "session": "codex-app-server",
+            "pane": "native",
+            "agent_name": "normal-main",
+            "native_authority": runtime.NATIVE_RESULT_AUTHORITY,
+            "native_session_id": "session-1",
+            "native_turn_id": "session-1:t1",
+            "turn_seq": 1,
+            "semantic_complete": True,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "content_source": "lightrsi_completed_turn",
+            "semantic_content": "native answer",
+            "result_reference": "native-result://session-1:t1",
+            "cleanup": {"state": "not_required"},
+        }
+
+    monkeypatch.setattr(runtime, "_observe_submitted_codex", fake_observe)
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert seen["native_binding"]["native_turn_id"] == "turn-1"
+    assert result["result"]["state"] == "reported"
+
+
+def test_normal_outcome_uses_launcher_attempt_not_project_os_alias() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="secretary-invocation",
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "launcher-attempt",
+                "project_os_attempt_id": "secretary-invocation",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "execution": {"state": "completed"},
+            }
+        },
+        observation={
+            "state": "done",
+            "attempt_id": "launcher-attempt",
+            "session": "session",
+            "pane": "pane",
+            "agent_name": "agent",
+            "producer": "codex-native",
+            "content_source": "lightrsi_completed_turn",
+            "native_authority": "lightrsi-codex-context-history",
+            "native_session_id": "session",
+            "native_turn_id": "session:t1",
+            "turn_seq": 1,
+            "semantic_complete": True,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "native answer",
+            "result_reference": "native-result://launcher-attempt",
+        },
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
     assert result["result"]["state"] == "reported"
 
 

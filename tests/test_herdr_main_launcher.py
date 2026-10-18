@@ -4752,6 +4752,186 @@ def test_discover_codex_native_handoff_requires_exactly_one_new_rollout(
     }
 
 
+class _FakeAppServerStdin:
+    def __init__(self, process: "_FakeAppServerProcess") -> None:
+        self.process = process
+
+    def write(self, value: str) -> int:
+        request = json.loads(value)
+        self.process.requests.append(request)
+        self.process.queue_response(request)
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+
+class _FakeAppServerStdout:
+    def __init__(self, process: "_FakeAppServerProcess") -> None:
+        self.process = process
+
+    def readline(self) -> str:
+        if not self.process.responses:
+            raise AssertionError("app-server client read without a queued response")
+        return self.process.responses.pop(0)
+
+
+class _FakeAppServerProcess:
+    def __init__(self, *, fail_turn: bool = False) -> None:
+        self.requests: list[dict[str, object]] = []
+        self.responses: list[str] = []
+        self.stdin = _FakeAppServerStdin(self)
+        self.stdout = _FakeAppServerStdout(self)
+        self.stderr = _FakeAppServerStdout(self)
+        self.returncode = None
+        self.fail_turn = fail_turn
+
+    def queue_response(self, request: dict[str, object]) -> None:
+        method = request["method"]
+        request_id = request["id"]
+        if method == "initialize":
+            payload = {"id": request_id, "result": {"codexHome": "C:/codex"}}
+        elif method == "thread/start":
+            payload = {
+                "id": request_id,
+                "result": {
+                    "thread": {
+                        "id": "thread-1",
+                        "sessionId": "session-1",
+                        "ephemeral": True,
+                        "status": {"type": "idle"},
+                        "turns": [],
+                    }
+                },
+            }
+        elif method == "turn/start" and self.fail_turn:
+            payload = {"id": request_id, "error": {"code": "turn_rejected"}}
+        elif method == "turn/start":
+            payload = {
+                "id": request_id,
+                "result": {"turn": {"id": "turn-1", "status": {"type": "inProgress"}}},
+            }
+        else:
+            raise AssertionError(f"unexpected app-server method: {method}")
+        self.responses.append(json.dumps(payload) + "\n")
+
+
+def test_native_app_server_binds_before_exactly_one_turn_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = _FakeAppServerProcess()
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
+    binding_path = tmp_path / "native-binding.json"
+
+    result = LAUNCHER._launch_codex_native_app_server(
+        codex_executable="codex.exe",
+        codex_home=tmp_path / "codex-home",
+        cwd=tmp_path,
+        task="Reply with exactly: probe-ok",
+        attempt_id="attempt-1",
+        binding_path=binding_path,
+        lightrsi_cli_path=tmp_path / "cli.js",
+    )
+
+    assert [request["method"] for request in process.requests] == [
+        "initialize",
+        "thread/start",
+        "turn/start",
+    ]
+    assert binding_path.is_file()
+    binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    assert binding["attempt_id"] == "attempt-1"
+    assert binding["native_session_id"] == "session-1"
+    assert binding["native_thread_id"] == "thread-1"
+    assert result["native_turn_id"] == "turn-1"
+    assert result["native_session_id"] == "session-1"
+    assert "native_request_id" not in result
+    assert process.requests[2]["params"]["threadId"] == "thread-1"
+
+
+def test_native_app_server_does_not_submit_when_binding_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = _FakeAppServerProcess()
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_write_json_artifact",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk unavailable")),
+    )
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="binding"):
+        LAUNCHER._launch_codex_native_app_server(
+            codex_executable="codex.exe",
+            codex_home=tmp_path / "codex-home",
+            cwd=tmp_path,
+            task="probe",
+            attempt_id="attempt-1",
+            binding_path=tmp_path / "native-binding.json",
+            lightrsi_cli_path=tmp_path / "cli.js",
+        )
+
+    assert [request["method"] for request in process.requests] == [
+        "initialize",
+        "thread/start",
+    ]
+
+
+def test_native_app_server_rejects_turn_start_failure_after_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process = _FakeAppServerProcess(fail_turn=True)
+    monkeypatch.setattr(LAUNCHER.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="turn/start"):
+        LAUNCHER._launch_codex_native_app_server(
+            codex_executable="codex.exe",
+            codex_home=tmp_path / "codex-home",
+            cwd=tmp_path,
+            task="probe",
+            attempt_id="attempt-1",
+            binding_path=tmp_path / "native-binding.json",
+            lightrsi_cli_path=tmp_path / "cli.js",
+        )
+
+    assert (tmp_path / "native-binding.json").is_file()
+    assert [request["method"] for request in process.requests] == [
+        "initialize",
+        "thread/start",
+        "turn/start",
+    ]
+
+
+def test_discover_codex_native_handoff_accepts_compatibility_payload_id(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    rollout_dir = codex_home / "sessions" / "2026" / "10" / "18"
+    rollout_dir.mkdir(parents=True)
+    rollout = rollout_dir / "rollout-2026-10-18T00-00-00-session-1.jsonl"
+    rollout.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {
+                    "id": "session-compat",
+                    "cwd": str(tmp_path),
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    handoff = LAUNCHER._discover_codex_native_handoff(
+        codex_home,
+        before_rollout_paths=set(),
+        expected_cwd=tmp_path,
+    )
+
+    assert handoff["native_session_id"] == "session-compat"
+
+
 @pytest.mark.parametrize("rollout_count", [0, 2])
 def test_discover_codex_native_handoff_fails_closed_without_exactly_one_rollout(
     tmp_path: Path,
