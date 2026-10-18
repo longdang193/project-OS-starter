@@ -8,8 +8,11 @@ from scripts.project_os_runtime.secretary_results import (
     NATIVE_RESULT_PRODUCER,
     NATIVE_RESULT_MAX_BYTES,
     native_binding_path,
+    native_submission_path,
     parse_native_binding,
+    parse_native_submission,
     publish_native_binding,
+    publish_native_submission,
     NativeResultConflictError,
     native_result_path,
     parse_native_result,
@@ -199,6 +202,32 @@ def test_native_binding_is_atomic_attempt_bound_and_immutable(tmp_path: Path) ->
     assert parsed["created_at"] == value["created_at"]
     with pytest.raises(NativeResultConflictError):
         publish_native_binding(path, {**value, "created_at": "2026-10-18T11:00:00+00:00"})
+
+
+def test_native_submission_ack_is_attempt_bound_and_idempotent(tmp_path: Path) -> None:
+    path = native_submission_path(tmp_path / "normal.json")
+    value = {
+        "schema": "secretary-native-submission.v1",
+        "attempt_id": "attempt-1",
+        "native_session_id": "session",
+        "native_thread_id": "thread",
+        "native_turn_id": "turn",
+        "accepted_at": "2026-10-18T10:00:00+00:00",
+        "status": "accepted",
+    }
+
+    first = publish_native_submission(path, value)
+    replay = publish_native_submission(path, value)
+
+    assert first["state"] == "published"
+    assert replay["state"] == "idempotent"
+    assert parse_native_submission(path, attempt_id="attempt-1")["state"] == "confirmed"
+    assert parse_native_submission(path, attempt_id="attempt-2") == {
+        "state": "unknown",
+        "detail": "native submission attempt mismatch",
+    }
+    with pytest.raises(NativeResultConflictError):
+        publish_native_submission(path, {**value, "native_turn_id": "other-turn"})
 
 
 

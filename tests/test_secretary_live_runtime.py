@@ -429,7 +429,7 @@ def test_run_normal_persists_lightrsi_binding_before_dispatch(
 
     cli = tmp_path / "cli.js"
     cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
-    monkeypatch.setenv("LIGHTRSI_CLI_PATH", str(cli))
+    monkeypatch.delenv("LIGHTRSI_CLI_PATH", raising=False)
     monkeypatch.setenv("LIGHTRSI_NATIVE_SESSION_ID", "wrong-environment-session")
     monkeypatch.setenv("LIGHTRSI_PRE_SUBMIT_CURSOR", "wrong-environment-cursor")
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
@@ -584,39 +584,109 @@ def test_run_normal_native_app_server_uses_bound_turn_identity(
         return FakeProcess()
 
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
-    seen: dict[str, object] = {}
+    from scripts.project_os_runtime.codex_app_server import NativeThread, NativeTurn, NativeTurnEvidence
 
-    def fake_observe(*args: object, **kwargs: object) -> dict[str, object]:
-        seen.update(kwargs)
-        binding = kwargs["native_binding"]
-        assert isinstance(binding, dict)
-        assert binding["native_turn_id"] == "turn-1"
-        assert "native_request_id" not in binding
-        return {
-            "state": "done",
-            "producer": runtime.NATIVE_RESULT_PRODUCER,
-            "attempt_id": binding["attempt_id"],
-            "session": "codex-app-server",
-            "pane": "native",
-            "agent_name": "normal-main",
-            "native_authority": runtime.NATIVE_RESULT_AUTHORITY,
-            "native_session_id": "session-1",
-            "native_turn_id": "session-1:t1",
-            "turn_seq": 1,
-            "semantic_complete": True,
-            "freshness_proven": True,
-            "assistant_owned": True,
-            "content_source": "lightrsi_completed_turn",
-            "semantic_content": "native answer",
-            "result_reference": "native-result://session-1:t1",
-            "cleanup": {"state": "not_required"},
-        }
+    class FakeNativeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            return None
 
-    monkeypatch.setattr(runtime, "_observe_submitted_codex", fake_observe)
+        def __enter__(self) -> "FakeNativeClient":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def start_thread(self) -> NativeThread:
+            return NativeThread("thread-1", "session-1", True, "fresh-zero-prior-turn")
+
+        def start_turn(self, thread: NativeThread, task: str) -> NativeTurn:
+            assert thread.thread_id == "thread-1"
+            assert task
+            return NativeTurn("thread-1", "turn-1")
+
+        def wait_for_turn(self, turn: NativeTurn) -> NativeTurnEvidence:
+            return NativeTurnEvidence("thread-1", "turn-1", "completed", (), "native answer")
+
+    monkeypatch.setattr(runtime, "CodexAppServerClient", FakeNativeClient)
     result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
 
-    assert seen["native_binding"]["native_turn_id"] == "turn-1"
     assert result["result"]["state"] == "reported"
+    persisted = json.loads((tmp_path / "normal.json.native-result.json").read_text(encoding="utf-8"))
+    assert persisted["native_turn_id"] == "turn-1"
+    assert persisted["native_authority"] == runtime.NATIVE_APP_SERVER_AUTHORITY
+
+
+def test_native_run_reconciles_published_result_without_starting_new_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    persisted = {
+        "schema": "secretary-native-result.v1",
+        "producer": runtime.NATIVE_RESULT_PRODUCER,
+        "attempt_id": "attempt-existing",
+        "observed_at": "2026-10-18T10:00:00+00:00",
+        "native_authority": runtime.NATIVE_APP_SERVER_AUTHORITY,
+        "native_session_id": "session-existing",
+        "native_thread_id": "thread-existing",
+        "native_turn_id": "turn-existing",
+        "completion_seq": 1,
+        "terminal_status": "completed",
+        "content_source": "native_app_server_completed_turn",
+        "semantic_complete": True,
+        "freshness_proven": True,
+        "assistant_owned": True,
+        "semantic_content": "already published",
+        "session": "codex-app-server",
+        "pane": "native",
+        "agent_name": "normal-secretary",
+    }
+    runtime.publish_native_result(runtime.native_result_path(output), persisted)
+    monkeypatch.setenv("PROJECT_OS_CODEX_NATIVE_APP_SERVER", "1")
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: pytest.fail("client must not start"))
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["result"]["state"] == "reported"
+    assert result["preflight"]["reconciled"] is True
+    assert result["preflight"]["attempt_id"] == "attempt-existing"
+
+
+def test_native_run_does_not_resubmit_uncertain_submission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    runtime.native_submission_path(output).write_text(
+        json.dumps({"schema": "secretary-native-submission.v1"}), encoding="utf-8"
+    )
+    monkeypatch.setenv("PROJECT_OS_CODEX_NATIVE_APP_SERVER", "1")
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "CodexAppServerClient", lambda *args, **kwargs: pytest.fail("must not resubmit"))
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["failure_kind"] == "NATIVE_SUBMISSION_FAILED"
+    assert result["recovery_required"] is True
+
+
+def test_native_not_required_cleanup_does_not_quarantine_empty_inventory() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    result = runtime._normalize_invocation_outcome(
+        invocation_id="invoke-1",
+        returncode=0,
+        payload={"assignment": {"attempt_id": "attempt-1", "execution": {"state": "completed"}}},
+        observation={"state": "done", "cleanup": {"state": "not_required"}},
+        started_at="2026-10-18T10:00:00+00:00",
+        finished_at="2026-10-18T10:00:01+00:00",
+    )
+
+    assert result["resource"] == {"state": "settled", "reuse_blocked": False}
+    assert result["resource_inventory"]["resources"] == []
 
 
 def test_normal_outcome_uses_launcher_attempt_not_project_os_alias() -> None:

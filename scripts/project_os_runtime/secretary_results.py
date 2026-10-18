@@ -15,10 +15,12 @@ from .results import evidence_path_lock
 
 NATIVE_RESULT_SCHEMA = "secretary-native-result.v1"
 NATIVE_BINDING_SCHEMA = "secretary-native-binding.v1"
+NATIVE_SUBMISSION_SCHEMA = "secretary-native-submission.v1"
 NATIVE_RESULT_PRODUCER = "codex-native"
 NATIVE_RESULT_AUTHORITY = "lightrsi-codex-context-history"
+NATIVE_APP_SERVER_AUTHORITY = "codex-app-server"
 NATIVE_RESULT_MAX_BYTES = 64 * 1024
-NATIVE_RESULT_CONTENT_SOURCES = frozenset({"lightrsi_completed_turn"})
+NATIVE_RESULT_CONTENT_SOURCES = frozenset({"lightrsi_completed_turn", "native_app_server_completed_turn"})
 NATIVE_RESULT_LEGACY_CONTENT_SOURCES = frozenset({"native_completed_turn"})
 
 
@@ -32,6 +34,10 @@ def native_result_path(output: Path) -> Path:
 
 def native_binding_path(output: Path) -> Path:
     return output.with_name(f"{output.name}.native-binding.json")
+
+
+def native_submission_path(output: Path) -> Path:
+    return output.with_name(f"{output.name}.native-submission.json")
 
 
 def _text(value: object, field: str) -> str:
@@ -91,8 +97,16 @@ def _validate_binding(payload: object) -> dict[str, Any]:
         raise ValueError("native binding payload invalid")
     if payload.get("schema") != NATIVE_BINDING_SCHEMA:
         raise ValueError("native binding schema mismatch")
-    for field in ("attempt_id", "native_session_id", "pre_submit_cursor", "created_at", "lightrsi_cli_path"):
+    for field in ("attempt_id", "native_session_id", "created_at"):
         _text(payload.get(field), field)
+    if payload.get("pre_submit_boundary") is not None:
+        _text(payload.get("pre_submit_boundary"), "pre_submit_boundary")
+    elif payload.get("pre_submit_cursor") is not None:
+        _text(payload.get("pre_submit_cursor"), "pre_submit_cursor")
+    else:
+        raise ValueError("native binding pre-submit boundary invalid")
+    if payload.get("lightrsi_cli_path") is not None:
+        _text(payload.get("lightrsi_cli_path"), "lightrsi_cli_path")
     if payload.get("assignment_id") is not None:
         _text(payload.get("assignment_id"), "assignment_id")
     transport = payload.get("transport")
@@ -142,6 +156,55 @@ def parse_native_binding(path: Path, *, attempt_id: str) -> dict[str, Any]:
     return {"state": "confirmed", **payload, "binding_reference": str(path)}
 
 
+def _validate_submission(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict) or payload.get("schema") != NATIVE_SUBMISSION_SCHEMA:
+        raise ValueError("native submission payload invalid")
+    for field in ("attempt_id", "native_session_id", "native_thread_id", "native_turn_id", "accepted_at"):
+        _text(payload.get(field), field)
+    if payload.get("status") != "accepted":
+        raise ValueError("native submission status invalid")
+    return dict(payload)
+
+
+def publish_native_submission(path: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+    normalized = _validate_submission(dict(payload))
+    encoded = (json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(encoded) > NATIVE_RESULT_MAX_BYTES:
+        raise ValueError(f"native submission exceeds {NATIVE_RESULT_MAX_BYTES} bytes")
+    digest = hashlib.sha256(encoded).hexdigest()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with evidence_path_lock(path):
+        if path.exists():
+            existing = path.read_bytes()
+            if existing == encoded:
+                return {"state": "idempotent", "path": str(path), "digest": digest}
+            raise NativeResultConflictError("native submission conflicts with existing evidence")
+        temporary = path.with_name(f".{path.name}.{digest}.tmp")
+        try:
+            with temporary.open("xb") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {"state": "published", "path": str(path), "digest": digest}
+
+
+def parse_native_submission(path: Path, *, attempt_id: str) -> dict[str, Any]:
+    try:
+        if not path.is_file() or path.stat().st_size > NATIVE_RESULT_MAX_BYTES:
+            return {"state": "unknown", "detail": "native submission unavailable"}
+        payload = _validate_submission(json.loads(path.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        return {"state": "unknown", "detail": "native submission unavailable"}
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return {"state": "unknown", "detail": "native submission malformed"}
+    if payload["attempt_id"] != attempt_id:
+        return {"state": "unknown", "detail": "native submission attempt mismatch"}
+    return {"state": "confirmed", **payload, "submission_reference": str(path)}
+
+
 def _validate_contract(
     payload: object,
     *,
@@ -167,7 +230,7 @@ def _validate_contract(
         if payload.get(field) is not None:
             _text(payload.get(field), field)
     _text(payload.get("semantic_content"), "semantic_content")
-    if payload.get("native_authority") != NATIVE_RESULT_AUTHORITY:
+    if payload.get("native_authority") not in {NATIVE_RESULT_AUTHORITY, NATIVE_APP_SERVER_AUTHORITY}:
         raise ValueError("native result authority invalid")
     content_source = payload.get("content_source")
     allowed_sources = set(NATIVE_RESULT_CONTENT_SOURCES)
@@ -185,7 +248,7 @@ def _validate_contract(
             raise ValueError("native result canonical turn id mismatch")
     else:
         completion_seq = payload.get("completion_seq")
-        if isinstance(completion_seq, bool) or not isinstance(completion_seq, int) or completion_seq < 0:
+        if isinstance(completion_seq, bool) or not isinstance(completion_seq, int) or completion_seq < 1:
             raise ValueError("native result completion_seq invalid")
     for field in ("native_request_id", "native_response_id"):
         if payload.get(field) is not None:
@@ -302,17 +365,22 @@ def parse_native_result(path: Path, *, attempt_id: str) -> dict[str, Any]:
 __all__ = [
     "NATIVE_RESULT_PRODUCER",
     "NATIVE_RESULT_AUTHORITY",
+    "NATIVE_APP_SERVER_AUTHORITY",
     "NATIVE_RESULT_CONTENT_SOURCES",
     "NATIVE_RESULT_LEGACY_CONTENT_SOURCES",
     "NATIVE_RESULT_SCHEMA",
     "NATIVE_BINDING_SCHEMA",
+    "NATIVE_SUBMISSION_SCHEMA",
     "NativeResultConflictError",
     "native_result_path",
     "native_binding_path",
+    "native_submission_path",
     "parse_native_binding",
+    "parse_native_submission",
     "parse_native_result",
     "publish_native_result",
     "publish_native_binding",
+    "publish_native_submission",
     "redact_semantic_content",
     "normalize_for_publication",
     "validate_persisted_result",

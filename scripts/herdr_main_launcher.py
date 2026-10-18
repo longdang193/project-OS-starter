@@ -76,6 +76,10 @@ except ModuleNotFoundError:
         resolve_attempt_budget,
         terminal_settlement_proven,
     )
+try:
+    from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError, NativeTurn
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError, NativeTurn
 
 
 class LaunchBlocked(RuntimeError):
@@ -542,7 +546,7 @@ def _herdr_pane(
     conflicting: list[str] = []
     try:
         processes = _process_records(foreground, require_pid=False)
-    except LaunchBlocked as exc:
+    except (LaunchBlocked, NativeAppServerError) as exc:
         raise TargetCandidateRejected(str(exc)) from exc
     for process in processes:
         process_name = str(process.get("name", "unknown"))
@@ -1421,63 +1425,28 @@ def _launch_codex_native_app_server(
 ) -> dict[str, Any]:
     if not isinstance(attempt_id, str) or not attempt_id.strip():
         raise LaunchBlocked("Codex app-server native binding attempt is unavailable.")
-    if not lightrsi_cli_path.is_absolute():
-        raise LaunchBlocked("Codex app-server LightRSI CLI path must be absolute.")
     environment = dict(os.environ if env is None else env)
     environment["CODEX_HOME"] = str(codex_home.resolve())
     try:
-        process = subprocess.Popen(
-            [codex_executable, "app-server", "--stdio"],
+        client = CodexAppServerClient(
+            codex_executable,
             cwd=cwd,
-            env=environment,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
+            codex_home=codex_home,
+            environment=environment,
         )
-    except OSError as exc:
-        raise LaunchBlocked("Codex app-server executable unavailable.") from exc
-
-    _app_server_request(
-        process,
-        request_id=1,
-        method="initialize",
-        params={"clientInfo": {"name": "project-os-secretary", "version": "1"}},
-    )
-    thread_result = _app_server_request(
-        process,
-        request_id=2,
-        method="thread/start",
-        params={
-            "cwd": str(cwd.resolve()),
-            "ephemeral": True,
-            "sandbox": "read-only",
-        },
-    )
-    thread = thread_result.get("thread")
-    if not isinstance(thread, Mapping):
-        raise LaunchBlocked("Codex app-server thread/start returned no thread.")
-    native_thread_id = thread.get("id")
-    native_session_id = thread.get("sessionId")
-    if not all(isinstance(value, str) and value.strip() for value in (native_thread_id, native_session_id)):
-        raise LaunchBlocked("Codex app-server native thread identity is incomplete.")
-    if thread.get("cwd") and Path(str(thread["cwd"])).resolve() != cwd.resolve():
-        raise LaunchBlocked("Codex app-server thread cwd does not match the launched lane.")
-    if thread.get("ephemeral") is not True:
-        raise LaunchBlocked("Codex app-server thread is not an exclusively owned ephemeral session.")
-    if thread.get("turns") not in ([], None):
-        raise LaunchBlocked("Codex app-server fresh thread already contains turns.")
-    if isinstance(thread.get("status"), Mapping) and thread["status"].get("type") != "idle":
-        raise LaunchBlocked("Codex app-server thread is not idle before binding.")
+        client.start()
+        thread = client.start_thread()
+    except NativeAppServerError as exc:
+        raise LaunchBlocked(str(exc)) from exc
+    native_thread_id = thread.thread_id
+    native_session_id = thread.session_id
 
     binding = {
         "schema": _CODEX_APP_SERVER_BINDING_SCHEMA,
         "attempt_id": attempt_id,
         "native_session_id": native_session_id,
         "native_thread_id": native_thread_id,
-        "pre_submit_cursor": _native_cursor(native_session_id),
-        "lightrsi_cli_path": str(lightrsi_cli_path),
+        "pre_submit_boundary": thread.pre_submit_boundary,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "fresh_session": True,
         "transport": {
@@ -1489,25 +1458,20 @@ def _launch_codex_native_app_server(
     try:
         _write_json_artifact(binding_path, binding)
     except (OSError, TypeError, ValueError) as exc:
+        client.close()
         raise LaunchBlocked("Codex app-server native binding could not be persisted.") from exc
-
-    turn_result = _app_server_request(
-        process,
-        request_id=3,
-        method="turn/start",
-        params={
-            "threadId": native_thread_id,
-            "input": [{"type": "text", "text": task}],
-        },
-    )
-    turn = turn_result.get("turn")
-    if not isinstance(turn, Mapping) or not isinstance(turn.get("id"), str) or not turn["id"].strip():
-        raise LaunchBlocked("Codex app-server turn/start returned no turn identity.")
+    try:
+        turn = client.start_turn(thread, task)
+    except NativeAppServerError as exc:
+        client.close()
+        raise LaunchBlocked(str(exc)) from exc
     return {
-        "process": process,
+        "process": client.process,
+        "client": client,
         "native_session_id": native_session_id,
         "native_thread_id": native_thread_id,
-        "native_turn_id": turn["id"],
+        "native_turn_id": turn.turn_id,
+        "native_turn": turn,
         "binding": binding,
     }
 
@@ -1575,9 +1539,14 @@ def _run_native_app_server(args: argparse.Namespace) -> int:
             lightrsi_cli_path=args.lightrsi_cli_path,
         )
         process = launch["process"]
+        client = launch.get("client")
         if not isinstance(process, subprocess.Popen):
             raise LaunchBlocked("Codex app-server process handle unavailable.")
-        _await_codex_native_turn(process, turn_id=str(launch["native_turn_id"]))
+        if isinstance(client, CodexAppServerClient) and isinstance(launch.get("native_turn"), NativeTurn):
+            evidence = client.wait_for_turn(launch["native_turn"])
+        else:
+            _await_codex_native_turn(process, turn_id=str(launch["native_turn_id"]))
+            evidence = None
         assignment = {
             "agent_name": agent_name,
             "attempt_id": attempt_id,
@@ -1589,6 +1558,7 @@ def _run_native_app_server(args: argparse.Namespace) -> int:
             "native_session_id": launch["native_session_id"],
             "native_thread_id": launch["native_thread_id"],
             "native_turn_id": launch["native_turn_id"],
+            "semantic_content": evidence.semantic_content if evidence is not None else None,
             "prompt_accepted": True,
             "reconciliation_required": False,
             "session": "codex-app-server",
@@ -1615,6 +1585,9 @@ def _run_native_app_server(args: argparse.Namespace) -> int:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
     finally:
+        client = locals().get("client")
+        if isinstance(client, CodexAppServerClient):
+            client.close()
         process = locals().get("process")
         if isinstance(process, subprocess.Popen):
             if process.poll() is None:
