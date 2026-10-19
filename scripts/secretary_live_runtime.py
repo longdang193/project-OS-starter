@@ -65,6 +65,9 @@ try:
         parse_native_submission,
         native_result_path,
         parse_native_result,
+        validate_native_binding_payload,
+        validate_native_submission_payload,
+        validate_native_result_payload,
         publish_native_binding,
         publish_native_submission,
         publish_native_result,
@@ -93,6 +96,9 @@ except ModuleNotFoundError:
         parse_native_submission,
         native_result_path,
         parse_native_result,
+        validate_native_binding_payload,
+        validate_native_submission_payload,
+        validate_native_result_payload,
         publish_native_binding,
         publish_native_submission,
         publish_native_result,
@@ -1963,10 +1969,27 @@ def _read_bounded_regular_file(path: Path, limit: int) -> bytes | None:
             remaining -= len(chunk)
         if sum(len(chunk) for chunk in chunks) > limit:
             return None
+        finished = os.fstat(descriptor)
+        opened_identity = (
+            opened.st_dev,
+            opened.st_ino,
+            stat.S_IFMT(opened.st_mode),
+            opened.st_size,
+        )
+        finished_identity = (
+            finished.st_dev,
+            finished.st_ino,
+            stat.S_IFMT(finished.st_mode),
+            finished.st_size,
+        )
+        if opened_identity != finished_identity:
+            return None
         final = path.lstat()
         if not stat.S_ISREG(final.st_mode):
             return None
         if (opened.st_dev, opened.st_ino) != (final.st_dev, final.st_ino):
+            return None
+        if final.st_size != finished.st_size:
             return None
         return b"".join(chunks)
     except (OSError, ValueError):
@@ -1977,6 +2000,38 @@ def _read_bounded_regular_file(path: Path, limit: int) -> bytes | None:
                 os.close(descriptor)
             except OSError:
                 pass
+
+
+def _read_bounded_json_payload(path: Path) -> dict[str, Any] | None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise NativeAppServerError(
+            "Existing native evidence is uncertain.", failure_kind="NATIVE_RESULT_CONFLICT"
+        ) from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        raise NativeAppServerError(
+            "Existing native evidence is not a regular file.", failure_kind="NATIVE_RESULT_CONFLICT"
+        )
+    content = _read_bounded_regular_file(path, NATIVE_RESULT_MAX_BYTES)
+    if content is None:
+        raise NativeAppServerError(
+            "Existing native evidence is unreadable or changed during read.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
+        )
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise NativeAppServerError(
+            "Existing native evidence is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise NativeAppServerError(
+            "Existing native evidence is not a mapping.", failure_kind="NATIVE_RESULT_CONFLICT"
+        )
+    return dict(payload)
 
 
 def _read_only_workspace_identity(
@@ -2915,42 +2970,49 @@ def _existing_output_matches_current_identity(
     logical_operation_id: str,
     request_fingerprint_value: str,
     attempt_id: str,
+    output_payload: Mapping[str, Any] | None = None,
 ) -> bool:
-    content = _read_bounded_regular_file(output, NATIVE_RESULT_MAX_BYTES)
-    if content is None:
-        return False
-    try:
-        raw = json.loads(content.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return False
+    if output_payload is None:
+        try:
+            raw = _read_bounded_json_payload(output)
+        except NativeAppServerError:
+            return False
+    else:
+        raw = output_payload
     if not isinstance(raw, Mapping):
         return False
     if raw.get("logical_operation_id") != logical_operation_id:
         return False
     if raw.get("request_fingerprint") != request_fingerprint_value:
         return False
-    output_attempt_id = raw.get("attempt_id")
-    if output_attempt_id is not None and output_attempt_id != attempt_id:
+    if "attempt_id" in raw and raw.get("attempt_id") != attempt_id:
         return False
     preflight = raw.get("preflight")
-    if isinstance(preflight, Mapping):
-        if preflight.get("logical_operation_id") not in {None, logical_operation_id}:
+    if not isinstance(preflight, Mapping):
+        return False
+    if preflight.get("logical_operation_id") not in {None, logical_operation_id}:
+        return False
+    if preflight.get("request_fingerprint") not in {None, request_fingerprint_value}:
+        return False
+    authoritative_attempts: list[object] = []
+    if "attempt_id" in preflight:
+        authoritative_attempts.append(preflight.get("attempt_id"))
+    retirement = preflight.get("retirement")
+    if retirement is not None:
+        if not isinstance(retirement, Mapping):
             return False
-        if preflight.get("request_fingerprint") not in {None, request_fingerprint_value}:
+        if any(
+            retirement.get(key) != expected
+            for key, expected in {
+                "logical_operation_id": logical_operation_id,
+                "request_fingerprint": request_fingerprint_value,
+            }.items()
+        ):
             return False
-        if preflight.get("attempt_id") not in {None, attempt_id}:
-            return False
-        retirement = preflight.get("retirement")
-        if retirement is not None:
-            if not isinstance(retirement, Mapping) or any(
-                retirement.get(key) != expected
-                for key, expected in {
-                    "logical_operation_id": logical_operation_id,
-                    "request_fingerprint": request_fingerprint_value,
-                    "attempt_id": attempt_id,
-                }.items()
-            ):
-                return False
+        if "attempt_id" in retirement:
+            authoritative_attempts.append(retirement.get("attempt_id"))
+    if not authoritative_attempts or any(value != attempt_id for value in authoritative_attempts):
+        return False
     return True
 
 
@@ -2991,80 +3053,65 @@ def _reconcile_native_artifacts(
             failure_kind="NATIVE_RESULT_CONFLICT",
         )
     result_path = native_result_path(output)
-    if result_path.is_file():
+    result_payload = _read_bounded_json_payload(result_path)
+    if result_payload is not None:
         namespace_state = "owned_existing_operation"
         try:
-            raw = json.loads(result_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            persisted_payload = validate_native_result_payload(result_payload)
+        except ValueError as exc:
             raise NativeAppServerError(
                 "Existing native result is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
             ) from exc
-        if not isinstance(raw, Mapping) or raw.get("schema") != NATIVE_RESULT_SCHEMA:
-            raise NativeAppServerError(
-                "Existing native result is legacy read-only evidence.", failure_kind="NATIVE_RESULT_CONFLICT"
-            )
-        attempt_id = raw.get("attempt_id")
+        attempt_id = persisted_payload.get("attempt_id")
         if not isinstance(attempt_id, str) or not attempt_id.strip():
             raise NativeAppServerError("Existing native result has no attempt identity.", failure_kind="NATIVE_RESULT_CONFLICT")
-        try:
-            output.lstat()
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            raise NativeAppServerError(
-                "Existing invocation output identity is uncertain.",
-                failure_kind="NATIVE_RESULT_CONFLICT",
-            ) from exc
-        else:
+        for field, expected in {
+            "request_fingerprint": request_fingerprint_value,
+            "logical_operation_id": logical_operation_id,
+        }.items():
+            if persisted_payload.get(field) != expected:
+                raise NativeAppServerError(
+                    f"Existing native result {field.replace('request_fingerprint', 'request fingerprint')} mismatch.",
+                    failure_kind="NATIVE_RESULT_CONFLICT",
+                )
+        output_payload = _read_bounded_json_payload(output)
+        if output_payload is not None:
             if not _existing_output_matches_current_identity(
                 output,
                 logical_operation_id=logical_operation_id,
                 request_fingerprint_value=request_fingerprint_value,
                 attempt_id=attempt_id,
+                output_payload=output_payload,
             ):
                 raise NativeAppServerError(
                     "Existing invocation output is not attributable to the current request.",
                     failure_kind="NATIVE_RESULT_CONFLICT",
                 )
-        persisted = parse_native_result(
-            result_path,
-            attempt_id=attempt_id,
-            request_fingerprint=request_fingerprint_value,
-            logical_operation_id=logical_operation_id,
-        )
-        if persisted.get("state") != "confirmed":
-            detail = persisted.get("detail", "malformed")
-            raise NativeAppServerError(
-                f"Existing native result is {detail}.", failure_kind="NATIVE_RESULT_CONFLICT"
-            )
-        binding = parse_native_binding(
-            native_binding_path(output),
-            attempt_id=attempt_id,
-            request_fingerprint=request_fingerprint_value,
-            logical_operation_id=logical_operation_id,
-            native_session_id=persisted.get("native_session_id"),
-            native_thread_id=persisted.get("native_thread_id"),
-        )
-        submission = parse_native_submission(
-            native_submission_path(output),
-            attempt_id=attempt_id,
-            request_fingerprint=request_fingerprint_value,
-            logical_operation_id=logical_operation_id,
-            native_session_id=persisted.get("native_session_id"),
-            native_thread_id=persisted.get("native_thread_id"),
-            native_turn_id=persisted.get("native_turn_id"),
-        )
-        if binding.get("state") != "confirmed" or submission.get("state") != "confirmed":
+        persisted = {"state": "confirmed", **persisted_payload, "result_reference": str(result_path)}
+        binding_payload = _read_bounded_json_payload(native_binding_path(output))
+        submission_payload = _read_bounded_json_payload(native_submission_path(output))
+        if binding_payload is None or submission_payload is None:
             raise NativeAppServerError(
                 "Existing native result lacks matching binding or submission evidence.",
                 failure_kind="NATIVE_RESULT_CONFLICT",
             )
-        if any(
-            binding.get(key) != persisted.get(key)
-            for key in ("request_fingerprint", "attempt_id", "native_session_id")
-        ) or any(
-            submission.get(key) != persisted.get(key)
-            for key in ("request_fingerprint", "attempt_id", "native_session_id", "native_thread_id", "native_turn_id")
+        try:
+            binding = validate_native_binding_payload(binding_payload)
+            submission = validate_native_submission_payload(submission_payload)
+        except ValueError as exc:
+            raise NativeAppServerError(
+                "Existing native result lacks matching binding or submission evidence.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            ) from exc
+        if (
+            any(
+                binding.get(key) != persisted.get(key)
+                for key in ("request_fingerprint", "attempt_id", "native_session_id")
+            )
+            or any(
+                submission.get(key) != persisted.get(key)
+                for key in ("request_fingerprint", "attempt_id", "native_session_id", "native_thread_id", "native_turn_id")
+            )
         ):
             raise NativeAppServerError(
                 "Existing native artifacts disagree on request or turn identity.",
@@ -3079,28 +3126,25 @@ def _reconcile_native_artifacts(
             "task_result": {"state": "unknown"},
         }
         prior_retirement: Mapping[str, Any] | None = None
-        if output.is_file() and _existing_output_matches_current_identity(
+        if output_payload is not None and _existing_output_matches_current_identity(
             output,
             logical_operation_id=logical_operation_id,
             request_fingerprint_value=request_fingerprint_value,
             attempt_id=attempt_id,
+            output_payload=output_payload,
         ):
-            try:
-                prior_output = json.loads(output.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                prior_output = None
-            if isinstance(prior_output, Mapping):
-                candidate = prior_output.get("preflight", {}).get("retirement")
-                if _retirement_identity_matches(
-                    candidate,
-                    logical_operation_id=logical_operation_id,
-                    request_fingerprint_value=request_fingerprint_value,
-                    attempt_id=attempt_id,
-                    native_session_id=persisted.get("native_session_id"),
-                    native_thread_id=persisted.get("native_thread_id"),
-                    native_turn_id=persisted.get("native_turn_id"),
-                ):
-                    prior_retirement = candidate
+            preflight = output_payload.get("preflight")
+            candidate = preflight.get("retirement") if isinstance(preflight, Mapping) else None
+            if _retirement_identity_matches(
+                candidate,
+                logical_operation_id=logical_operation_id,
+                request_fingerprint_value=request_fingerprint_value,
+                attempt_id=attempt_id,
+                native_session_id=persisted.get("native_session_id"),
+                native_thread_id=persisted.get("native_thread_id"),
+                native_turn_id=persisted.get("native_turn_id"),
+            ):
+                prior_retirement = candidate
         retirement = dict(prior_retirement or {"state": "unknown", "reason": "retirement evidence unavailable"})
         cleanup = {
             "state": "removed" if retirement.get("state") == "retired" else "unknown",

@@ -288,6 +288,90 @@ def test_reconcile_native_artifacts_rejects_unattributed_existing_output(
         assert output.read_bytes() == original
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"logical_operation_id": "operation-1", "request_fingerprint": "fingerprint", "attempt_id": "attempt-1"}, False),
+        (
+            {
+                "logical_operation_id": "operation-1",
+                "request_fingerprint": "fingerprint",
+                "preflight": {"attempt_id": "attempt-1"},
+            },
+            True,
+        ),
+        (
+            {
+                "logical_operation_id": "operation-1",
+                "request_fingerprint": "fingerprint",
+                "preflight": {
+                    "retirement": {
+                        "logical_operation_id": "operation-1",
+                        "request_fingerprint": "fingerprint",
+                        "attempt_id": "attempt-1",
+                    }
+                },
+            },
+            True,
+        ),
+        (
+            {
+                "logical_operation_id": "operation-1",
+                "request_fingerprint": "fingerprint",
+                "attempt_id": "attempt-other",
+                "preflight": {"attempt_id": "attempt-1"},
+            },
+            False,
+        ),
+    ],
+)
+def test_existing_output_identity_requires_current_writer_binding(
+    tmp_path: Path,
+    payload: dict[str, object],
+    expected: bool,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    assert runtime._existing_output_matches_current_identity(
+        tmp_path / "normal.json",
+        logical_operation_id="operation-1",
+        request_fingerprint_value="fingerprint",
+        attempt_id="attempt-1",
+        output_payload=payload,
+    ) is expected
+
+
+def test_bounded_reader_rejects_descriptor_size_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import scripts.secretary_live_runtime as runtime
+
+    path = tmp_path / "evidence.json"
+    path.write_bytes(b'{"state":"done"}\n')
+    original_fstat = runtime.os.fstat
+    calls = 0
+
+    def changed_fstat(descriptor: int):
+        nonlocal calls
+        result = original_fstat(descriptor)
+        calls += 1
+        if calls == 2:
+            return SimpleNamespace(
+                st_dev=result.st_dev,
+                st_ino=result.st_ino,
+                st_mode=result.st_mode,
+                st_size=result.st_size + 1,
+            )
+        return result
+
+    monkeypatch.setattr(runtime.os, "fstat", changed_fstat)
+
+    assert runtime._read_bounded_regular_file(path, runtime.NATIVE_RESULT_MAX_BYTES) is None
+
+
 def test_reconcile_native_artifacts_rejects_logical_operation_mismatch(
     tmp_path: Path,
 ) -> None:
