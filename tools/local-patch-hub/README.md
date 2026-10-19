@@ -155,3 +155,50 @@ When upstream changes a patched file, add a new exact-base directory under
 `overlays/9router-attribution/` and rebase the patch there. Keep old overlays
 for existing checkouts. Live economics remain blocked until deployed,
 authenticated ID-join proof passes.
+
+## 9router Codex opaque relay overlay
+
+The Codex opaque relay is a separate exact-base overlay for the `0.5.99`
+9router source at commit `ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8`. It adds
+`/v1/chatgpt-web/responses` without changing the existing `/v1/responses`
+route, normal provider execution, model aliases, or UI integration.
+
+Apply the relay overlay to a clean or disposable source checkout:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCodexRelayOverlay.ps1 -TargetRoot C:\path\to\9router-upstream
+```
+
+Verify an already-applied overlay without changing files:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCodexRelayOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
+```
+
+The route is a loopback-only, POST-only opaque relay. Next may canonicalize a local request URL to `localhost` even when the listener is bound to `127.0.0.1`; both names are treated as loopback. It requires native Codex
+Bearer authorization, `Content-Type: application/json`, and matching native
+`x-codex-turn-metadata` in the header and body. Set the upstream only through
+the process environment, using an exact loopback Responses URL:
+
+```powershell
+$env:CODEX_RELAY_UPSTREAM_URL = "http://127.0.0.1:17841/v1/responses"
+```
+
+The relay forwards the original request bytes and a versioned allowlist of
+observed native headers, including native `Content-Encoding: zstd`, streams
+upstream status and SSE bytes without parsing, and propagates client
+cancellation. It validates a bounded decompressed copy of zstd requests while
+forwarding the original compressed bytes unchanged. It rejects browser `Origin` requests,
+non-loopback upstreams, redirects, oversized bodies above `8388608` bytes,
+generic requests without native metadata, and no automatic replay after
+forwarding begins. It does not
+forward administrative or stored provider credentials. `GET` returns `426` so
+native WebSocket negotiation fails closed before the HTTP Responses fallback;
+there is no relay `/v1/models` route and no model aliasing.
+
+Keep `codex-chatgpt-web` on its own loopback port, normally
+`127.0.0.1:17841`, and verify launcher restart ownership before any live
+installation. `-InstallGlobal` remains opt-in and requires explicit approval;
+source application and verification do not alter installed 9router or stored
+credentials. Full native Codex-to-CGW proof remains a separate acceptance gate
+when the CGW launcher is browser-only.
