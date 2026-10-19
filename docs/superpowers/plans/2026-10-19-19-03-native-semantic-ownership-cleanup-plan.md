@@ -446,5 +446,3 @@ The plan may be marked completed only after skill-verification-before-completion
 11. Focused tests, repository validators, the full suite, diff checks, and bounded live proof pass, or an exact immutable direct-native capability blocker is recorded without synthetic success.
 
 Branch creation, commit, push, pull request, merge, and worktree cleanup remain separate authorized actions and are not completion criteria for this implementation plan.
-
-
