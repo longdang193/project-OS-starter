@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 import subprocess
 import sys
 
@@ -22,7 +23,6 @@ from scripts.secretary_live_runtime import (
     _snapshot_result_content,
     _smoke_receipt,
     build_launcher_command,
-    build_normal_launcher_command,
     _reconcile_native_artifacts,
     run_normal,
     run_probe,
@@ -59,19 +59,14 @@ def normal_request(**overrides: object) -> SecretaryNormalRequest:
     return SecretaryNormalRequest(**values)
 
 
-def test_normal_request_and_command_do_not_synthesize_governance_identity() -> None:
-    command = build_normal_launcher_command(normal_request(), expected_base="head-1")
+def test_normal_request_excludes_herdr_selectors_and_builder() -> None:
+    import scripts.secretary_live_runtime as runtime
 
-    assert "--expected-base" in command
-    assert command[command.index("--expected-base") + 1] == "head-1"
-    assert "--task" in command
-    assert "Secretary normal-mode boundary" in command[command.index("--task") + 1]
-    assert "--secretary-task-id" not in command
-    assert "--secretary-plan-revision" not in command
-    assert "--secretary-attempt-id" not in command
-    assert "--secretary-run-id" not in command
-    assert "--repository-identity" not in command
-    assert "--plan-identity" not in command
+    request_value = normal_request()
+
+    assert not hasattr(request_value, "session")
+    assert not hasattr(request_value, "pane")
+    assert not hasattr(runtime, "build_normal_launcher_command")
 
 
 def test_reconcile_native_artifacts_requires_current_request_fingerprint(
@@ -158,7 +153,7 @@ def test_reconcile_native_artifacts_requires_current_request_fingerprint(
         started_at="2026-10-18T10:00:03+00:00",
         request_fingerprint_value=fingerprint,
         logical_operation_id="operation-1",
-        resume=True,
+        resume=False,
     )
     assert reconciled is not None
     assert reconciled["execution"]["state"] == "completed"
@@ -464,6 +459,149 @@ def test_foreign_output_without_sidecars_is_read_only(
 
     assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
     assert output.read_bytes() == prior_bytes
+
+
+@pytest.mark.parametrize("occupant", ["directory", "symlink"])
+def test_non_regular_output_occupants_are_foreign_and_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    occupant: str,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    if occupant == "directory":
+        output.mkdir()
+    else:
+        target = tmp_path / "foreign-target.json"
+        target.write_bytes(b'{"foreign":true}\n')
+        output.symlink_to(target)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: pytest.fail("occupied namespace must not launch"))
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
+
+
+def test_complete_current_evidence_with_unknown_identity_does_not_reconcile_or_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    normal = normal_request(
+        worktree=tmp_path,
+        repository_identity="repo",
+        git_revision="head-1",
+        model_identity="model",
+        runtime_grant_digest="grant",
+        logical_operation_id="operation-existing",
+    )
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(
+        runtime,
+        "_read_only_workspace_identity",
+        lambda _, output=None: (True, None, ("workspace_identity",)),
+    )
+    resolved = runtime._resolve_normal_request(normal, {}, output=output)
+    fingerprint = resolved.request_fingerprint
+    binding = {
+        "schema": runtime.NATIVE_BINDING_SCHEMA,
+        "attempt_id": "attempt-existing",
+        "logical_operation_id": "operation-existing",
+        "request_fingerprint": fingerprint,
+        "native_session_id": "session-existing",
+        "native_thread_id": "thread-existing",
+        "pre_submit_boundary": "fresh-zero-prior-turn",
+        "created_at": "2026-10-18T10:00:00+00:00",
+    }
+    submission = {
+        "schema": runtime.NATIVE_SUBMISSION_SCHEMA,
+        "attempt_id": "attempt-existing",
+        "logical_operation_id": "operation-existing",
+        "request_fingerprint": fingerprint,
+        "native_session_id": "session-existing",
+        "native_thread_id": "thread-existing",
+        "native_turn_id": "turn-existing",
+        "accepted_at": "2026-10-18T10:00:01+00:00",
+        "status": "accepted",
+    }
+    result_payload = {
+        "schema": runtime.NATIVE_RESULT_SCHEMA,
+        "producer": runtime.NATIVE_RESULT_PRODUCER,
+        "attempt_id": "attempt-existing",
+        "logical_operation_id": "operation-existing",
+        "request_fingerprint": fingerprint,
+        "observed_at": "2026-10-18T10:00:02+00:00",
+        "native_authority": runtime.NATIVE_APP_SERVER_AUTHORITY,
+        "native_session_id": "session-existing",
+        "native_thread_id": "thread-existing",
+        "native_turn_id": "turn-existing",
+        "terminal_status": "completed",
+        "content_source": "native_app_server_completed_turn",
+        "answer_provenance": "native_final_answer",
+        "semantic_complete": True,
+        "freshness_proven": True,
+        "assistant_owned": True,
+        "semantic_content": "already published",
+    }
+    runtime.publish_native_binding(runtime.native_binding_path(output), binding)
+    runtime.publish_native_submission(runtime.native_submission_path(output), submission)
+    runtime.publish_native_result(runtime.native_result_path(output), result_payload)
+    sidecar_bytes = {
+        path: path.read_bytes()
+        for path in (
+            runtime.native_binding_path(output),
+            runtime.native_submission_path(output),
+            runtime.native_result_path(output),
+        )
+    }
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: pytest.fail("unknown identity must not launch"))
+
+    result = runtime.run_normal(normal, output=output)
+
+    assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
+    assert result["recovery_required"] is True
+    assert not output.exists()
+    assert {path: path.read_bytes() for path in sidecar_bytes} == sidecar_bytes
+
+
+def test_current_binding_without_result_requires_recovery_without_starting_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    runtime.publish_native_binding(
+        runtime.native_binding_path(output),
+        {
+            "schema": runtime.NATIVE_BINDING_SCHEMA,
+            "attempt_id": "attempt-existing",
+            "logical_operation_id": "operation-existing",
+            "request_fingerprint": "a" * 64,
+            "native_session_id": "session-existing",
+            "native_thread_id": "thread-existing",
+            "pre_submit_boundary": "fresh-zero-prior-turn",
+            "created_at": "2026-10-18T10:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(runtime, "CodexAppServerClient", lambda *args, **kwargs: pytest.fail("must not start a turn"))
+
+    with pytest.raises(runtime.NativeAppServerError) as error:
+        runtime._reconcile_native_artifacts(
+            output=output,
+            invocation_id="invocation-1",
+            started_at="2026-10-18T10:00:03+00:00",
+            request_fingerprint_value="a" * 64,
+            logical_operation_id="operation-existing",
+            resume=False,
+        )
+
+    assert error.value.failure_kind == "NATIVE_SUBMISSION_FAILED"
 
 
 def test_binding_claim_race_does_not_persist_losing_attempt(
@@ -830,6 +968,51 @@ def test_workspace_identity_excludes_all_native_runtime_artifacts(
     assert digest == expected_digest
 
 
+def test_workspace_identity_does_not_exclude_symlink_alias_to_runtime_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    alias = tmp_path / "alias.json"
+    alias.symlink_to(output)
+    monkeypatch.setattr(
+        runtime,
+        "_bounded_git_output",
+        lambda command, **_: (b"?? alias.json\0" if "status" in list(command) else b"", None),
+    )
+
+    dirty, digest, unknown = runtime._read_only_workspace_identity(tmp_path, output)
+
+    assert dirty is True
+    assert digest is None
+    assert unknown == ("workspace_identity",)
+
+
+def test_workspace_identity_disables_reuse_for_special_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO creation is unavailable on this platform")
+    fifo = tmp_path / "input.fifo"
+    os.mkfifo(fifo)
+    monkeypatch.setattr(
+        runtime,
+        "_bounded_git_output",
+        lambda command, **_: (b"?? input.fifo\0" if "status" in list(command) else b"", None),
+    )
+
+    dirty, digest, unknown = runtime._read_only_workspace_identity(tmp_path)
+
+    assert dirty is True
+    assert digest is None
+    assert unknown == ("workspace_identity",)
+
+
 def test_workspace_identity_disables_reuse_when_git_output_exceeds_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -967,7 +1150,11 @@ def test_run_normal_native_app_server_uses_bound_turn_identity(
     binding = json.loads((tmp_path / "normal.json.native-binding.json").read_text(encoding="utf-8"))
     assert persisted["native_turn_id"] == "turn-1"
     assert persisted["native_authority"] == runtime.NATIVE_APP_SERVER_AUTHORITY
+    assert "session" not in persisted
+    assert "pane" not in persisted
+    assert "agent_name" not in persisted
     assert binding["provider"] == runtime.SECRETARY_PROVIDER
+    assert "transport" not in binding
     assert binding["model"] == "<unknown:model_identity>"
 
 
