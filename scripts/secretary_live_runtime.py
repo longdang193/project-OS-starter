@@ -55,6 +55,7 @@ try:
         NATIVE_BINDING_SCHEMA,
         NATIVE_SUBMISSION_SCHEMA,
         NATIVE_RESULT_SCHEMA,
+        NATIVE_RESULT_MAX_BYTES,
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
@@ -82,6 +83,7 @@ except ModuleNotFoundError:
         NATIVE_BINDING_SCHEMA,
         NATIVE_SUBMISSION_SCHEMA,
         NATIVE_RESULT_SCHEMA,
+        NATIVE_RESULT_MAX_BYTES,
         NATIVE_RESULT_PRODUCER,
         NATIVE_RESULT_AUTHORITY,
         NativeResultConflictError,
@@ -829,11 +831,18 @@ def _observe_submitted_codex(
     attempt_id = assignment.get("attempt_id") if assignment else None
     if assignment is not None and not isinstance(attempt_id, str):
         return {"state": "unknown", "error": "launcher assignment identity incomplete"}
-    native_boundary_captured = "pre_submit_completion_seq" in herdr
     herdr_pre_submit_completion_seq = herdr.get("pre_submit_completion_seq")
+    native_boundary_captured = (
+        type(herdr_pre_submit_completion_seq) is int
+        and herdr_pre_submit_completion_seq >= 0
+    )
     if not native_boundary_captured and isinstance(assignment, Mapping):
-        native_boundary_captured = "pre_submit_completion_seq" in assignment
-        herdr_pre_submit_completion_seq = assignment.get("pre_submit_completion_seq")
+        assignment_completion_seq = assignment.get("pre_submit_completion_seq")
+        if type(assignment_completion_seq) is int and assignment_completion_seq >= 0:
+            native_boundary_captured = True
+            herdr_pre_submit_completion_seq = assignment_completion_seq
+        else:
+            herdr_pre_submit_completion_seq = None
     if ownership is not None:
         for key in ("assignment_id", "attempt_id"):
             owned_value = ownership.get(key)
@@ -984,11 +993,11 @@ def _submission_freshness_proven(
     anchor_completion_seq = anchor.get("completion_seq")
     snapshot_completion_seq = snapshot.get("completion_seq")
     if "completion_seq" in anchor or "completion_seq" in snapshot:
-        if anchor_completion_seq is None:
-            return isinstance(snapshot_completion_seq, int) and snapshot_completion_seq >= 0
         return (
-            isinstance(anchor_completion_seq, int)
-            and isinstance(snapshot_completion_seq, int)
+            type(anchor_completion_seq) is int
+            and anchor_completion_seq >= 0
+            and type(snapshot_completion_seq) is int
+            and snapshot_completion_seq >= 0
             and snapshot_completion_seq > anchor_completion_seq
         )
     identity_changed = False
@@ -2764,11 +2773,22 @@ def _discover_native_logical_operation(output: Path) -> str | None:
         native_binding_path(output),
         native_submission_path(output),
     ):
-        if not path.is_file():
-            continue
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise NativeAppServerError(
+                "Existing native evidence is uncertain.", failure_kind="NATIVE_RESULT_CONFLICT"
+            ) from exc
+        content = _read_bounded_regular_file(path, NATIVE_RESULT_MAX_BYTES)
+        if content is None:
+            raise NativeAppServerError(
+                "Existing native evidence is uncertain.", failure_kind="NATIVE_RESULT_CONFLICT"
+            )
+        try:
+            raw = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise NativeAppServerError(
                 "Existing native evidence is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
             ) from exc
@@ -2896,15 +2916,18 @@ def _existing_output_matches_current_identity(
     request_fingerprint_value: str,
     attempt_id: str,
 ) -> bool:
+    content = _read_bounded_regular_file(output, NATIVE_RESULT_MAX_BYTES)
+    if content is None:
+        return False
     try:
-        raw = json.loads(output.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        raw = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
         return False
     if not isinstance(raw, Mapping):
         return False
     if raw.get("logical_operation_id") != logical_operation_id:
         return False
-    if raw.get("request_fingerprint") not in {None, request_fingerprint_value}:
+    if raw.get("request_fingerprint") != request_fingerprint_value:
         return False
     output_attempt_id = raw.get("attempt_id")
     if output_attempt_id is not None and output_attempt_id != attempt_id:
@@ -2915,6 +2938,19 @@ def _existing_output_matches_current_identity(
             return False
         if preflight.get("request_fingerprint") not in {None, request_fingerprint_value}:
             return False
+        if preflight.get("attempt_id") not in {None, attempt_id}:
+            return False
+        retirement = preflight.get("retirement")
+        if retirement is not None:
+            if not isinstance(retirement, Mapping) or any(
+                retirement.get(key) != expected
+                for key, expected in {
+                    "logical_operation_id": logical_operation_id,
+                    "request_fingerprint": request_fingerprint_value,
+                    "attempt_id": attempt_id,
+                }.items()
+            ):
+                return False
     return True
 
 
@@ -2970,6 +3006,26 @@ def _reconcile_native_artifacts(
         attempt_id = raw.get("attempt_id")
         if not isinstance(attempt_id, str) or not attempt_id.strip():
             raise NativeAppServerError("Existing native result has no attempt identity.", failure_kind="NATIVE_RESULT_CONFLICT")
+        try:
+            output.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise NativeAppServerError(
+                "Existing invocation output identity is uncertain.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            ) from exc
+        else:
+            if not _existing_output_matches_current_identity(
+                output,
+                logical_operation_id=logical_operation_id,
+                request_fingerprint_value=request_fingerprint_value,
+                attempt_id=attempt_id,
+            ):
+                raise NativeAppServerError(
+                    "Existing invocation output is not attributable to the current request.",
+                    failure_kind="NATIVE_RESULT_CONFLICT",
+                )
         persisted = parse_native_result(
             result_path,
             attempt_id=attempt_id,
@@ -3060,9 +3116,12 @@ def _reconcile_native_artifacts(
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         result["logical_operation_id"] = logical_operation_id
+        result["request_fingerprint"] = request_fingerprint_value
         result["preflight"] = {
             "transport": "codex-app-server",
             "reconciled": True,
+            "logical_operation_id": logical_operation_id,
+            "request_fingerprint": request_fingerprint_value,
             "attempt_id": attempt_id,
             "retirement": retirement,
         }

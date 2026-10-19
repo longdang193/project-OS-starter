@@ -157,6 +157,8 @@ def test_reconcile_native_artifacts_requires_current_request_fingerprint(
     )
     assert reconciled is not None
     assert reconciled["execution"]["state"] == "completed"
+    assert reconciled["logical_operation_id"] == "operation-1"
+    assert reconciled["request_fingerprint"] == fingerprint
 
     with pytest.raises(runtime.NativeAppServerError, match="request fingerprint"):
         _reconcile_native_artifacts(
@@ -196,6 +198,94 @@ def test_reconcile_native_artifacts_requires_current_request_fingerprint(
             logical_operation_id="operation-1",
             resume=True,
         )
+
+
+def test_reconcile_native_artifacts_rejects_unattributed_existing_output(
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    fingerprint = "a" * 64
+    output = tmp_path / "normal.json"
+    runtime.publish_native_binding(
+        runtime.native_binding_path(output),
+        {
+            "schema": runtime.NATIVE_BINDING_SCHEMA,
+            "attempt_id": "attempt-1",
+            "logical_operation_id": "operation-1",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session",
+            "native_thread_id": "thread",
+            "pre_submit_boundary": "fresh-zero-prior-turn",
+            "created_at": "2026-10-18T10:00:00+00:00",
+        },
+    )
+    runtime.publish_native_submission(
+        runtime.native_submission_path(output),
+        {
+            "schema": runtime.NATIVE_SUBMISSION_SCHEMA,
+            "attempt_id": "attempt-1",
+            "logical_operation_id": "operation-1",
+            "request_fingerprint": fingerprint,
+            "native_session_id": "session",
+            "native_thread_id": "thread",
+            "native_turn_id": "turn",
+            "accepted_at": "2026-10-18T10:00:01+00:00",
+            "status": "accepted",
+        },
+    )
+    runtime.publish_native_result(
+        runtime.native_result_path(output),
+        {
+            "schema": runtime.NATIVE_RESULT_SCHEMA,
+            "producer": "codex-native",
+            "attempt_id": "attempt-1",
+            "logical_operation_id": "operation-1",
+            "request_fingerprint": fingerprint,
+            "observed_at": "2026-10-18T10:00:02+00:00",
+            "native_authority": "codex-app-server",
+            "native_session_id": "session",
+            "native_thread_id": "thread",
+            "native_turn_id": "turn",
+            "terminal_status": "completed",
+            "content_source": "native_app_server_completed_turn",
+            "answer_provenance": "native_final_answer",
+            "semantic_complete": True,
+            "freshness_proven": True,
+            "assistant_owned": True,
+            "semantic_content": "answer",
+        },
+    )
+
+    for payload in (
+        {"logical_operation_id": "other", "request_fingerprint": fingerprint},
+        {"logical_operation_id": "operation-1"},
+        {
+            "logical_operation_id": "operation-1",
+            "request_fingerprint": fingerprint,
+            "attempt_id": "attempt-other",
+        },
+        {
+            "logical_operation_id": "operation-1",
+            "request_fingerprint": fingerprint,
+            "preflight": {"attempt_id": "attempt-other"},
+        },
+    ):
+        original = json.dumps(payload).encode("utf-8")
+        output.write_bytes(original)
+
+        with pytest.raises(runtime.NativeAppServerError) as exc_info:
+            runtime._reconcile_native_artifacts(
+                output=output,
+                invocation_id="invocation-1",
+                started_at="2026-10-18T10:00:03+00:00",
+                request_fingerprint_value=fingerprint,
+                logical_operation_id="operation-1",
+                resume=True,
+            )
+
+        assert exc_info.value.failure_kind == "NATIVE_RESULT_CONFLICT"
+        assert output.read_bytes() == original
 
 
 def test_reconcile_native_artifacts_rejects_logical_operation_mismatch(
@@ -340,6 +430,66 @@ def test_reconcile_native_artifacts_discovers_operation_identity_on_resume(
     discovered = runtime._discover_native_logical_operation(output)
 
     assert discovered == "operation-1"
+
+
+def test_discover_native_logical_operation_treats_missing_evidence_as_absent(
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    assert runtime._discover_native_logical_operation(tmp_path / "normal.json") is None
+
+
+@pytest.mark.parametrize("occupant", ["symlink", "oversized", "malformed", "disappeared"])
+def test_discover_native_logical_operation_fails_closed_for_uncertain_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    occupant: str,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    binding_path = runtime.native_binding_path(output)
+    payload = {
+        "schema": runtime.NATIVE_BINDING_SCHEMA,
+        "attempt_id": "attempt-1",
+        "logical_operation_id": "operation-1",
+        "request_fingerprint": "a" * 64,
+        "native_session_id": "session",
+        "native_thread_id": "thread",
+    }
+    if occupant == "symlink":
+        target = tmp_path / "target.json"
+        target.write_text(json.dumps(payload), encoding="utf-8")
+        binding_path.symlink_to(target)
+    elif occupant == "oversized":
+        binding_path.write_bytes(b"x" * (runtime.NATIVE_RESULT_MAX_BYTES + 1))
+    elif occupant == "malformed":
+        binding_path.write_text("{not-json", encoding="utf-8")
+    else:
+        binding_path.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(runtime, "_read_bounded_regular_file", lambda *args, **kwargs: None)
+
+    with pytest.raises(runtime.NativeAppServerError) as exc_info:
+        runtime._discover_native_logical_operation(output)
+
+    assert exc_info.value.failure_kind == "NATIVE_RESULT_CONFLICT"
+
+
+def test_discover_native_logical_operation_rejects_special_file(
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO creation is unavailable on this platform")
+    output = tmp_path / "normal.json"
+    os.mkfifo(runtime.native_binding_path(output))
+
+    with pytest.raises(runtime.NativeAppServerError) as exc_info:
+        runtime._discover_native_logical_operation(output)
+
+    assert exc_info.value.failure_kind == "NATIVE_RESULT_CONFLICT"
 
 
 def test_native_resume_binds_discovered_operation_before_request_resolution(
@@ -719,7 +869,10 @@ def test_reconcile_native_artifacts_rejects_mismatched_retirement_identity(
         json.dumps(
             {
                 "logical_operation_id": "operation-1",
+                "request_fingerprint": fingerprint,
+                "attempt_id": "attempt-1",
                 "preflight": {
+                    "attempt_id": "attempt-1",
                     "retirement": {
                         "state": "retired",
                         "logical_operation_id": "operation-1",
@@ -734,18 +887,20 @@ def test_reconcile_native_artifacts_rejects_mismatched_retirement_identity(
         ),
         encoding="utf-8",
     )
+    original = output.read_bytes()
 
-    reconciled = runtime._reconcile_native_artifacts(
-        output=output,
-        invocation_id="invocation-1",
-        started_at="2026-10-18T10:00:03+00:00",
-        request_fingerprint_value=fingerprint,
-        logical_operation_id="operation-1",
-        resume=True,
-    )
+    with pytest.raises(runtime.NativeAppServerError) as exc_info:
+        runtime._reconcile_native_artifacts(
+            output=output,
+            invocation_id="invocation-1",
+            started_at="2026-10-18T10:00:03+00:00",
+            request_fingerprint_value=fingerprint,
+            logical_operation_id="operation-1",
+            resume=True,
+        )
 
-    assert reconciled is not None
-    assert reconciled["preflight"]["retirement"]["state"] == "unknown"
+    assert exc_info.value.failure_kind == "NATIVE_RESULT_CONFLICT"
+    assert output.read_bytes() == original
 
 
 def test_resolved_request_marks_unknown_identity_and_disables_reuse(
@@ -2950,13 +3105,55 @@ def test_submission_freshness_requires_a_new_native_completion_sequence() -> Non
 
 
 
-def test_submission_freshness_accepts_first_completion_after_null_native_baseline() -> None:
+@pytest.mark.parametrize("baseline", [None, True, -1, "4"])
+def test_submission_freshness_rejects_invalid_native_baseline(baseline: object) -> None:
     import scripts.secretary_live_runtime as runtime
 
-    anchor = {"completion_seq": None}
-    snapshot = {"completion_seq": 0}
+    anchor = {"completion_seq": baseline}
+    snapshot = {"completion_seq": 5}
 
-    assert runtime._submission_freshness_proven(anchor, snapshot) is True
+    assert runtime._submission_freshness_proven(anchor, snapshot) is False
+
+
+def test_observe_submitted_codex_does_not_treat_null_baseline_as_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "idle",
+            "completion_seq": 0,
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": runtime.NATIVE_RESULT_AUTHORITY,
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh answer",
+            },
+        },
+    )
+    monkeypatch.setattr(runtime, "_release_codex_agent", lambda *args, **kwargs: {"state": "removed"})
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": None,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        env={},
+    )
+
+    assert observation["freshness_proven"] is False
+    assert observation["observation_error"] == "submission freshness not proven"
 
 def _correlated_payload() -> dict[str, object]:
     return {
