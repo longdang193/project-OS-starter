@@ -37,8 +37,10 @@ REQUEST_FINGERPRINT_FIELDS = (
     "repository_identity",
     "git_revision",
     "execution_role",
+    "provider_identity",
     "model_identity",
     "runtime_grant_digest",
+    "workspace_change_digest",
 )
 
 
@@ -144,8 +146,6 @@ def _validate_binding(payload: object) -> dict[str, Any]:
     _digest(payload.get("request_fingerprint"), "request_fingerprint")
     if payload.get("pre_submit_boundary") is not None:
         _text(payload.get("pre_submit_boundary"), "pre_submit_boundary")
-    elif payload.get("pre_submit_cursor") is not None:
-        _text(payload.get("pre_submit_cursor"), "pre_submit_cursor")
     else:
         raise ValueError("native binding pre-submit boundary invalid")
     if payload.get("assignment_id") is not None:

@@ -63,6 +63,7 @@ _MAX_TOTAL_CONTENT_BYTES = NATIVE_RESULT_CONTENT_MAX_BYTES
 _MAX_QUEUED_EVENTS = 256
 _RETIREMENT_GRACE_SECONDS = 1.0
 _RETIREMENT_KILL_SECONDS = 1.0
+_WRITER_SENTINEL = None
 
 
 def _serialize_message(payload: Mapping[str, Any]) -> bytes:
@@ -131,6 +132,7 @@ class CodexAppServerClient:
         *,
         cwd: Path,
         codex_home: Path,
+        provider: str | None = None,
         environment: Mapping[str, str] | None = None,
         timeout_seconds: float = 120.0,
         attempt_deadline: float | None = None,
@@ -142,6 +144,7 @@ class CodexAppServerClient:
         self.executable = executable
         self.cwd = cwd
         self.codex_home = codex_home
+        self.provider = _required_text(provider, "provider") if provider is not None else None
         self.environment = dict(os.environ if environment is None else environment)
         self.environment["CODEX_HOME"] = str(codex_home.resolve())
         self.timeout_seconds = timeout_seconds
@@ -150,9 +153,10 @@ class CodexAppServerClient:
         self._clock = clock
         self._process: Any | None = None
         self._reader: threading.Thread | None = None
-        self._stderr_reader: threading.Thread | None = None
         self._writer: threading.Thread | None = None
-        self._writes: queue.Queue[tuple[bytes, queue.Queue[BaseException | None]]] = queue.Queue(maxsize=1)
+        self._writes: queue.Queue[
+            tuple[bytes | None, queue.Queue[BaseException | None] | None, float]
+        ] = queue.Queue(maxsize=1)
         self._state_lock = threading.Lock()
         self._responses: dict[int, queue.Queue[object]] = {}
         self._events: queue.Queue[object] = queue.Queue(maxsize=_MAX_QUEUED_EVENTS)
@@ -217,9 +221,22 @@ class CodexAppServerClient:
             self.close()
             raise
 
-    def start_thread(self, *, ephemeral: bool = True, sandbox: str = "read-only") -> NativeThread:
+    def start_thread(
+        self,
+        *,
+        ephemeral: bool = True,
+        sandbox: str = "read-only",
+        model: str | None = None,
+    ) -> NativeThread:
+        params: dict[str, Any] = {
+            "cwd": str(self.cwd.resolve()),
+            "ephemeral": ephemeral,
+            "sandbox": sandbox,
+        }
+        if model is not None:
+            params["model"] = _required_text(model, "model")
         result = self._request(
-            "thread/start", {"cwd": str(self.cwd.resolve()), "ephemeral": ephemeral, "sandbox": sandbox}
+            "thread/start", params
         )
         thread = result.get("thread")
         if not isinstance(thread, Mapping):
@@ -363,7 +380,14 @@ class CodexAppServerClient:
         method = "already_exited"
         state = "retired"
         error: str | None = None
+        writer_retirement = "not_started"
+        reader_retirement = "not_started"
         try:
+            if self._writer is not None:
+                try:
+                    self._writes.put_nowait((_WRITER_SENTINEL, None, self._clock()))
+                except queue.Full:
+                    pass
             if process.poll() is None:
                 method = "terminate"
                 process.terminate()
@@ -389,7 +413,24 @@ class CodexAppServerClient:
                 close = getattr(stream, "close", None)
                 if callable(close):
                     close()
-        self._retirement_evidence = {"state": state, "method": method}
+            for thread_name, thread in (("writer", self._writer), ("reader", self._reader)):
+                if thread is None:
+                    continue
+                thread.join(timeout=_RETIREMENT_KILL_SECONDS)
+                thread_state = "retired" if not thread.is_alive() else "unknown"
+                if thread_name == "writer":
+                    writer_retirement = thread_state
+                else:
+                    reader_retirement = thread_state
+                if thread_state == "unknown":
+                    state = "unknown"
+                    error = error or f"{thread_name} thread remained alive after retirement"
+        self._retirement_evidence = {
+            "state": state,
+            "method": method,
+            "writer": writer_retirement,
+            "reader": reader_retirement,
+        }
         if error is not None:
             self._retirement_evidence["error"] = error
         return self.retirement_evidence
@@ -432,10 +473,15 @@ class CodexAppServerClient:
     def _send(self, payload: Mapping[str, Any]) -> None:
         encoded = _serialize_message(payload)
         deadline = self._deadline()
+        if self._clock() >= deadline:
+            raise NativeAppServerError(
+                "Codex app-server transport write deadline exhausted.",
+                failure_kind="NATIVE_SUBMISSION_FAILED",
+            )
         acknowledgment: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
         try:
-            self._writes.put((encoded, acknowledgment), timeout=max(0.001, deadline - self._clock()))
-            error = acknowledgment.get(timeout=max(0.001, deadline - self._clock()))
+            self._writes.put((encoded, acknowledgment, deadline), timeout=max(0.0, deadline - self._clock()))
+            error = acknowledgment.get(timeout=max(0.0, deadline - self._clock()))
             if error is not None:
                 raise error
         except (OSError, ValueError, queue.Full, queue.Empty) as exc:
@@ -448,15 +494,27 @@ class CodexAppServerClient:
         if stdin is None:
             return
         while True:
-            encoded, acknowledgment = self._writes.get()
-            if encoded == b"":
+            encoded, acknowledgment, deadline = self._writes.get()
+            if encoded is _WRITER_SENTINEL:
+                return
+            if acknowledgment is None:
                 return
             error: BaseException | None = None
             try:
-                try:
-                    stdin.write(encoded)
-                except TypeError:
-                    stdin.write(encoded.decode("utf-8"))
+                remaining = memoryview(encoded)
+                while remaining:
+                    if self._clock() >= deadline:
+                        raise NativeAppServerError(
+                            "Codex app-server queued write expired.",
+                            failure_kind="NATIVE_SUBMISSION_FAILED",
+                        )
+                    written = stdin.write(remaining.tobytes())
+                    if not isinstance(written, int) or written <= 0 or written > len(remaining):
+                        raise NativeAppServerError(
+                            "Codex app-server stdin made no progress.",
+                            failure_kind="NATIVE_SUBMISSION_FAILED",
+                        )
+                    remaining = remaining[written:]
                 stdin.flush()
             except BaseException as exc:
                 error = exc
@@ -471,10 +529,7 @@ class CodexAppServerClient:
         stdout = self.process.stdout
         try:
             while True:
-                try:
-                    line = stdout.readline(_MAX_MESSAGE_BYTES + 1)
-                except TypeError:
-                    line = stdout.readline()
+                line = stdout.readline(_MAX_MESSAGE_BYTES + 1)
                 if not line:
                     self._put_event(_EOF)
                     with self._state_lock:
@@ -484,8 +539,6 @@ class CodexAppServerClient:
                             except queue.Full:
                                 pass
                     return
-                if isinstance(line, str):
-                    line = line.encode("utf-8")
                 if not isinstance(line, bytes) or len(line) > _MAX_MESSAGE_BYTES or not line.endswith(b"\n"):
                     self._set_fatal(
                         "Codex app-server frame exceeds the content limit or is unterminated.",
@@ -520,14 +573,6 @@ class CodexAppServerClient:
                 return
         except Exception as exc:
             self._set_fatal("Codex app-server stdout reader failed.", cause=exc)
-
-    @staticmethod
-    def _drain_stderr(stderr: Any) -> None:
-        try:
-            while stderr.readline():
-                pass
-        except Exception:
-            return
 
     def _set_fatal(
         self,
@@ -573,7 +618,7 @@ class CodexAppServerClient:
     def _wait_queue(self, values: queue.Queue[object], deadline: float) -> object:
         self._raise_fatal()
         try:
-            return values.get(timeout=max(0.001, deadline - self._clock()))
+            return values.get(timeout=max(0.0, deadline - self._clock()))
         except queue.Empty as exc:
             raise NativeAppServerError(
                 "Timed out waiting for Codex app-server response.", failure_kind="NATIVE_RESULT_TIMEOUT"
