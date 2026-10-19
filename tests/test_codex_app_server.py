@@ -350,3 +350,125 @@ def test_client_overflow_fails_closed_without_blocking(tmp_path: Path) -> None:
 
     assert client._fatal is not None
     assert client._fatal.failure_kind == "NATIVE_RESULT_LIMIT_EXCEEDED"
+
+
+@pytest.mark.parametrize(
+    ("frame_kind", "failure_kind"),
+    [
+        ("oversized", "NATIVE_RESULT_LIMIT_EXCEEDED"),
+        ("malformed", "NATIVE_PROTOCOL_INCOMPATIBLE"),
+        ("unterminated", "NATIVE_RESULT_LIMIT_EXCEEDED"),
+    ],
+)
+def test_reader_rejects_malformed_or_oversized_frames(
+    tmp_path: Path,
+    frame_kind: str,
+    failure_kind: str,
+) -> None:
+    process = FakeProcess()
+    line = {
+        "oversized": "{" + ("x" * (256 * 1024)) + "}\n",
+        "malformed": "not-json\n",
+        "unterminated": "unterminated",
+    }[frame_kind]
+
+    def handle(request: dict[str, Any]) -> None:
+        process.requests.append(request)
+        process.stdout.values.put(line)
+
+    process.handle = handle  # type: ignore[method-assign]
+    client = make_client(process, tmp_path)
+    with pytest.raises(NativeAppServerError) as error:
+        client.start()
+
+    assert error.value.failure_kind == failure_kind
+    client.close()
+
+
+def test_duplicate_item_replay_ignores_later_arrival_order(tmp_path: Path) -> None:
+    client = CodexAppServerClient(
+        "codex",
+        cwd=tmp_path,
+        codex_home=tmp_path / "codex-home",
+    )
+    turn = NativeTurn("thread-1", "turn-1")
+    for order in (2, 1):
+        client._events.put({
+            "method": "item/finalized",
+            "params": {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "item": {
+                    "id": "item-1",
+                    "type": "agentMessage",
+                    "finalized": True,
+                    "provenance": "final_answer",
+                    "order": order,
+                    "text": "answer",
+                },
+            },
+        })
+    client._events.put({
+        "method": "turn/completed",
+        "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": {"type": "completed"}},
+        },
+    })
+
+    evidence = client.wait_for_turn(turn)
+
+    assert evidence.semantic_content == "answer"
+    assert evidence.items[0]["order"] == 2
+
+
+def test_blocked_write_honors_attempt_deadline(tmp_path: Path) -> None:
+    process = FakeProcess()
+    blocked = threading.Event()
+
+    def write(value: str) -> int:
+        blocked.wait(1)
+        return len(value)
+
+    process.stdin.write = write  # type: ignore[method-assign]
+    client = CodexAppServerClient(
+        "codex",
+        cwd=tmp_path,
+        codex_home=tmp_path / "codex-home",
+        process_factory=lambda *args, **kwargs: process,
+        timeout_seconds=0.05,
+    )
+    with pytest.raises(NativeAppServerError, match="transport write") as error:
+        client.start()
+
+    assert error.value.failure_kind == "NATIVE_SUBMISSION_FAILED"
+    blocked.set()
+    client.close()
+
+
+def test_close_reports_retirement_unknown_after_grace_and_kill_timeout() -> None:
+    class StuckProcess(FakeProcess):
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            raise subprocess.TimeoutExpired("codex", timeout or 0)
+
+    import subprocess
+
+    client = CodexAppServerClient(
+        "codex",
+        cwd=Path("C:/worktree"),
+        codex_home=Path("C:/codex"),
+    )
+    process = StuckProcess()
+    client._process = process
+    client._started = True
+
+    evidence = client.close()
+
+    assert evidence["state"] == "unknown"
+    assert evidence["method"] == "kill"
