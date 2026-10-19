@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import sqlite3
 import tomllib
@@ -130,6 +131,13 @@ _SOURCE_SAFE_FIELDS = {
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
 _CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
+_WORKSPACE_STATUS_MAX_BYTES = 4 * 1024 * 1024
+_WORKSPACE_TRACKED_DIFF_MAX_BYTES = 16 * 1024 * 1024
+_WORKSPACE_UNTRACKED_ENTRY_MAX = 4096
+_WORKSPACE_UNTRACKED_FILE_MAX_BYTES = 8 * 1024 * 1024
+_WORKSPACE_UNTRACKED_TOTAL_MAX_BYTES = 64 * 1024 * 1024
+_WORKSPACE_GIT_COMMAND_TIMEOUT_SECONDS = 5.0
+_WORKSPACE_GIT_READ_CHUNK_BYTES = 64 * 1024
 _CODEX_OBSERVATION_POLL_SECONDS = 0.5
 _PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _HERDR_SERVER_START_TIMEOUT_SECONDS = 10.0
@@ -338,9 +346,19 @@ def _canonical_repository_identity(repository_root: Path) -> str | None:
 def _resolve_normal_request(
     request: SecretaryNormalRequest,
     environment: Mapping[str, str] | None = None,
+    *,
+    output: Path | None = None,
+    git_anchor: tuple[Path, str] | None = None,
 ) -> ResolvedSecretaryRequest:
-    repository_root, git_revision = _read_only_git_anchor(request.worktree)
-    workspace_dirty, workspace_change_digest, workspace_unknown_fields = _read_only_workspace_identity(repository_root)
+    repository_root, git_revision = git_anchor or _read_only_git_anchor(request.worktree)
+    if output is not None:
+        _reject_tracked_runtime_paths(repository_root, output)
+        workspace_dirty, workspace_change_digest, workspace_unknown_fields = _read_only_workspace_identity(
+            repository_root,
+            output,
+        )
+    else:
+        workspace_dirty, workspace_change_digest, workspace_unknown_fields = _read_only_workspace_identity(repository_root)
     canonical_repository_identity = _canonical_repository_identity(repository_root)
     repository_identity = canonical_repository_identity or request.repository_identity.strip()
     resolved_git_revision = git_revision or request.git_revision.strip()
@@ -1706,10 +1724,16 @@ def _configured_provider(codex_home: Path) -> str:
     if not config_path.is_file() or not auth_path.is_file():
         raise RuntimeError("configured Codex config.toml/auth.json unavailable")
     config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    active_provider = config.get("model_provider")
+    if active_provider != SECRETARY_PROVIDER:
+        raise RuntimeError(f"configured Codex active provider must be {SECRETARY_PROVIDER}")
     providers = config.get("model_providers")
-    if not isinstance(providers, Mapping) or SECRETARY_PROVIDER not in providers:
+    if (
+        not isinstance(providers, Mapping)
+        or not isinstance(providers.get(SECRETARY_PROVIDER), Mapping)
+    ):
         raise RuntimeError(f"configured Codex provider {SECRETARY_PROVIDER} unavailable")
-    return SECRETARY_PROVIDER
+    return active_provider
 
 
 def _configured_model(request: SecretaryLaunchRequest) -> str:
@@ -1799,51 +1823,209 @@ def _read_only_git_anchor(worktree: Path) -> tuple[Path, str]:
     return Path(lines[0]).resolve(), _required_text(lines[1], "git_revision")
 
 
-def _read_only_workspace_identity(repository_root: Path) -> tuple[bool, str | None, tuple[str, ...]]:
+def _bounded_git_output(
+    command: Sequence[str],
+    *,
+    max_bytes: int,
+    timeout_seconds: float,
+) -> tuple[bytes | None, str | None]:
     try:
-        status = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repository_root),
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-                "-z",
-            ],
-            capture_output=True,
-            check=False,
+        process = subprocess.Popen(
+            list(command),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
-    except (OSError, TypeError, ValueError, AttributeError):
+    except (OSError, TypeError, ValueError, AttributeError) as exc:
+        return None, type(exc).__name__
+
+    chunks: list[bytes] = []
+    total = 0
+    overflow = False
+    read_error: str | None = None
+
+    def read_output() -> None:
+        nonlocal total, overflow, read_error
+        stream = process.stdout
+        if stream is None:
+            read_error = "missing_stdout"
+            return
+        try:
+            while True:
+                chunk = stream.read(_WORKSPACE_GIT_READ_CHUNK_BYTES)
+                if not chunk:
+                    return
+                total += len(chunk)
+                if total > max_bytes:
+                    overflow = True
+                    return
+                chunks.append(chunk)
+        except (OSError, ValueError) as exc:
+            read_error = type(exc).__name__
+
+    reader = threading.Thread(target=read_output, name="workspace-identity-reader", daemon=True)
+    reader.start()
+    deadline = time.monotonic() + timeout_seconds
+    timed_out = False
+    while reader.is_alive():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        reader.join(min(remaining, 0.05))
+
+    if timed_out or overflow or reader.is_alive():
+        try:
+            process.kill()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=1)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            process.kill()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    reader.join(timeout=1)
+
+    if timed_out:
+        return None, "timeout"
+    if overflow:
+        return None, "output_limit"
+    if reader.is_alive() or read_error is not None:
+        return None, read_error or "reader_failure"
+    if process.returncode != 0:
+        return None, "command_failed"
+    return b"".join(chunks), None
+
+
+def _runtime_artifact_paths(output: Path) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+    stable_paths = (
+        output.resolve(),
+        native_binding_path(output).resolve(),
+        native_submission_path(output).resolve(),
+        native_result_path(output).resolve(),
+    )
+    lock_paths = tuple(f".{path.name}.release.lock" for path in stable_paths)
+    temporary_prefixes = tuple(f".{path.name}." for path in stable_paths)
+    return stable_paths, lock_paths + temporary_prefixes
+
+
+def _path_is_runtime_artifact(path: Path, output: Path) -> bool:
+    stable_paths, generated_names = _runtime_artifact_paths(output)
+    resolved = path.resolve()
+    if resolved in stable_paths:
+        return True
+    if resolved.parent != output.resolve().parent:
+        return False
+    return any(resolved.name == name or resolved.name.startswith(name) for name in generated_names)
+
+
+def _relative_runtime_paths(repository_root: Path, output: Path) -> list[str]:
+    stable_paths, _ = _runtime_artifact_paths(output)
+    root = repository_root.resolve()
+    relative_paths: list[str] = []
+    for path in stable_paths:
+        try:
+            relative_paths.append(path.relative_to(root).as_posix())
+        except ValueError:
+            continue
+        lock_path = path.with_name(f".{path.name}.release.lock")
+        try:
+            relative_paths.append(lock_path.relative_to(root).as_posix())
+        except ValueError:
+            continue
+    return relative_paths
+
+
+def _reject_tracked_runtime_paths(repository_root: Path, output: Path) -> None:
+    relative_paths = _relative_runtime_paths(repository_root, output)
+    if not relative_paths or not (repository_root / ".git").exists():
+        return
+    tracked, error = _bounded_git_output(
+        ["git", "-C", str(repository_root), "ls-files", "--cached", "-z", "--", *relative_paths],
+        max_bytes=64 * 1024,
+        timeout_seconds=_WORKSPACE_GIT_COMMAND_TIMEOUT_SECONDS,
+    )
+    if error is not None:
+        raise LaunchBlocked(f"runtime output path tracking check unavailable: {error}")
+    if tracked:
+        raise LaunchBlocked("Project OS runtime output or sidecar path is tracked by Git")
+
+
+def _read_only_workspace_identity(
+    repository_root: Path,
+    output: Path | None = None,
+) -> tuple[bool, str | None, tuple[str, ...]]:
+    status_output, status_error = _bounded_git_output(
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+        ],
+        max_bytes=_WORKSPACE_STATUS_MAX_BYTES,
+        timeout_seconds=_WORKSPACE_GIT_COMMAND_TIMEOUT_SECONDS,
+    )
+    if status_error is not None or status_output is None:
         return False, None, ("workspace_identity",)
-    if status.returncode != 0:
-        return False, None, ("workspace_identity",)
-    raw_status = status.stdout if isinstance(status.stdout, bytes) else str(status.stdout).encode("utf-8")
-    if not raw_status:
+    if not status_output:
         return False, None, ()
-    try:
-        diff = subprocess.run(
-            ["git", "-C", str(repository_root), "diff", "--binary", "HEAD", "--"],
-            capture_output=True,
-            check=False,
-        )
-    except (OSError, TypeError, ValueError, AttributeError):
+
+    diff_output, diff_error = _bounded_git_output(
+        ["git", "-C", str(repository_root), "diff", "--binary", "HEAD", "--"],
+        max_bytes=_WORKSPACE_TRACKED_DIFF_MAX_BYTES,
+        timeout_seconds=_WORKSPACE_GIT_COMMAND_TIMEOUT_SECONDS,
+    )
+    if diff_error is not None or diff_output is None:
         return True, None, ("workspace_identity",)
-    if diff.returncode != 0:
-        return True, None, ("workspace_identity",)
-    digest = hashlib.sha256()
-    digest.update(raw_status)
-    digest.update(b"\0")
-    digest.update(diff.stdout if isinstance(diff.stdout, bytes) else str(diff.stdout).encode("utf-8"))
-    for entry in raw_status.split(b"\0"):
+
+    identity_status_entries: list[bytes] = []
+    untracked_contents: list[tuple[str, bytes]] = []
+    untracked_entries = 0
+    untracked_bytes = 0
+    for entry in status_output.split(b"\0"):
+        if not entry:
+            continue
         if not entry.startswith(b"?? "):
+            identity_status_entries.append(entry)
             continue
         relative = entry[3:].decode("utf-8", errors="surrogateescape")
         path = repository_root / relative
+        if output is not None:
+            try:
+                if _path_is_runtime_artifact(path, output):
+                    continue
+            except (OSError, ValueError):
+                return True, None, ("workspace_identity",)
+        untracked_entries += 1
+        if untracked_entries > _WORKSPACE_UNTRACKED_ENTRY_MAX:
+            return True, None, ("workspace_identity",)
         try:
+            size = path.stat().st_size
+            if size > _WORKSPACE_UNTRACKED_FILE_MAX_BYTES:
+                return True, None, ("workspace_identity",)
+            untracked_bytes += size
+            if untracked_bytes > _WORKSPACE_UNTRACKED_TOTAL_MAX_BYTES:
+                return True, None, ("workspace_identity",)
             content = path.read_bytes()
         except (OSError, ValueError):
             return True, None, ("workspace_identity",)
+        identity_status_entries.append(entry)
+        untracked_contents.append((relative, content))
+    if not identity_status_entries and not diff_output:
+        return False, None, ()
+    digest = hashlib.sha256()
+    digest.update(b"\0".join(identity_status_entries) + b"\0")
+    digest.update(b"\0")
+    digest.update(diff_output)
+    for relative, content in untracked_contents:
         digest.update(relative.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
         digest.update(content)
@@ -2622,22 +2804,25 @@ def _bind_native_resume_request(request: SecretaryNormalRequest, output: Path) -
 def _bind_native_retirement_identity(
     retirement: Mapping[str, Any] | None,
     *,
-    logical_operation_id: str,
-    request_fingerprint_value: str,
-    attempt_id: str,
-    native_session_id: str,
-    native_thread_id: str,
+    logical_operation_id: str | None,
+    request_fingerprint_value: str | None,
+    attempt_id: str | None,
+    native_session_id: str | None,
+    native_thread_id: str | None,
     native_turn_id: str | None,
 ) -> dict[str, Any]:
-    return {
-        **(dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}),
+    bound = dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}
+    for key, value in {
         "logical_operation_id": logical_operation_id,
         "request_fingerprint": request_fingerprint_value,
         "attempt_id": attempt_id,
         "native_session_id": native_session_id,
         "native_thread_id": native_thread_id,
         "native_turn_id": native_turn_id,
-    }
+    }.items():
+        if value is not None:
+            bound[key] = value
+    return bound
 
 
 def _retirement_identity_matches(
@@ -2674,22 +2859,31 @@ def _reconcile_native_artifacts(
     resume: bool = False,
 ) -> dict[str, Any] | None:
     artifact_paths = (
+        output,
         native_result_path(output),
         native_binding_path(output),
         native_submission_path(output),
     )
+    lock_paths = tuple(path.with_name(f".{path.name}.release.lock") for path in artifact_paths)
     if not resume:
+        if not any(path.is_file() for path in (*artifact_paths, *lock_paths)):
+            namespace_state = "empty_available"
+            return None
+        namespace_state = "foreign_or_uncertain"
         if native_binding_path(output).is_file() or native_submission_path(output).is_file():
             raise NativeAppServerError(
                 "Existing native submission evidence requires explicit resume and will not be retried automatically.",
                 failure_kind="NATIVE_SUBMISSION_FAILED",
             )
-        if native_result_path(output).is_file():
+        if native_result_path(output).is_file() or output.is_file():
             raise NativeAppServerError(
-                "Existing native evidence requires explicit resume.",
+                f"Existing output namespace is {namespace_state} and requires explicit resume.",
                 failure_kind="NATIVE_RESULT_CONFLICT",
             )
-        return None
+        raise NativeAppServerError(
+            f"Existing output namespace is {namespace_state} and cannot be overwritten.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
+        )
     if not logical_operation_id:
         raise NativeAppServerError(
             "Explicit resume requires a logical operation identity.",
@@ -2711,6 +2905,7 @@ def _reconcile_native_artifacts(
         return None
     result_path = native_result_path(output)
     if result_path.is_file():
+        namespace_state = "owned_existing_operation"
         try:
             raw = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -2873,17 +3068,26 @@ def _run_normal_via_native_app_server(
     output: Path,
     environment: Mapping[str, str],
     invocation_id: str,
+    git_anchor: tuple[Path, str] | None = None,
 ) -> dict[str, Any]:
     started = datetime.now(timezone.utc).isoformat()
     payload: Mapping[str, Any] | None = None
     observation: Mapping[str, Any] = {}
     preflight: dict[str, Any] = {"transport": "codex-app-server"}
     client: CodexAppServerClient | None = None
-    write_output = True
+    owns_output = False
+    resolved: ResolvedSecretaryRequest | None = None
+    attempt_id: str | None = None
+    thread: Any | None = None
+    turn: Any | None = None
+    result: dict[str, Any] = {}
     try:
         attempt_deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
         request = _bind_native_resume_request(request, output)
-        resolved = _resolve_normal_request(request, environment)
+        resolve_kwargs: dict[str, Any] = {"output": output}
+        if git_anchor is not None:
+            resolve_kwargs["git_anchor"] = git_anchor
+        resolved = _resolve_normal_request(request, environment, **resolve_kwargs)
         request = resolved.request
         worktree = resolved.request.worktree
         request_fingerprint_value = resolved.request_fingerprint
@@ -2929,15 +3133,15 @@ def _run_normal_via_native_app_server(
         submission_path = native_submission_path(output)
         if binding_path.exists() or submission_path.exists() or native_result_path(output).exists():
             raise NativeAppServerError("Codex app-server native evidence already exists", failure_kind="NATIVE_RESULT_CONFLICT")
-        with CodexAppServerClient(
+        client = CodexAppServerClient(
             codex_executable,
             cwd=worktree,
             codex_home=request.codex_home,
-            provider=resolved.provider_identity,
             environment=environment,
             timeout_seconds=_CODEX_OBSERVATION_TIMEOUT_SECONDS,
             attempt_deadline=attempt_deadline,
-        ) as client:
+        )
+        with client:
             thread = client.start_thread(model=resolved.model_identity)
             binding = {
                 "schema": NATIVE_BINDING_SCHEMA,
@@ -2959,6 +3163,7 @@ def _run_normal_via_native_app_server(
             }
             _require_attempt_budget(attempt_deadline)
             publish_native_binding(binding_path, binding)
+            owns_output = True
             _require_attempt_budget(attempt_deadline)
             turn = client.start_turn(thread, request.task)
             submission = {
@@ -3034,17 +3239,6 @@ def _run_normal_via_native_app_server(
             )
             result["logical_operation_id"] = resolved.logical_operation_id
             result["request_fingerprint"] = request_fingerprint_value
-        retirement = _bind_native_retirement_identity(
-            getattr(client, "retirement_evidence", {"state": "retired", "method": "unreported"}),
-            logical_operation_id=resolved.logical_operation_id,
-            request_fingerprint_value=request_fingerprint_value,
-            attempt_id=attempt_id,
-            native_session_id=thread.session_id,
-            native_thread_id=thread.thread_id,
-            native_turn_id=turn.turn_id if "turn" in locals() else None,
-        )
-        preflight["retirement"] = dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}
-        result = _apply_native_retirement_evidence(result, retirement)
     except Exception as exc:
         result = _normalize_invocation_outcome(
             invocation_id=invocation_id,
@@ -3062,14 +3256,26 @@ def _run_normal_via_native_app_server(
             result["failure_kind"] = "NATIVE_RESULT_CONFLICT"
         elif isinstance(exc, (OSError, ValueError)):
             result["failure_kind"] = "NATIVE_RESULT_PUBLICATION_FAILED"
-        if result.get("failure_kind") == "NATIVE_RESULT_CONFLICT":
-            write_output = False
         preflight["error"] = str(exc)
-    result["logical_operation_id"] = resolved.logical_operation_id if "resolved" in locals() else request.logical_operation_id
+    finally:
+        if client is not None:
+            retirement = _bind_native_retirement_identity(
+                getattr(client, "retirement_evidence", {"state": "unknown"}),
+                logical_operation_id=resolved.logical_operation_id if resolved is not None else None,
+                request_fingerprint_value=request_fingerprint_value if "request_fingerprint_value" in locals() else None,
+                attempt_id=attempt_id,
+                native_session_id=getattr(thread, "session_id", None),
+                native_thread_id=getattr(thread, "thread_id", None),
+                native_turn_id=getattr(turn, "turn_id", None),
+            )
+            preflight["retirement"] = retirement
+            if result:
+                result = _apply_native_retirement_evidence(result, retirement)
+    result["logical_operation_id"] = resolved.logical_operation_id if resolved is not None else request.logical_operation_id
     result["request_fingerprint"] = request_fingerprint_value if "request_fingerprint_value" in locals() else None
     preflight["logical_operation_id"] = result["logical_operation_id"]
     result["preflight"] = preflight
-    if write_output:
+    if owns_output:
         _atomic_write_json(output, result)
     return result
 
@@ -3077,12 +3283,14 @@ def _run_normal_via_native_app_server(
 def run_normal(request: SecretaryNormalRequest, *, output: Path) -> dict[str, Any]:
     environment = dict(os.environ)
     invocation_id = uuid.uuid4().hex
-    worktree, _ = _read_only_git_anchor(request.worktree)
+    git_anchor = _read_only_git_anchor(request.worktree)
+    worktree, _ = git_anchor
     return _run_normal_via_native_app_server(
         replace(request, worktree=worktree),
         output=output,
         environment=environment,
         invocation_id=invocation_id,
+        git_anchor=git_anchor,
     )
 
 

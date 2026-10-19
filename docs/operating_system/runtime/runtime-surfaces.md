@@ -159,7 +159,10 @@ resources remain caller-owned through `runtime.json`.
   discovers a mutually consistent v3 logical operation before allocating a new
   operation identity; conflicting or partial evidence fails closed. LightRSI
   remains an independent history/context/replay/audit system, while v1/v2
-  result and binding decoders retain read-only historical compatibility.
+  result and binding decoders retain read-only historical compatibility. Current
+  automatic recovery requires the current request-fingerprint contract,
+  including provider/model and workspace identity fields; pre-#107 v3 artifacts
+  remain historical evidence and are not silently reused.
   Herdr no longer owns a duplicate native app-server or session-handoff path.
 - Preflight, target-resolution failures, and dry-runs retain `dispatch_id` correlation but never fabricate an execution `attempt_id`; only a real launcher commitment to execution allocates that attempt identity.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.
