@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .secretary_results import NATIVE_RESULT_CONTENT_MAX_BYTES
+
 
 class NativeAppServerError(RuntimeError):
     """A fail-closed app-server protocol or lifecycle error."""
@@ -57,8 +59,20 @@ _RELEVANT_EVENT_METHODS = frozenset({"item/completed", "item/finalized", "turn/c
 _MAX_MESSAGE_BYTES = 256 * 1024
 _MAX_ITEMS = 256
 _MAX_ITEM_TEXT_BYTES = 64 * 1024
-_MAX_TOTAL_CONTENT_BYTES = 256 * 1024
+_MAX_TOTAL_CONTENT_BYTES = NATIVE_RESULT_CONTENT_MAX_BYTES
 _MAX_QUEUED_EVENTS = 256
+_RETIREMENT_GRACE_SECONDS = 1.0
+_RETIREMENT_KILL_SECONDS = 1.0
+
+
+def _serialize_message(payload: Mapping[str, Any]) -> bytes:
+    encoded = (json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(encoded) > _MAX_MESSAGE_BYTES:
+        raise NativeAppServerError(
+            "Codex app-server outgoing message exceeds the content limit.",
+            failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
+        )
+    return encoded
 
 
 def _required_text(value: object, label: str) -> str:
@@ -137,7 +151,8 @@ class CodexAppServerClient:
         self._process: Any | None = None
         self._reader: threading.Thread | None = None
         self._stderr_reader: threading.Thread | None = None
-        self._write_lock = threading.Lock()
+        self._writer: threading.Thread | None = None
+        self._writes: queue.Queue[tuple[bytes, queue.Queue[BaseException | None]]] = queue.Queue(maxsize=1)
         self._state_lock = threading.Lock()
         self._responses: dict[int, queue.Queue[object]] = {}
         self._events: queue.Queue[object] = queue.Queue(maxsize=_MAX_QUEUED_EVENTS)
@@ -175,8 +190,8 @@ class CodexAppServerClient:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                text=True,
-                bufsize=1,
+                text=False,
+                bufsize=0,
             )
         except OSError as exc:
             raise NativeAppServerError(
@@ -187,6 +202,12 @@ class CodexAppServerClient:
             raise NativeAppServerError(
                 "Codex app-server stdout is unavailable.", failure_kind="NATIVE_INITIALIZATION_FAILED"
             )
+        if getattr(self.process, "stdin", None) is None:
+            raise NativeAppServerError(
+                "Codex app-server stdin is unavailable.", failure_kind="NATIVE_INITIALIZATION_FAILED"
+            )
+        self._writer = threading.Thread(target=self._write_loop, name="codex-app-server-writer", daemon=True)
+        self._writer.start()
         self._reader = threading.Thread(target=self._read_stdout, name="codex-app-server-reader", daemon=True)
         self._reader.start()
         try:
@@ -289,7 +310,7 @@ class CodexAppServerClient:
                     "Codex app-server assistant item exceeds the content limit.",
                     failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
                 )
-            record = {"id": item_id, "order": order, "text": text}
+            record = {"id": item_id, "text": text}
             existing = items.get(item_id)
             if existing is not None:
                 if existing[1] != record:
@@ -314,7 +335,10 @@ class CodexAppServerClient:
             raise NativeAppServerError(
                 "Timed out waiting for Codex app-server turn completion.", failure_kind="NATIVE_RESULT_TIMEOUT"
             )
-        ordered = tuple(value[1] for value in sorted(items.values(), key=lambda entry: (entry[0], entry[1]["id"])))
+        ordered = tuple(
+            {**value[1], "order": value[0]}
+            for value in sorted(items.values(), key=lambda entry: (entry[0], entry[1]["id"]))
+        )
         if not ordered:
             raise NativeAppServerError(
                 "Codex app-server completed turn has no finalized assistant content.",
@@ -344,11 +368,15 @@ class CodexAppServerClient:
                 method = "terminate"
                 process.terminate()
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=_RETIREMENT_GRACE_SECONDS)
                 except (OSError, subprocess.TimeoutExpired):
                     method = "kill"
                     process.kill()
-                    process.wait(timeout=5)
+                    try:
+                        process.wait(timeout=_RETIREMENT_KILL_SECONDS)
+                    except (OSError, subprocess.TimeoutExpired):
+                        state = "unknown"
+                        error = "process remained alive after kill"
             if process.poll() is None:
                 state = "unknown"
                 error = "process remained alive after retirement"
@@ -402,25 +430,51 @@ class CodexAppServerClient:
         self._send({"jsonrpc": "2.0", "method": method, "params": dict(params)})
 
     def _send(self, payload: Mapping[str, Any]) -> None:
-        stdin = getattr(self.process, "stdin", None)
-        if stdin is None:
-            raise NativeAppServerError(
-                "Codex app-server stdin is unavailable.", failure_kind="NATIVE_INITIALIZATION_FAILED"
-            )
+        encoded = _serialize_message(payload)
+        deadline = self._deadline()
+        acknowledgment: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
         try:
-            with self._write_lock:
-                stdin.write(json.dumps(dict(payload), separators=(",", ":")) + "\n")
-                stdin.flush()
-        except (OSError, ValueError) as exc:
+            self._writes.put((encoded, acknowledgment), timeout=max(0.001, deadline - self._clock()))
+            error = acknowledgment.get(timeout=max(0.001, deadline - self._clock()))
+            if error is not None:
+                raise error
+        except (OSError, ValueError, queue.Full, queue.Empty) as exc:
             raise NativeAppServerError(
                 "Codex app-server transport write failed.", failure_kind="NATIVE_SUBMISSION_FAILED"
             ) from exc
+
+    def _write_loop(self) -> None:
+        stdin = getattr(self.process, "stdin", None)
+        if stdin is None:
+            return
+        while True:
+            encoded, acknowledgment = self._writes.get()
+            if encoded == b"":
+                return
+            error: BaseException | None = None
+            try:
+                try:
+                    stdin.write(encoded)
+                except TypeError:
+                    stdin.write(encoded.decode("utf-8"))
+                stdin.flush()
+            except BaseException as exc:
+                error = exc
+            try:
+                acknowledgment.put_nowait(error)
+            except queue.Full:
+                pass
+            if error is not None:
+                return
 
     def _read_stdout(self) -> None:
         stdout = self.process.stdout
         try:
             while True:
-                line = stdout.readline()
+                try:
+                    line = stdout.readline(_MAX_MESSAGE_BYTES + 1)
+                except TypeError:
+                    line = stdout.readline()
                 if not line:
                     self._put_event(_EOF)
                     with self._state_lock:
@@ -430,14 +484,16 @@ class CodexAppServerClient:
                             except queue.Full:
                                 pass
                     return
-                if len(line.encode("utf-8")) > _MAX_MESSAGE_BYTES:
+                if isinstance(line, str):
+                    line = line.encode("utf-8")
+                if not isinstance(line, bytes) or len(line) > _MAX_MESSAGE_BYTES or not line.endswith(b"\n"):
                     self._set_fatal(
-                        "Codex app-server message exceeds the content limit.",
+                        "Codex app-server frame exceeds the content limit or is unterminated.",
                         failure_kind="NATIVE_RESULT_LIMIT_EXCEEDED",
                     )
                     return
                 try:
-                    message = json.loads(line)
+                    message = json.loads(line[:-1].decode("utf-8"))
                 except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
                     self._set_fatal("Codex app-server emitted malformed JSON.")
                     return

@@ -130,15 +130,16 @@ resources remain caller-owned through `runtime.json`.
   `BLOCKED_CAPABILITY`, not provider fallback or synthetic live evidence.
 - Ordinary native Codex semantic completion uses the owned app-server client by
   default and is published by `scripts/project_os_runtime/secretary_results.py`
-  as the attempt-bound `secretary-native-result.v2` contract. The client binds
-  one ephemeral thread, persists binding before `turn/start`, records the
+  as the attempt-bound `secretary-native-result.v3` contract paired with
+  `secretary-native-binding.v3` and `secretary-native-submission.v3`. The client
+  binds one ephemeral thread, persists binding before `turn/start`, records the
   accepted opaque turn ID, and accepts only exact-turn, assistant-owned,
-  finalized final-answer content. The request fingerprint is checked across
-  binding, submission, and result artifacts before recovery or read-back.
-  `PROJECT_OS_SECRETARY_LEGACY_MODE=1` explicitly selects the compatibility
-  LightRSI/Herdr Secretary path; its historical `v1` artifacts are read-only
-  evidence for the current path. The Herdr transport session is diagnostic
-  metadata only and never substitutes for the worker-native session.
+  finalized final-answer content. Logical operation identity, request
+  fingerprint, attempt, session, thread, and turn identity are checked across
+  all three artifacts before recovery or read-back. Historical `v1` and `v2`
+  artifacts remain read-only compatibility evidence; current writers emit only
+  `v3`. The Herdr transport session is diagnostic metadata only and never
+  substitutes for the worker-native session.
   Herdr `agent get`/`agent read`, pane text, completion counters,
   and legacy `native_completed_turn` values remain diagnostic-only and cannot
   publish normal semantic content. Atomic replay is idempotent, conflicting
@@ -153,7 +154,7 @@ resources remain caller-owned through `runtime.json`.
   `NATIVE_RETIREMENT_UNVERIFIED`, quarantined, and recovery-required. Legacy
   LightRSI observation remains available only under the explicit compatibility
   mode above.
-- The native Secretary app-server path is selected with `PROJECT_OS_CODEX_NATIVE_APP_SERVER=1`. One owned client performs `initialize` -> `initialized` -> `thread/start`, requires an ephemeral idle thread with zero prior turns, atomically persists `secretary-native-binding.v1`, and only then performs one `turn/start`; `secretary-native-submission.v1` records the opaque turn acknowledgement before completion collection. Only finalized assistant content for that exact thread/turn and terminal `status=completed` can publish `secretary-native-result.v1`, which is read back before the owned process is retired. Native success does not require LightRSI; LightRSI and the older Herdr handoff path remain compatibility, diagnostic, audit, or recovery surfaces only.
+- The native Secretary app-server path is the only normal semantic path. One owned client performs `initialize` -> `initialized` -> `thread/start`, requires an ephemeral idle thread with zero prior turns, atomically persists `secretary-native-binding.v3`, and only then performs one `turn/start`; `secretary-native-submission.v3` records the opaque turn acknowledgement before completion collection. Only finalized assistant content for that exact thread/turn and terminal `status=completed` can publish `secretary-native-result.v3`, which is read back before the owned process is retired. LightRSI remains available for historical diagnostic/probe observation only; Herdr no longer owns a duplicate native app-server or session-handoff path.
 - Preflight, target-resolution failures, and dry-runs retain `dispatch_id` correlation but never fabricate an execution `attempt_id`; only a real launcher commitment to execution allocates that attempt identity.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.
 - Bound `TaskResult` records carry assignment/attempt identity, progress, checkpoint, remaining work, and verification references through atomic publication; valid task results report evidence only and never grant acceptance or continuation.

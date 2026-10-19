@@ -12,13 +12,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import queue
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import tomllib
 import uuid
@@ -76,12 +74,6 @@ except ModuleNotFoundError:
         resolve_attempt_budget,
         terminal_settlement_proven,
     )
-try:
-    from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError, NativeTurn
-except ModuleNotFoundError:
-    from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError, NativeTurn
-
-
 class LaunchBlocked(RuntimeError):
     """Raised when a required runtime binding is unavailable or mismatched."""
 
@@ -141,11 +133,6 @@ _CODEX_PROMPT_REJECTION_CODES = {
     "invalid_prompt",
 }
 _CODEX_ACTIVE_AGENT_STATES = {"idle", "working"}
-_CODEX_NATIVE_HANDOFF_SCHEMA = "codex-native-session-handoff.v1"
-_CODEX_NATIVE_HANDOFF_ACK_SCHEMA = "codex-native-session-handoff-ack.v1"
-_CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS = 30.0
-_CODEX_APP_SERVER_TIMEOUT_SECONDS = 30.0
-_CODEX_APP_SERVER_BINDING_SCHEMA = "secretary-native-binding.v1"
 _ACTIVE_METRICS: ContextVar[dict[str, Any] | None] = ContextVar(
     "herdr_launcher_metrics",
     default=None,
@@ -546,7 +533,7 @@ def _herdr_pane(
     conflicting: list[str] = []
     try:
         processes = _process_records(foreground, require_pid=False)
-    except (LaunchBlocked, NativeAppServerError) as exc:
+    except LaunchBlocked as exc:
         raise TargetCandidateRejected(str(exc)) from exc
     for process in processes:
         process_name = str(process.get("name", "unknown"))
@@ -1276,353 +1263,6 @@ def _codex_assignment_command(
     ]
 
 
-def _codex_rollout_paths(codex_home: Path) -> set[Path]:
-    sessions_root = codex_home / "sessions"
-    if not sessions_root.is_dir():
-        return set()
-    return {
-        path.resolve()
-        for path in sessions_root.rglob("rollout-*.jsonl")
-        if path.is_file()
-    }
-
-
-def _native_cursor(native_session_id: str, turn_seq: int = 0) -> str:
-    payload = {
-        "schema": "lightrsi.codex.cursor/v1",
-        "sessionId": native_session_id,
-        "turnSeq": turn_seq,
-    }
-    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return base64.urlsafe_b64encode(encoded).decode("ascii").rstrip("=")
-
-
-def _discover_codex_native_handoff(
-    codex_home: Path,
-    *,
-    before_rollout_paths: set[Path],
-    expected_cwd: Path,
-) -> dict[str, Any]:
-    new_rollouts = sorted(_codex_rollout_paths(codex_home) - {path.resolve() for path in before_rollout_paths})
-    if len(new_rollouts) != 1:
-        raise LaunchBlocked(
-            f"Codex native session handoff requires exactly one new rollout; found {len(new_rollouts)}."
-        )
-    rollout_path = new_rollouts[0]
-    try:
-        first_line = rollout_path.read_text(encoding="utf-8").splitlines()[0]
-        payload = json.loads(first_line)
-    except (OSError, IndexError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise LaunchBlocked("Codex native session handoff rollout is unreadable.") from exc
-    if not isinstance(payload, dict) or payload.get("type") != "session_meta":
-        raise LaunchBlocked("Codex native session handoff rollout metadata is invalid.")
-    session_meta = payload.get("payload")
-    native_session_id = (
-        session_meta.get("session_id") or session_meta.get("id")
-        if isinstance(session_meta, dict)
-        else None
-    )
-    native_cwd = session_meta.get("cwd") if isinstance(session_meta, dict) else None
-    if not isinstance(native_session_id, str) or not native_session_id.strip():
-        raise LaunchBlocked("Codex native session handoff is missing session_id.")
-    if not isinstance(native_cwd, str) or Path(native_cwd).resolve() != expected_cwd.resolve():
-        raise LaunchBlocked("Codex native session handoff cwd does not match the launched lane.")
-    return {
-        "schema": _CODEX_NATIVE_HANDOFF_SCHEMA,
-        "native_session_id": native_session_id,
-        "pre_submit_cursor": _native_cursor(native_session_id),
-        "turn_seq": 0,
-        "rollout_path": str(rollout_path),
-    }
-
-
-def _write_json_artifact(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("x", encoding="utf-8") as handle:
-            json.dump(dict(payload), handle, sort_keys=True, separators=(",", ":"))
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _app_server_request(
-    process: subprocess.Popen[str],
-    *,
-    request_id: int,
-    method: str,
-    params: Mapping[str, Any],
-) -> Mapping[str, Any]:
-    stdin = process.stdin
-    stdout = process.stdout
-    if stdin is None or stdout is None:
-        raise LaunchBlocked("Codex app-server stdio is unavailable.")
-    request = {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "method": method,
-        "params": dict(params),
-    }
-
-    def read_line() -> str:
-        result: queue.Queue[str] = queue.Queue(maxsize=1)
-
-        def read() -> None:
-            try:
-                result.put(stdout.readline())
-            except Exception:
-                result.put("")
-
-        threading.Thread(target=read, daemon=True).start()
-        try:
-            return result.get(timeout=_CODEX_APP_SERVER_TIMEOUT_SECONDS)
-        except queue.Empty as exc:
-            raise LaunchBlocked(f"Timed out waiting for Codex app-server {method}.") from exc
-
-    try:
-        stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
-        stdin.flush()
-        while True:
-            line = read_line()
-            if not line:
-                break
-            try:
-                payload = json.loads(line)
-            except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
-                continue
-            if not isinstance(payload, Mapping) or payload.get("id") != request_id:
-                continue
-            error = payload.get("error")
-            if isinstance(error, Mapping):
-                code = error.get("code")
-                message = error.get("message")
-                raise LaunchBlocked(
-                    f"Codex app-server {method} failed: {code or 'unknown'} {message or ''}".strip()
-                )
-            result = payload.get("result")
-            if not isinstance(result, Mapping):
-                raise LaunchBlocked(f"Codex app-server {method} returned no result.")
-            return result
-    except (OSError, ValueError) as exc:
-        raise LaunchBlocked(f"Codex app-server {method} transport failed.") from exc
-    raise LaunchBlocked(f"Codex app-server {method} closed without a response.")
-
-
-def _launch_codex_native_app_server(
-    *,
-    codex_executable: str,
-    codex_home: Path,
-    cwd: Path,
-    task: str,
-    attempt_id: str,
-    binding_path: Path,
-    lightrsi_cli_path: Path,
-    env: Mapping[str, str] | None = None,
-) -> dict[str, Any]:
-    if not isinstance(attempt_id, str) or not attempt_id.strip():
-        raise LaunchBlocked("Codex app-server native binding attempt is unavailable.")
-    environment = dict(os.environ if env is None else env)
-    environment["CODEX_HOME"] = str(codex_home.resolve())
-    try:
-        client = CodexAppServerClient(
-            codex_executable,
-            cwd=cwd,
-            codex_home=codex_home,
-            environment=environment,
-        )
-        client.start()
-        thread = client.start_thread()
-    except NativeAppServerError as exc:
-        raise LaunchBlocked(str(exc)) from exc
-    native_thread_id = thread.thread_id
-    native_session_id = thread.session_id
-
-    binding = {
-        "schema": _CODEX_APP_SERVER_BINDING_SCHEMA,
-        "attempt_id": attempt_id,
-        "native_session_id": native_session_id,
-        "native_thread_id": native_thread_id,
-        "pre_submit_boundary": thread.pre_submit_boundary,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "fresh_session": True,
-        "transport": {
-            "session": "codex-app-server",
-            "pane": "native",
-            "agent_name": "normal-secretary",
-        },
-    }
-    try:
-        _write_json_artifact(binding_path, binding)
-    except (OSError, TypeError, ValueError) as exc:
-        client.close()
-        raise LaunchBlocked("Codex app-server native binding could not be persisted.") from exc
-    try:
-        turn = client.start_turn(thread, task)
-    except NativeAppServerError as exc:
-        client.close()
-        raise LaunchBlocked(str(exc)) from exc
-    return {
-        "process": client.process,
-        "client": client,
-        "native_session_id": native_session_id,
-        "native_thread_id": native_thread_id,
-        "native_turn_id": turn.turn_id,
-        "native_turn": turn,
-        "binding": binding,
-    }
-
-
-def _await_codex_native_turn(process: subprocess.Popen[str], *, turn_id: str) -> None:
-    stdout = process.stdout
-    if stdout is None:
-        raise LaunchBlocked("Codex app-server turn output is unavailable.")
-    deadline = time.monotonic() + _DEEPAGENTS_RUN_TIMEOUT
-    while time.monotonic() < deadline:
-        result: queue.Queue[str] = queue.Queue(maxsize=1)
-
-        def read() -> None:
-            try:
-                result.put(stdout.readline())
-            except Exception:
-                result.put("")
-
-        threading.Thread(target=read, daemon=True).start()
-        try:
-            line = result.get(timeout=min(_CODEX_APP_SERVER_TIMEOUT_SECONDS, max(0.01, deadline - time.monotonic())))
-        except queue.Empty as exc:
-            raise LaunchBlocked("Timed out waiting for Codex app-server turn completion.") from exc
-        if not line:
-            raise LaunchBlocked("Codex app-server closed before turn completion.")
-        try:
-            payload = json.loads(line)
-        except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        if not isinstance(payload, Mapping):
-            continue
-        if payload.get("method") != "turn/completed":
-            continue
-        params = payload.get("params")
-        turn = params.get("turn") if isinstance(params, Mapping) else None
-        observed_turn_id = turn.get("id") if isinstance(turn, Mapping) else None
-        if observed_turn_id != turn_id:
-            continue
-        status = turn.get("status") if isinstance(turn, Mapping) else None
-        status_type = status.get("type") if isinstance(status, Mapping) else None
-        if status_type not in {"completed", "idle"}:
-            raise LaunchBlocked("Codex app-server turn did not complete successfully.")
-        return
-    raise LaunchBlocked("Timed out waiting for Codex app-server turn completion.")
-
-
-def _run_native_app_server(args: argparse.Namespace) -> int:
-    attempt_id = uuid.uuid4().hex
-    agent_name = args.name or f"{args.profile}-main"
-    codex_executable = shutil.which("codex")
-    if not codex_executable:
-        print("BLOCKED: Codex app-server executable unavailable.", file=sys.stderr)
-        return 2
-    if not isinstance(args.native_binding_path, Path) or not isinstance(args.lightrsi_cli_path, Path):
-        print("BLOCKED: Codex app-server binding arguments are incomplete.", file=sys.stderr)
-        return 2
-    try:
-        launch = _launch_codex_native_app_server(
-            codex_executable=codex_executable,
-            codex_home=args.codex_home or Path.home() / ".codex",
-            cwd=args.cwd,
-            task=args.task,
-            attempt_id=attempt_id,
-            binding_path=args.native_binding_path,
-            lightrsi_cli_path=args.lightrsi_cli_path,
-        )
-        process = launch["process"]
-        client = launch.get("client")
-        if not isinstance(process, subprocess.Popen):
-            raise LaunchBlocked("Codex app-server process handle unavailable.")
-        if isinstance(client, CodexAppServerClient) and isinstance(launch.get("native_turn"), NativeTurn):
-            evidence = client.wait_for_turn(launch["native_turn"])
-        else:
-            _await_codex_native_turn(process, turn_id=str(launch["native_turn_id"]))
-            evidence = None
-        assignment = {
-            "agent_name": agent_name,
-            "attempt_id": attempt_id,
-            "assignment_id": args.assignment_id,
-            "delivery_state": "delivered",
-            "delivery_certainty": "confirmed",
-            "execution": {"state": "completed", "worker_exit_code": 0},
-            "failure_kind": None,
-            "native_session_id": launch["native_session_id"],
-            "native_thread_id": launch["native_thread_id"],
-            "native_turn_id": launch["native_turn_id"],
-            "semantic_content": evidence.semantic_content if evidence is not None else None,
-            "prompt_accepted": True,
-            "reconciliation_required": False,
-            "session": "codex-app-server",
-            "pane": "native",
-            "status": "completed",
-            "submission": "acknowledged",
-            "task_result": {"state": "unknown"},
-            "task_sha256": _sha256_text(args.task),
-            "transport": "codex-app-server",
-            "exit_code": 0,
-        }
-        print(json.dumps({
-            "herdr": {
-                "executable": codex_executable,
-                "session": "codex-app-server",
-                "pane": "native",
-                "agent_name": agent_name,
-                "transport": "codex-app-server",
-            },
-            "assignment": assignment,
-        }, sort_keys=True), flush=True)
-        return 0
-    except LaunchBlocked as exc:
-        print(f"BLOCKED: {exc}", file=sys.stderr)
-        return 2
-    finally:
-        client = locals().get("client")
-        if isinstance(client, CodexAppServerClient):
-            client.close()
-        process = locals().get("process")
-        if isinstance(process, subprocess.Popen):
-            if process.poll() is None:
-                process.terminate()
-            try:
-                process.communicate(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                process.kill()
-
-
-def _await_native_handoff_ack(
-    path: Path,
-    *,
-    attempt_id: str,
-    native_session_id: str,
-    pre_submit_cursor: str,
-) -> None:
-    deadline = time.monotonic() + _CODEX_NATIVE_HANDOFF_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if path.is_file():
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise LaunchBlocked("Codex native session handoff acknowledgement is invalid.") from exc
-            if not isinstance(payload, dict) or payload.get("schema") != _CODEX_NATIVE_HANDOFF_ACK_SCHEMA:
-                raise LaunchBlocked("Codex native session handoff acknowledgement schema mismatch.")
-            if payload.get("attempt_id") != attempt_id:
-                raise LaunchBlocked("Codex native session handoff acknowledgement attempt mismatch.")
-            if payload.get("native_session_id") != native_session_id:
-                raise LaunchBlocked("Codex native session handoff acknowledgement session mismatch.")
-            if payload.get("pre_submit_cursor") != pre_submit_cursor:
-                raise LaunchBlocked("Codex native session handoff acknowledgement cursor mismatch.")
-            return
-        time.sleep(0.05)
-    raise LaunchBlocked("Timed out waiting for Project OS native session handoff acknowledgement.")
 
 
 def _confirm_codex_start(
@@ -1635,8 +1275,6 @@ def _confirm_codex_start(
     before_process_ids: set[int],
     expected_codex_executable: str,
     expected_cwd: Path,
-    codex_home: Path | None = None,
-    before_rollout_paths: set[Path] | None = None,
 ) -> dict[str, Any]:
     try:
         agent_payload = _json_command(
@@ -1689,12 +1327,6 @@ def _confirm_codex_start(
         "process_ids": sorted(owned_process_ids),
         "process_identities": sorted(process_identities),
     }
-    if codex_home is not None:
-        result["native_handoff"] = _discover_codex_native_handoff(
-            codex_home,
-            before_rollout_paths=before_rollout_paths or set(),
-            expected_cwd=expected_cwd,
-        )
     return result
 
 
@@ -3290,11 +2922,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task", required=True)
     parser.add_argument("--name")
     parser.add_argument("--codex-home", type=Path)
-    parser.add_argument("--native-app-server", action="store_true")
-    parser.add_argument("--native-binding-path", type=Path)
-    parser.add_argument("--lightrsi-cli-path", type=Path)
-    parser.add_argument("--native-handoff-path", type=Path)
-    parser.add_argument("--native-handoff-ack-path", type=Path)
     parser.add_argument("--assignment-id")
     parser.add_argument("--repository-identity")
     parser.add_argument("--plan-identity")
@@ -3310,11 +2937,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _main_body(args: argparse.Namespace) -> int:
-    if args.native_app_server:
-        if args.executor != "codex":
-            print("BLOCKED: native app-server mode requires the Codex executor.", file=sys.stderr)
-            return 2
-        return _run_native_app_server(args)
     invocation_started = time.monotonic()
     attempt_deadline = invocation_started + _DEEPAGENTS_RUN_TIMEOUT
     dispatch_id = uuid.uuid4().hex
@@ -3746,16 +3368,6 @@ def _main_body(args: argparse.Namespace) -> int:
             attempt_started = time.monotonic()
             pane_run_duration_ms: float | None = None
             pane_run_started = time.monotonic()
-            native_handoff_enabled = (
-                args.executor == "codex"
-                and args.native_handoff_path is not None
-                and args.native_handoff_ack_path is not None
-            )
-            before_rollout_paths = (
-                _codex_rollout_paths(Path(str(evidence["codex"]["codex_home"])))
-                if native_handoff_enabled and isinstance(evidence.get("codex"), dict)
-                else set()
-            )
             try:
                 try:
                         result = _run_with_pane_ownership(
@@ -3953,12 +3565,6 @@ def _main_body(args: argparse.Namespace) -> int:
                     before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
                     expected_codex_executable=str(evidence["herdr"].get("codex_executable") or "codex"),
                     expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
-                    codex_home=(
-                        Path(str(evidence["codex"]["codex_home"]))
-                        if native_handoff_enabled
-                        else None
-                    ),
-                    before_rollout_paths=before_rollout_paths if native_handoff_enabled else None,
                 )
                 evidence["herdr"].update(start_identity)
                 evidence["herdr"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
@@ -3972,21 +3578,6 @@ def _main_body(args: argparse.Namespace) -> int:
                     "pane": resolved_pane,
                     "agent": agent_name,
                 }
-                native_handoff = start_identity.get("native_handoff")
-                if args.native_handoff_path is not None or args.native_handoff_ack_path is not None:
-                    if not isinstance(args.native_handoff_path, Path) or not isinstance(args.native_handoff_ack_path, Path):
-                        raise LaunchBlocked("Native session handoff requires both artifact paths.")
-                    if not isinstance(native_handoff, dict):
-                        raise LaunchBlocked("Codex native session handoff is unavailable before prompt delivery.")
-                    native_handoff = dict(native_handoff)
-                    native_handoff["attempt_id"] = attempt_id
-                    _write_json_artifact(args.native_handoff_path, native_handoff)
-                    _await_native_handoff_ack(
-                        args.native_handoff_ack_path,
-                        attempt_id=attempt_id,
-                        native_session_id=str(native_handoff["native_session_id"]),
-                        pre_submit_cursor=str(native_handoff["pre_submit_cursor"]),
-                    )
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)

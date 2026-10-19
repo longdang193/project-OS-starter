@@ -317,14 +317,14 @@ def test_failclosed_evidence_is_bound_to_expected_tests() -> None:
         "execution_failure_retired": (
             "worker_lifecycle",
             "execution_failed_retirement_confirmed",
-            "tests/test_secretary_live_runtime.py::test_run_normal_exception_preserves_owned_resource_after_verified_cleanup",
+            "tests/test_secretary_live_runtime.py::test_normal_outcome_reports_failed_result_even_when_execution_failed",
             "removed",
             "deterministic",
         ),
         "cleanup_failure": (
             "cleanup_reconciliation",
             "recovery_required",
-            "tests/test_secretary_live_runtime.py::test_run_normal_exception_quarantines_when_cleanup_is_unproven",
+            "tests/test_secretary_live_runtime.py::test_normal_outcome_preserves_reported_result_when_cleanup_is_quarantined",
             "unresolved",
             "deterministic",
         ),
