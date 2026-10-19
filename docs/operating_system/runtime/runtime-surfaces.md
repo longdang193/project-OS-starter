@@ -138,8 +138,11 @@ resources remain caller-owned through `runtime.json`.
   fingerprint, attempt, session, thread, and turn identity are checked across
   all three artifacts before recovery or read-back. Historical `v1` and `v2`
   artifacts remain read-only compatibility evidence; current writers emit only
-  `v3`. The Herdr transport session is diagnostic metadata only and never
-  substitutes for the worker-native session.
+  `v3` and omit synthetic transport identity. Direct normal Secretary input has
+  no Herdr session/pane selectors or Herdr launcher builder; those selectors
+  remain limited to governed probe and smoke paths. The Herdr transport session
+  is diagnostic metadata only and never substitutes for the worker-native
+  session.
   Herdr `agent get`/`agent read`, pane text, completion counters,
   and legacy `native_completed_turn` values remain diagnostic-only and cannot
   publish normal semantic content. Atomic replay is idempotent, conflicting
@@ -155,12 +158,16 @@ resources remain caller-owned through `runtime.json`.
   direct Secretary path does not invoke a LightRSI semantic observer.
 - The native Secretary app-server path is the only normal semantic path. One owned client performs `initialize` -> `initialized` -> `thread/start`, requires an ephemeral idle thread with zero prior turns, atomically persists `secretary-native-binding.v3`, and only then performs one `turn/start`; `secretary-native-submission.v3` records the opaque turn acknowledgement before completion collection. Only finalized assistant content for that exact thread/turn and terminal `status=completed` can publish `secretary-native-result.v3`, which is read back before the owned process is retired. LightRSI remains available for historical diagnostic/probe observation only; Herdr no longer owns a duplicate native app-server or session-handoff path.
   The resolved provider and model are applied to the same native launch and
-  recorded in preflight evidence and the request fingerprint. Explicit resume
-  discovers a mutually consistent v3 logical operation before allocating a new
-  operation identity; conflicting or partial evidence fails closed. LightRSI
-  remains an independent history/context/replay/audit system, while v1/v2
-  result and binding decoders retain read-only historical compatibility. Current
-  automatic recovery requires the current request-fingerprint contract,
+  recorded in preflight evidence and the request fingerprint. Every output
+  namespace is classified before resume-specific behavior: only an empty
+  namespace can claim a fresh attempt; a complete current v3 set reconciles
+  automatically only when the exact current fingerprint and identity
+  relationships are proven; incomplete delivery remains recovery-required and
+  non-retryable; foreign or uncertain bytes remain read-only. The legacy
+  `--resume` flag is only a compatibility hint and never grants ownership.
+  LightRSI remains an independent history/context/replay/audit system, while
+  v1/v2 result and binding decoders retain read-only historical compatibility.
+  Current automatic recovery requires the current request-fingerprint contract,
   including provider/model and workspace identity fields; pre-#107 v3 artifacts
   remain historical evidence and are not silently reused.
   Herdr no longer owns a duplicate native app-server or session-handoff path.

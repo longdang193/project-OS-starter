@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -276,8 +277,6 @@ class SecretaryNormalRequest:
     task: str
     codex_home: Path
     profile: str = "normal"
-    session: str = "auto"
-    pane: str = "auto"
     repository_identity: str = ""
     git_revision: str = ""
     model_identity: str = ""
@@ -286,7 +285,7 @@ class SecretaryNormalRequest:
     resume: bool = False
 
     def __post_init__(self) -> None:
-        for field in ("task", "profile", "session", "pane"):
+        for field in ("task", "profile"):
             _required_text(getattr(self, field), field)
         for field in ("repository_identity", "git_revision", "model_identity", "runtime_grant_digest"):
             if not isinstance(getattr(self, field), str):
@@ -435,43 +434,6 @@ def _require_attempt_budget(deadline: float) -> None:
         raise NativeAppServerError(
             "Secretary native attempt deadline exhausted.", failure_kind="NATIVE_RESULT_TIMEOUT"
         )
-
-
-def build_normal_launcher_command(
-    request: SecretaryNormalRequest,
-    *,
-    expected_base: str,
-    dry_run: bool = False,
-) -> list[str]:
-    launcher = Path(__file__).with_name("herdr_main_launcher.py")
-    command = [
-        sys.executable,
-        str(launcher),
-        "--profile",
-        request.profile,
-        "--session",
-        request.session,
-        "--pane",
-        request.pane,
-        "--cwd",
-        str(request.worktree),
-        "--expected-base",
-        expected_base,
-        "--executor",
-        "codex",
-        "--task",
-        (
-            f"{request.task}\n\n"
-            "Secretary normal-mode boundary: inspect, reason, prioritize, route, or summarize only. "
-            "Do not modify repository files. For implementation requests, recommend routing to CoS "
-            "and an authorized Worker or governed execution path."
-        ),
-        "--codex-home",
-        str(request.codex_home),
-    ]
-    if dry_run:
-        command.append("--dry-run")
-    return command
 
 
 def _bound_task(request: SecretaryLaunchRequest) -> str:
@@ -1915,13 +1877,20 @@ def _runtime_artifact_paths(output: Path) -> tuple[tuple[Path, ...], tuple[str, 
 
 
 def _path_is_runtime_artifact(path: Path, output: Path) -> bool:
-    stable_paths, generated_names = _runtime_artifact_paths(output)
-    resolved = path.resolve()
-    if resolved in stable_paths:
+    output_path = Path(os.path.abspath(output))
+    stable_paths = {
+        output_path,
+        Path(os.path.abspath(native_binding_path(output))),
+        Path(os.path.abspath(native_submission_path(output))),
+        Path(os.path.abspath(native_result_path(output))),
+    }
+    candidate = Path(os.path.abspath(path))
+    if candidate in stable_paths:
         return True
-    if resolved.parent != output.resolve().parent:
+    if candidate.parent != output_path.parent:
         return False
-    return any(resolved.name == name or resolved.name.startswith(name) for name in generated_names)
+    generated_names = tuple(f".{path.name}." for path in stable_paths)
+    return any(candidate.name.startswith(prefix) for prefix in generated_names)
 
 
 def _relative_runtime_paths(repository_root: Path, output: Path) -> list[str]:
@@ -1954,6 +1923,51 @@ def _reject_tracked_runtime_paths(repository_root: Path, output: Path) -> None:
         raise LaunchBlocked(f"runtime output path tracking check unavailable: {error}")
     if tracked:
         raise LaunchBlocked("Project OS runtime output or sidecar path is tracked by Git")
+
+
+def _read_bounded_regular_file(path: Path, limit: int) -> bytes | None:
+    if limit < 0:
+        raise ValueError("limit must be non-negative")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    if no_follow:
+        flags |= no_follow
+    descriptor: int | None = None
+    try:
+        initial = path.lstat()
+        if not stat.S_ISREG(initial.st_mode):
+            return None
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        current = path.lstat()
+        if not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(current.st_mode):
+            return None
+        if (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
+            return None
+        chunks: list[bytes] = []
+        remaining = limit + 1
+        while remaining:
+            chunk = os.read(descriptor, min(_WORKSPACE_GIT_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if sum(len(chunk) for chunk in chunks) > limit:
+            return None
+        final = path.lstat()
+        if not stat.S_ISREG(final.st_mode):
+            return None
+        if (opened.st_dev, opened.st_ino) != (final.st_dev, final.st_ino):
+            return None
+        return b"".join(chunks)
+    except (OSError, ValueError):
+        return None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def _read_only_workspace_identity(
@@ -2007,15 +2021,11 @@ def _read_only_workspace_identity(
         untracked_entries += 1
         if untracked_entries > _WORKSPACE_UNTRACKED_ENTRY_MAX:
             return True, None, ("workspace_identity",)
-        try:
-            size = path.stat().st_size
-            if size > _WORKSPACE_UNTRACKED_FILE_MAX_BYTES:
-                return True, None, ("workspace_identity",)
-            untracked_bytes += size
-            if untracked_bytes > _WORKSPACE_UNTRACKED_TOTAL_MAX_BYTES:
-                return True, None, ("workspace_identity",)
-            content = path.read_bytes()
-        except (OSError, ValueError):
+        content = _read_bounded_regular_file(path, _WORKSPACE_UNTRACKED_FILE_MAX_BYTES)
+        if content is None:
+            return True, None, ("workspace_identity",)
+        untracked_bytes += len(content)
+        if untracked_bytes > _WORKSPACE_UNTRACKED_TOTAL_MAX_BYTES:
             return True, None, ("workspace_identity",)
         identity_status_entries.append(entry)
         untracked_contents.append((relative, content))
@@ -2767,10 +2777,7 @@ def _discover_native_logical_operation(output: Path) -> str | None:
             NATIVE_BINDING_SCHEMA,
             NATIVE_SUBMISSION_SCHEMA,
         }:
-            raise NativeAppServerError(
-                "Existing native evidence is not current v3 evidence.",
-                failure_kind="NATIVE_RESULT_CONFLICT",
-            )
+            continue
         value = raw.get("logical_operation_id")
         if not isinstance(value, str) or not value.strip():
             raise NativeAppServerError(
@@ -2787,8 +2794,6 @@ def _discover_native_logical_operation(output: Path) -> str | None:
 
 
 def _bind_native_resume_request(request: SecretaryNormalRequest, output: Path) -> SecretaryNormalRequest:
-    if not request.resume:
-        return request
     discovered = _discover_native_logical_operation(output)
     supplied = request.logical_operation_id
     if discovered is not None and supplied is not None and supplied != discovered:
@@ -2848,6 +2853,71 @@ def _retirement_identity_matches(
     return all(retirement.get(key) == value and value is not None for key, value in expected.items())
 
 
+def _native_namespace_state(output: Path) -> str:
+    stable_paths = (
+        output,
+        native_result_path(output),
+        native_binding_path(output),
+        native_submission_path(output),
+    )
+    candidate_paths = list(stable_paths)
+    lock_names = {f".{path.name}.release.lock" for path in stable_paths}
+    temporary_prefixes = tuple(f".{path.name}." for path in stable_paths)
+    try:
+        for child in output.parent.iterdir():
+            if child.name in lock_names or any(child.name.startswith(prefix) for prefix in temporary_prefixes):
+                candidate_paths.append(child)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return "foreign_or_uncertain"
+    states: list[str] = []
+    for path in candidate_paths:
+        try:
+            mode = path.lstat().st_mode
+        except FileNotFoundError:
+            states.append("absent")
+            continue
+        except OSError:
+            states.append("uncertain")
+            continue
+        states.append("regular" if stat.S_ISREG(mode) else "occupied")
+    if all(state == "absent" for state in states):
+        return "empty"
+    if any(state in {"occupied", "uncertain"} for state in states):
+        return "foreign_or_uncertain"
+    return "occupied"
+
+
+def _existing_output_matches_current_identity(
+    output: Path,
+    *,
+    logical_operation_id: str,
+    request_fingerprint_value: str,
+    attempt_id: str,
+) -> bool:
+    try:
+        raw = json.loads(output.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw, Mapping):
+        return False
+    if raw.get("logical_operation_id") != logical_operation_id:
+        return False
+    if raw.get("request_fingerprint") not in {None, request_fingerprint_value}:
+        return False
+    output_attempt_id = raw.get("attempt_id")
+    if output_attempt_id is not None and output_attempt_id != attempt_id:
+        return False
+    preflight = raw.get("preflight")
+    if isinstance(preflight, Mapping):
+        if preflight.get("logical_operation_id") not in {None, logical_operation_id}:
+            return False
+        if preflight.get("request_fingerprint") not in {None, request_fingerprint_value}:
+            return False
+    return True
+
+
 def _reconcile_native_artifacts(
     *,
     output: Path,
@@ -2858,51 +2928,32 @@ def _reconcile_native_artifacts(
     reuse_allowed: bool = True,
     resume: bool = False,
 ) -> dict[str, Any] | None:
-    artifact_paths = (
-        output,
-        native_result_path(output),
-        native_binding_path(output),
-        native_submission_path(output),
-    )
-    lock_paths = tuple(path.with_name(f".{path.name}.release.lock") for path in artifact_paths)
-    if not resume:
-        if not any(path.is_file() for path in (*artifact_paths, *lock_paths)):
-            namespace_state = "empty_available"
-            return None
-        namespace_state = "foreign_or_uncertain"
-        if native_binding_path(output).is_file() or native_submission_path(output).is_file():
-            raise NativeAppServerError(
-                "Existing native submission evidence requires explicit resume and will not be retried automatically.",
-                failure_kind="NATIVE_SUBMISSION_FAILED",
-            )
-        if native_result_path(output).is_file() or output.is_file():
-            raise NativeAppServerError(
-                f"Existing output namespace is {namespace_state} and requires explicit resume.",
-                failure_kind="NATIVE_RESULT_CONFLICT",
-            )
+    namespace_state = _native_namespace_state(output)
+    if namespace_state == "empty":
+        return None
+    if namespace_state != "occupied":
         raise NativeAppServerError(
-            f"Existing output namespace is {namespace_state} and cannot be overwritten.",
-            failure_kind="NATIVE_RESULT_CONFLICT",
-        )
-    if not logical_operation_id:
-        raise NativeAppServerError(
-            "Explicit resume requires a logical operation identity.",
+            "Existing output namespace is foreign or uncertain and cannot be overwritten.",
             failure_kind="NATIVE_RESULT_CONFLICT",
         )
     if not reuse_allowed:
-        if any(
-            path.is_file()
-            for path in (
-                native_result_path(output),
-                native_binding_path(output),
-                native_submission_path(output),
-            )
-        ):
-            raise NativeAppServerError(
-                "Request identity is unknown; existing native evidence cannot be reused.",
-                failure_kind="NATIVE_RESULT_CONFLICT",
-            )
-        return None
+        if native_binding_path(output).is_file() or native_submission_path(output).is_file():
+            if not native_result_path(output).is_file() and not output.is_file():
+                raise NativeAppServerError(
+                    "Native binding or submission evidence exists but request identity is unknown; delivery is uncertain and will not be retried automatically.",
+                    failure_kind="NATIVE_SUBMISSION_FAILED",
+                )
+        raise NativeAppServerError(
+            "Request identity is unknown; existing native evidence cannot be reused.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
+        )
+    if not logical_operation_id:
+        logical_operation_id = _discover_native_logical_operation(output)
+    if not logical_operation_id:
+        raise NativeAppServerError(
+            "Existing native evidence has no trustworthy logical operation identity.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
+        )
     result_path = native_result_path(output)
     if result_path.is_file():
         namespace_state = "owned_existing_operation"
@@ -2972,12 +3023,17 @@ def _reconcile_native_artifacts(
             "task_result": {"state": "unknown"},
         }
         prior_retirement: Mapping[str, Any] | None = None
-        if output.is_file():
+        if output.is_file() and _existing_output_matches_current_identity(
+            output,
+            logical_operation_id=logical_operation_id,
+            request_fingerprint_value=request_fingerprint_value,
+            attempt_id=attempt_id,
+        ):
             try:
                 prior_output = json.loads(output.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 prior_output = None
-            if isinstance(prior_output, Mapping) and prior_output.get("logical_operation_id") == logical_operation_id:
+            if isinstance(prior_output, Mapping):
                 candidate = prior_output.get("preflight", {}).get("retirement")
                 if _retirement_identity_matches(
                     candidate,
@@ -3017,7 +3073,7 @@ def _reconcile_native_artifacts(
     submission_path = native_submission_path(output)
     if binding_path.is_file() or submission_path.is_file():
         raise NativeAppServerError(
-            "Native submission evidence exists without a published result; delivery is uncertain and will not be retried automatically.",
+            "Native binding or submission evidence exists without a published result; delivery is uncertain and will not be retried automatically.",
             failure_kind="NATIVE_SUBMISSION_FAILED",
         )
     return None
@@ -3155,11 +3211,6 @@ def _run_normal_via_native_app_server(
                 "pre_submit_boundary": thread.pre_submit_boundary,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "fresh_session": thread.ephemeral,
-                "transport": {
-                    "session": "codex-app-server",
-                    "pane": "native",
-                    "agent_name": "normal-secretary",
-                },
             }
             _require_attempt_budget(attempt_deadline)
             publish_native_binding(binding_path, binding)
@@ -3199,9 +3250,6 @@ def _run_normal_via_native_app_server(
                 "freshness_proven": True,
                 "assistant_owned": True,
                 "semantic_content": evidence.semantic_content,
-                "session": "codex-app-server",
-                "pane": "native",
-                "agent_name": "normal-secretary",
             }
             _require_attempt_budget(attempt_deadline)
             publish_native_result(native_result_path(output), native_payload)
@@ -3494,8 +3542,6 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--task", required=True)
     run.add_argument("--codex-home", type=Path)
     run.add_argument("--profile", default="normal")
-    run.add_argument("--session", default="auto")
-    run.add_argument("--pane", default="auto")
     run.add_argument("--logical-operation-id")
     run.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
@@ -3506,8 +3552,6 @@ def main(argv: list[str] | None = None) -> int:
             task=args.task,
             codex_home=codex_home,
             profile=args.profile,
-            session=args.session,
-            pane=args.pane,
             logical_operation_id=args.logical_operation_id,
             resume=args.resume,
         )
