@@ -151,10 +151,16 @@ resources remain caller-owned through `runtime.json`.
   completion collection, publication, and read-back. Retirement evidence is
   captured independently: confirmed semantic content remains reported when
   process retirement is unknown, while the invocation is marked
-  `NATIVE_RETIREMENT_UNVERIFIED`, quarantined, and recovery-required. Legacy
-  LightRSI observation remains available only under the explicit compatibility
-  mode above.
+  `NATIVE_RETIREMENT_UNVERIFIED`, quarantined, and recovery-required. The
+  direct Secretary path does not invoke a LightRSI semantic observer.
 - The native Secretary app-server path is the only normal semantic path. One owned client performs `initialize` -> `initialized` -> `thread/start`, requires an ephemeral idle thread with zero prior turns, atomically persists `secretary-native-binding.v3`, and only then performs one `turn/start`; `secretary-native-submission.v3` records the opaque turn acknowledgement before completion collection. Only finalized assistant content for that exact thread/turn and terminal `status=completed` can publish `secretary-native-result.v3`, which is read back before the owned process is retired. LightRSI remains available for historical diagnostic/probe observation only; Herdr no longer owns a duplicate native app-server or session-handoff path.
+  The resolved provider and model are applied to the same native launch and
+  recorded in preflight evidence and the request fingerprint. Explicit resume
+  discovers a mutually consistent v3 logical operation before allocating a new
+  operation identity; conflicting or partial evidence fails closed. LightRSI
+  remains an independent history/context/replay/audit system, while v1/v2
+  result and binding decoders retain read-only historical compatibility.
+  Herdr no longer owns a duplicate native app-server or session-handoff path.
 - Preflight, target-resolution failures, and dry-runs retain `dispatch_id` correlation but never fabricate an execution `attempt_id`; only a real launcher commitment to execution allocates that attempt identity.
 - DeepAgents lifecycle receipts own worker execution and settlement facts. Structured `TaskResult` records own reported task outcomes; a confirmed receipt without confirmed structured result remains `unverified` and reconciliation-required. Pane observation supplies pre-receipt diagnostics and legacy fallback only; pane text never promotes managed completion to task success. CoS retains `PASS | FAIL | BLOCKED` acceptance authority.
 - Bound `TaskResult` records carry assignment/attempt identity, progress, checkpoint, remaining work, and verification references through atomic publication; valid task results report evidence only and never grant acceptance or continuation.

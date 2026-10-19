@@ -213,7 +213,7 @@ def test_native_result_requires_terminal_completion(tmp_path: Path) -> None:
 
 
 def test_request_fingerprint_uses_fixed_field_order_and_empty_values() -> None:
-    assert FINGERPRINT == "b01dc2a65f02a764cab922b85643028fe8ba23f9fbf67a81a52f3e8d23904262"
+    assert FINGERPRINT == "150b2d49a3dc1163b4354bba2e00887a340792dc682d0a213d3de311f8cb0bee"
     assert request_fingerprint({"task_sha256": "task", "repository_identity": "repo", "git_revision": "rev", "execution_role": "secretary", "model_identity": "model"}) == FINGERPRINT
 
 
@@ -233,7 +233,7 @@ def test_native_binding_is_atomic_attempt_bound_and_immutable(tmp_path: Path) ->
         "request_fingerprint": FINGERPRINT,
         "native_session_id": "session",
         "native_thread_id": "thread",
-        "pre_submit_cursor": "cursor",
+        "pre_submit_boundary": "fresh-zero-prior-turn",
         "lightrsi_cli_path": "C:/pinned/cli.js",
         "created_at": "2026-10-18T10:00:00+00:00",
         "transport": {"session": "herdr", "pane": "pane", "agent_name": "agent"},

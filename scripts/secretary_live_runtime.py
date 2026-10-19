@@ -68,7 +68,6 @@ try:
         request_fingerprint,
     )
     from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
-    from project_os_runtime.lightrsi_reader import LightRSIResultReader
 except ModuleNotFoundError:
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
@@ -96,7 +95,6 @@ except ModuleNotFoundError:
         request_fingerprint,
     )
     from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
-    from scripts.project_os_runtime.lightrsi_reader import LightRSIResultReader
 
 try:
     from scripts.observe_9router_usage import observe_run_usage, observe_window_usage
@@ -136,14 +134,6 @@ _CODEX_OBSERVATION_POLL_SECONDS = 0.5
 _PROVIDER_TELEMETRY_LOOKBACK_SECONDS = 0.0
 _HERDR_SERVER_START_TIMEOUT_SECONDS = 10.0
 _HERDR_PREFLIGHT_RECHECK_SECONDS = 0.25
-_LIGHTRSI_CLI_PATH_ENV = "LIGHTRSI_CLI_PATH"
-_LIGHTRSI_NODE_ENV = "LIGHTRSI_NODE"
-_LIGHTRSI_NATIVE_SESSION_ENV = "LIGHTRSI_NATIVE_SESSION_ID"
-_LIGHTRSI_PRE_SUBMIT_CURSOR_ENV = "LIGHTRSI_PRE_SUBMIT_CURSOR"
-_LIGHTRSI_SOURCE_FINGERPRINT_ENV = "LIGHTRSI_SOURCE_FINGERPRINT"
-_LIGHTRSI_ARTIFACT_SHA256_ENV = "LIGHTRSI_ARTIFACT_SHA256"
-_LIGHTRSI_RESULT_TIMEOUT_SECONDS = 120.0
-_LIGHTRSI_RESULT_POLL_SECONDS = 0.5
 _SAFE_SOURCE_DIGEST = re.compile(r"[0-9a-f]{64}")
 _NOT_APPLICABLE_RUNTIME_GRANT = "not_applicable"
 _ACCEPTED_RESULT_PRODUCERS = frozenset({"dcode-project", "deepagents-worker"})
@@ -304,10 +294,13 @@ class ResolvedSecretaryRequest:
     repository_identity: str
     git_revision: str
     execution_role: str
+    provider_identity: str
     model_identity: str
     runtime_grant_digest: str
     logical_operation_id: str
     request_fingerprint: str
+    workspace_dirty: bool = False
+    workspace_change_digest: str | None = None
     unknown_fields: tuple[str, ...] = ()
 
     @property
@@ -347,9 +340,11 @@ def _resolve_normal_request(
     environment: Mapping[str, str] | None = None,
 ) -> ResolvedSecretaryRequest:
     repository_root, git_revision = _read_only_git_anchor(request.worktree)
+    workspace_dirty, workspace_change_digest, workspace_unknown_fields = _read_only_workspace_identity(repository_root)
     canonical_repository_identity = _canonical_repository_identity(repository_root)
     repository_identity = canonical_repository_identity or request.repository_identity.strip()
     resolved_git_revision = git_revision or request.git_revision.strip()
+    provider_identity = SECRETARY_PROVIDER
     model_identity = request.model_identity.strip()
     if not model_identity:
         profile_path = repository_root / "agents" / f"{request.profile}.toml"
@@ -357,6 +352,9 @@ def _resolve_normal_request(
             profile = tomllib.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
         except (OSError, tomllib.TOMLDecodeError):
             profile = {}
+        profile_provider = profile.get("model_provider") if isinstance(profile, Mapping) else None
+        if profile_provider is not None and profile_provider != provider_identity:
+            raise ValueError(f"Secretary profile must use {provider_identity}")
         profile_model = profile.get("model") if isinstance(profile, Mapping) else None
         if isinstance(profile_model, str) and profile_model.strip():
             model_identity = profile_model.strip()
@@ -369,7 +367,7 @@ def _resolve_normal_request(
             ("model_identity", model_identity),
         )
         if not value
-    )
+    ) + workspace_unknown_fields
     repository_identity_value = repository_identity or "<unknown:repository_identity>"
     git_revision_value = resolved_git_revision or "<unknown:git_revision>"
     model_identity_value = model_identity or "<unknown:model_identity>"
@@ -385,43 +383,32 @@ def _resolve_normal_request(
         runtime_grant_digest=runtime_grant_value,
         logical_operation_id=operation_id,
     )
-    fingerprint = request_fingerprint(
-        {
+    fingerprint_fields: dict[str, object] = {
             "task_sha256": task_sha256,
             "repository_identity": repository_identity_value,
             "git_revision": git_revision_value,
             "execution_role": "secretary",
+            "provider_identity": provider_identity,
             "model_identity": model_identity_value,
             "runtime_grant_digest": runtime_grant_value,
         }
-    )
+    if workspace_change_digest is not None:
+        fingerprint_fields["workspace_change_digest"] = workspace_change_digest
+    fingerprint = request_fingerprint(fingerprint_fields)
     return ResolvedSecretaryRequest(
         request=resolved_request,
         task_sha256=task_sha256,
         repository_identity=repository_identity_value,
         git_revision=git_revision_value,
         execution_role="secretary",
+        provider_identity=provider_identity,
         model_identity=model_identity_value,
         runtime_grant_digest=runtime_grant_value,
         logical_operation_id=operation_id,
         request_fingerprint=fingerprint,
+        workspace_dirty=workspace_dirty,
+        workspace_change_digest=workspace_change_digest,
         unknown_fields=unknown_fields,
-    )
-
-
-def _normal_request_fingerprint(
-    request: SecretaryNormalRequest,
-    environment: Mapping[str, str] | None = None,
-) -> str:
-    return request_fingerprint(
-        {
-            "task_sha256": hashlib.sha256(request.task.encode("utf-8")).hexdigest(),
-            "repository_identity": request.repository_identity,
-            "git_revision": request.git_revision,
-            "execution_role": "secretary",
-            "model_identity": request.model_identity,
-            "runtime_grant_digest": request.runtime_grant_digest,
-        }
     )
 
 
@@ -837,20 +824,8 @@ def _observe_submitted_codex(
     payload: Mapping[str, Any],
     *,
     pre_submit: Mapping[str, Any] | None = None,
-    native_binding: Mapping[str, Any] | None = None,
-    native_reader: LightRSIResultReader | None = None,
-    native_result_output: Path | None = None,
     env: dict[str, str],
 ) -> dict[str, Any]:
-    if isinstance(native_binding, Mapping) and native_reader is not None:
-        return _observe_bound_lightrsi_result(
-            request,
-            payload,
-            native_binding=native_binding,
-            native_reader=native_reader,
-            native_result_output=native_result_output,
-            env=env,
-        )
     herdr = payload.get("herdr")
     if not isinstance(herdr, Mapping):
         return {"state": "unknown", "error": "launcher Herdr evidence missing"}
@@ -1017,106 +992,6 @@ def _observe_submitted_codex(
         )
     observation["cleanup"] = cleanup
     observation["observed_at"] = datetime.now(timezone.utc).isoformat()
-    return observation
-
-
-def _observe_bound_lightrsi_result(
-    request: SecretaryLaunchRequest | SecretaryNormalRequest,
-    payload: Mapping[str, Any],
-    *,
-    native_binding: Mapping[str, Any],
-    native_reader: LightRSIResultReader,
-    native_result_output: Path | None,
-    env: dict[str, str],
-) -> dict[str, Any]:
-    herdr = payload.get("herdr")
-    assignment = payload.get("assignment")
-    if not isinstance(herdr, Mapping) or not isinstance(assignment, Mapping):
-        return {"state": "unknown", "observation_error": "native binding context missing"}
-    executable = herdr.get("executable")
-    transport_session = herdr.get("session")
-    pane = herdr.get("pane")
-    agent_name = herdr.get("agent_name")
-    native_session_id = native_binding.get("native_session_id")
-    after_cursor = native_binding.get("pre_submit_cursor")
-    attempt_id = native_binding.get("attempt_id")
-    request_id = native_binding.get("native_request_id") or assignment.get("native_request_id")
-    turn_id = native_binding.get("native_turn_id") or assignment.get("native_turn_id")
-    if not all(isinstance(value, str) and value.strip() for value in (
-        executable, transport_session, pane, agent_name, native_session_id, after_cursor, attempt_id,
-    )):
-        return {"state": "unknown", "observation_error": "native binding identity incomplete"}
-
-    deadline = time.monotonic() + _LIGHTRSI_RESULT_TIMEOUT_SECONDS
-    native_result: Mapping[str, Any] | None = None
-    terminal_error: str | None = None
-    while time.monotonic() < deadline:
-        try:
-            candidate = native_reader.read(
-                session_id=native_session_id,
-                after_cursor=after_cursor,
-                request_id=request_id if isinstance(request_id, str) else None,
-                turn_id=turn_id if isinstance(turn_id, str) else None,
-            )
-        except Exception as exc:
-            terminal_error = f"LightRSI reader failed: {type(exc).__name__}"
-            break
-        state = candidate.get("state") if isinstance(candidate, Mapping) else None
-        if state == "completed":
-            native_result = candidate
-            break
-        if state in {"unavailable", "conflict"}:
-            reason = candidate.get("reason") if isinstance(candidate, Mapping) else None
-            terminal_error = f"LightRSI result {state}: {reason or 'unknown'}"
-            break
-        if state != "pending":
-            terminal_error = "LightRSI reader returned an invalid state"
-            break
-        time.sleep(min(_LIGHTRSI_RESULT_POLL_SECONDS, max(0.01, deadline - time.monotonic())))
-    if native_result is None and terminal_error is None:
-        terminal_error = "LightRSI result wait timed out"
-
-    observation: dict[str, Any] = {
-        "state": "done" if native_result is not None else "unknown",
-        "session": transport_session,
-        "pane": pane,
-        "agent_name": agent_name,
-        "attempt_id": attempt_id,
-        "native_session_id": native_session_id,
-        "pre_submit_cursor": after_cursor,
-        "freshness_proven": native_result is not None,
-        "observed_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if terminal_error:
-        observation["observation_error"] = terminal_error
-
-    if native_result is not None and native_result_output is not None:
-        observation.update({
-            "semantic_content": native_result["content"],
-            "assistant_owned": True,
-            "producer": NATIVE_RESULT_PRODUCER,
-            "content_source": "lightrsi_completed_turn",
-            "native_authority": NATIVE_RESULT_AUTHORITY,
-            "native_turn_id": native_result["turnId"],
-            "native_request_id": native_result.get("requestId"),
-            "native_response_id": native_result.get("responseId"),
-            "turn_seq": native_result["turnSeq"],
-            "semantic_complete": native_result["semanticComplete"],
-            "result_reference": f"lightrsi://{native_session_id}:{native_result['turnSeq']}",
-        })
-
-    if payload.get("transport") == "codex-app-server" or herdr.get("transport") == "codex-app-server":
-        observation["cleanup"] = {"state": "not_required", "reason": "codex-app-server owns the native process"}
-    elif observation["state"] in {"done", "unknown"}:
-        observation["cleanup"] = _release_codex_agent(
-            executable,
-            transport_session,
-            agent_name,
-            pane,
-            env=env,
-        )
-    else:
-        observation["cleanup"] = {"state": "not_attempted"}
     return observation
 
 
@@ -1924,6 +1799,58 @@ def _read_only_git_anchor(worktree: Path) -> tuple[Path, str]:
     return Path(lines[0]).resolve(), _required_text(lines[1], "git_revision")
 
 
+def _read_only_workspace_identity(repository_root: Path) -> tuple[bool, str | None, tuple[str, ...]]:
+    try:
+        status = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository_root),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "-z",
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, TypeError, ValueError, AttributeError):
+        return False, None, ("workspace_identity",)
+    if status.returncode != 0:
+        return False, None, ("workspace_identity",)
+    raw_status = status.stdout if isinstance(status.stdout, bytes) else str(status.stdout).encode("utf-8")
+    if not raw_status:
+        return False, None, ()
+    try:
+        diff = subprocess.run(
+            ["git", "-C", str(repository_root), "diff", "--binary", "HEAD", "--"],
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, TypeError, ValueError, AttributeError):
+        return True, None, ("workspace_identity",)
+    if diff.returncode != 0:
+        return True, None, ("workspace_identity",)
+    digest = hashlib.sha256()
+    digest.update(raw_status)
+    digest.update(b"\0")
+    digest.update(diff.stdout if isinstance(diff.stdout, bytes) else str(diff.stdout).encode("utf-8"))
+    for entry in raw_status.split(b"\0"):
+        if not entry.startswith(b"?? "):
+            continue
+        relative = entry[3:].decode("utf-8", errors="surrogateescape")
+        path = repository_root / relative
+        try:
+            content = path.read_bytes()
+        except (OSError, ValueError):
+            return True, None, ("workspace_identity",)
+        digest.update(relative.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
+    return True, digest.hexdigest(), ()
+
+
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2638,23 +2565,102 @@ def _apply_native_retirement_evidence(
     return result
 
 
-def _configured_lightrsi_reader(environment: Mapping[str, str] | None = None) -> LightRSIResultReader | None:
-    values = dict(os.environ) if environment is None else dict(environment)
-    configured_path = values.get(_LIGHTRSI_CLI_PATH_ENV)
-    if not isinstance(configured_path, str) or not configured_path.strip():
-        return None
-    try:
-        cli_path = Path(configured_path).expanduser()
-        if not cli_path.is_absolute():
-            return None
-        return LightRSIResultReader(
-            cli_path,
-            timeout_seconds=5.0,
-            node_executable=values.get(_LIGHTRSI_NODE_ENV, "node"),
-            environment=values,
+def _discover_native_logical_operation(output: Path) -> str | None:
+    discovered: set[str] = set()
+    for path in (
+        native_result_path(output),
+        native_binding_path(output),
+        native_submission_path(output),
+    ):
+        if not path.is_file():
+            continue
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise NativeAppServerError(
+                "Existing native evidence is unreadable.", failure_kind="NATIVE_RESULT_CONFLICT"
+            ) from exc
+        if not isinstance(raw, Mapping) or raw.get("schema") not in {
+            NATIVE_RESULT_SCHEMA,
+            NATIVE_BINDING_SCHEMA,
+            NATIVE_SUBMISSION_SCHEMA,
+        }:
+            raise NativeAppServerError(
+                "Existing native evidence is not current v3 evidence.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            )
+        value = raw.get("logical_operation_id")
+        if not isinstance(value, str) or not value.strip():
+            raise NativeAppServerError(
+                "Existing native evidence has no logical operation identity.",
+                failure_kind="NATIVE_RESULT_CONFLICT",
+            )
+        discovered.add(value.strip())
+    if len(discovered) > 1:
+        raise NativeAppServerError(
+            "Existing native evidence has conflicting logical operation identities.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
         )
-    except (OSError, ValueError):
-        return None
+    return next(iter(discovered), None)
+
+
+def _bind_native_resume_request(request: SecretaryNormalRequest, output: Path) -> SecretaryNormalRequest:
+    if not request.resume:
+        return request
+    discovered = _discover_native_logical_operation(output)
+    supplied = request.logical_operation_id
+    if discovered is not None and supplied is not None and supplied != discovered:
+        raise NativeAppServerError(
+            "Supplied logical operation identity conflicts with existing native evidence.",
+            failure_kind="NATIVE_RESULT_CONFLICT",
+        )
+    if discovered is not None and supplied is None:
+        return replace(request, logical_operation_id=discovered)
+    return request
+
+
+def _bind_native_retirement_identity(
+    retirement: Mapping[str, Any] | None,
+    *,
+    logical_operation_id: str,
+    request_fingerprint_value: str,
+    attempt_id: str,
+    native_session_id: str,
+    native_thread_id: str,
+    native_turn_id: str | None,
+) -> dict[str, Any]:
+    return {
+        **(dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}),
+        "logical_operation_id": logical_operation_id,
+        "request_fingerprint": request_fingerprint_value,
+        "attempt_id": attempt_id,
+        "native_session_id": native_session_id,
+        "native_thread_id": native_thread_id,
+        "native_turn_id": native_turn_id,
+    }
+
+
+def _retirement_identity_matches(
+    retirement: Mapping[str, Any] | None,
+    *,
+    logical_operation_id: str,
+    request_fingerprint_value: str,
+    attempt_id: str,
+    native_session_id: str | None,
+    native_thread_id: str | None,
+    native_turn_id: str | None,
+) -> bool:
+    if not isinstance(retirement, Mapping):
+        return False
+    expected = {
+        "logical_operation_id": logical_operation_id,
+        "request_fingerprint": request_fingerprint_value,
+        "attempt_id": attempt_id,
+        "native_session_id": native_session_id,
+        "native_thread_id": native_thread_id,
+        "native_turn_id": native_turn_id,
+    }
+    return all(retirement.get(key) == value and value is not None for key, value in expected.items())
 
 
 def _reconcile_native_artifacts(
@@ -2778,7 +2784,15 @@ def _reconcile_native_artifacts(
                 prior_output = None
             if isinstance(prior_output, Mapping) and prior_output.get("logical_operation_id") == logical_operation_id:
                 candidate = prior_output.get("preflight", {}).get("retirement")
-                if isinstance(candidate, Mapping):
+                if _retirement_identity_matches(
+                    candidate,
+                    logical_operation_id=logical_operation_id,
+                    request_fingerprint_value=request_fingerprint_value,
+                    attempt_id=attempt_id,
+                    native_session_id=persisted.get("native_session_id"),
+                    native_thread_id=persisted.get("native_thread_id"),
+                    native_turn_id=persisted.get("native_turn_id"),
+                ):
                     prior_retirement = candidate
         retirement = dict(prior_retirement or {"state": "unknown", "reason": "retirement evidence unavailable"})
         cleanup = {
@@ -2786,16 +2800,11 @@ def _reconcile_native_artifacts(
             "verified": retirement.get("state") == "retired",
             "retirement": retirement,
         }
-        observation = {
-            **persisted,
-            "state": "done",
-            "cleanup": cleanup,
-        }
-        result = _normalize_invocation_outcome(
+        result = _normalize_native_v3_outcome(
             invocation_id=invocation_id,
-            returncode=0,
+            persisted=persisted,
             payload={"assignment": assignment},
-            observation=observation,
+            cleanup=cleanup,
             started_at=started_at,
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
@@ -2819,6 +2828,45 @@ def _reconcile_native_artifacts(
     return None
 
 
+def _normalize_native_v3_outcome(
+    *,
+    invocation_id: str,
+    persisted: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    cleanup: Mapping[str, Any] | None = None,
+    started_at: str,
+    finished_at: str,
+) -> dict[str, Any]:
+    """Project a validated v3 result without legacy source arbitration."""
+    observation = {
+        "state": "done",
+        "cleanup": dict(cleanup or {"state": "pending_retirement", "verified": False}),
+    }
+    result = _normalize_invocation_outcome(
+        invocation_id=invocation_id,
+        returncode=0,
+        payload=payload,
+        observation=observation,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+    semantic_outcome = {
+        "state": "reported",
+        "status": "completed",
+        "reference": persisted.get("result_reference"),
+        "content": persisted.get("semantic_content"),
+    }
+    result["result"] = _project_semantic_result(semantic_outcome)
+    result["semantic_outcome"] = semantic_outcome
+    result["observability"] = {
+        **result.get("observability", {}),
+        "state": "available",
+        "reference": persisted.get("result_reference"),
+        "completion_state": "done",
+    }
+    return result
+
+
 def _run_normal_via_native_app_server(
     request: SecretaryNormalRequest,
     *,
@@ -2831,8 +2879,10 @@ def _run_normal_via_native_app_server(
     observation: Mapping[str, Any] = {}
     preflight: dict[str, Any] = {"transport": "codex-app-server"}
     client: CodexAppServerClient | None = None
+    write_output = True
     try:
         attempt_deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
+        request = _bind_native_resume_request(request, output)
         resolved = _resolve_normal_request(request, environment)
         request = resolved.request
         worktree = resolved.request.worktree
@@ -2843,8 +2893,11 @@ def _run_normal_via_native_app_server(
                 "repository_identity": resolved.repository_identity,
                 "git_revision": resolved.git_revision,
                 "execution_role": resolved.execution_role,
+                "provider_identity": resolved.provider_identity,
                 "model_identity": resolved.model_identity,
                 "runtime_grant_digest": resolved.runtime_grant_digest,
+                "workspace_dirty": resolved.workspace_dirty,
+                "workspace_change_digest": resolved.workspace_change_digest,
                 "request_fingerprint": request_fingerprint_value,
                 "resume": resolved.request.resume,
                 "identity_reuse_allowed": resolved.reuse_allowed,
@@ -2865,6 +2918,12 @@ def _run_normal_via_native_app_server(
         codex_executable = environment.get("CODEX_EXECUTABLE") or shutil.which("codex")
         if not isinstance(codex_executable, str) or not codex_executable.strip():
             raise LaunchBlocked("Required executable unavailable on PATH: codex")
+        configured_provider = _configured_provider(request.codex_home)
+        if configured_provider != resolved.provider_identity:
+            raise NativeAppServerError(
+                "Configured Codex provider does not match Secretary provider.",
+                failure_kind="NATIVE_BINDING_FAILED",
+            )
         attempt_id = uuid.uuid4().hex
         binding_path = native_binding_path(output)
         submission_path = native_submission_path(output)
@@ -2874,16 +2933,19 @@ def _run_normal_via_native_app_server(
             codex_executable,
             cwd=worktree,
             codex_home=request.codex_home,
+            provider=resolved.provider_identity,
             environment=environment,
             timeout_seconds=_CODEX_OBSERVATION_TIMEOUT_SECONDS,
             attempt_deadline=attempt_deadline,
         ) as client:
-            thread = client.start_thread()
+            thread = client.start_thread(model=resolved.model_identity)
             binding = {
                 "schema": NATIVE_BINDING_SCHEMA,
                 "attempt_id": attempt_id,
                 "logical_operation_id": resolved.logical_operation_id,
                 "request_fingerprint": request_fingerprint_value,
+                "provider": resolved.provider_identity,
+                "model": resolved.model_identity,
                 "native_session_id": thread.session_id,
                 "native_thread_id": thread.thread_id,
                 "pre_submit_boundary": thread.pre_submit_boundary,
@@ -2950,11 +3012,6 @@ def _run_normal_via_native_app_server(
             )
             if persisted.get("state") != "confirmed":
                 raise LaunchBlocked("Codex app-server native result read-back failed")
-            observation = {
-                **persisted,
-                "state": "done",
-                "cleanup": {"state": "pending_retirement", "verified": False},
-            }
             payload = {
                 "assignment": {
                     "attempt_id": attempt_id,
@@ -2968,17 +3025,24 @@ def _run_normal_via_native_app_server(
                     "transport": "codex-app-server",
                 }
             }
-            result = _normalize_invocation_outcome(
+            result = _normalize_native_v3_outcome(
                 invocation_id=invocation_id,
-                returncode=0,
+                persisted=persisted,
                 payload=payload,
-                observation=observation,
                 started_at=started,
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
             result["logical_operation_id"] = resolved.logical_operation_id
             result["request_fingerprint"] = request_fingerprint_value
-        retirement = getattr(client, "retirement_evidence", {"state": "retired", "method": "unreported"})
+        retirement = _bind_native_retirement_identity(
+            getattr(client, "retirement_evidence", {"state": "retired", "method": "unreported"}),
+            logical_operation_id=resolved.logical_operation_id,
+            request_fingerprint_value=request_fingerprint_value,
+            attempt_id=attempt_id,
+            native_session_id=thread.session_id,
+            native_thread_id=thread.thread_id,
+            native_turn_id=turn.turn_id if "turn" in locals() else None,
+        )
         preflight["retirement"] = dict(retirement) if isinstance(retirement, Mapping) else {"state": "unknown"}
         result = _apply_native_retirement_evidence(result, retirement)
     except Exception as exc:
@@ -2998,12 +3062,15 @@ def _run_normal_via_native_app_server(
             result["failure_kind"] = "NATIVE_RESULT_CONFLICT"
         elif isinstance(exc, (OSError, ValueError)):
             result["failure_kind"] = "NATIVE_RESULT_PUBLICATION_FAILED"
+        if result.get("failure_kind") == "NATIVE_RESULT_CONFLICT":
+            write_output = False
         preflight["error"] = str(exc)
     result["logical_operation_id"] = resolved.logical_operation_id if "resolved" in locals() else request.logical_operation_id
     result["request_fingerprint"] = request_fingerprint_value if "request_fingerprint_value" in locals() else None
     preflight["logical_operation_id"] = result["logical_operation_id"]
     result["preflight"] = preflight
-    _atomic_write_json(output, result)
+    if write_output:
+        _atomic_write_json(output, result)
     return result
 
 
@@ -3072,7 +3139,6 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 request,
                 payload,
                 pre_submit=submission_anchor,
-                native_result_output=native_result_path(output),
                 env=environment,
             )
             result["post_submit_observation"] = post_submit

@@ -13,19 +13,21 @@ from scripts.project_os_runtime.codex_app_server import CodexAppServerClient, Na
 
 class FakeStdout:
     def __init__(self) -> None:
-        self.values: queue.Queue[str | None] = queue.Queue()
+        self.values: queue.Queue[bytes | None] = queue.Queue()
+        self.limits: list[int | None] = []
         self.readers: set[int] = set()
         self.max_concurrent_reads = 0
         self._concurrent_reads = 0
         self._lock = threading.Lock()
 
     def push(self, value: dict[str, Any]) -> None:
-        self.values.put(json.dumps(value) + "\n")
+        self.values.put((json.dumps(value) + "\n").encode("utf-8"))
 
     def close_input(self) -> None:
         self.values.put(None)
 
-    def readline(self) -> str:
+    def readline(self, limit: int | None = None) -> bytes:
+        self.limits.append(limit)
         reader = threading.get_ident()
         with self._lock:
             self.readers.add(reader)
@@ -33,7 +35,7 @@ class FakeStdout:
             self.max_concurrent_reads = max(self.max_concurrent_reads, self._concurrent_reads)
         try:
             value = self.values.get(timeout=2)
-            return "" if value is None else value
+            return b"" if value is None else value
         finally:
             with self._lock:
                 self._concurrent_reads -= 1
@@ -45,15 +47,20 @@ class FakeStdout:
 class FakeStdin:
     def __init__(self, process: "FakeProcess") -> None:
         self.process = process
-        self.buffer = ""
+        self.buffer = b""
+        self.max_write: int | None = None
+        self.zero_progress = False
 
-    def write(self, value: str) -> int:
-        self.buffer += value
-        while "\n" in self.buffer:
-            line, self.buffer = self.buffer.split("\n", 1)
+    def write(self, value: bytes) -> int:
+        if self.zero_progress:
+            return 0
+        chunk = value if self.max_write is None else value[: self.max_write]
+        self.buffer += chunk
+        while b"\n" in self.buffer:
+            line, self.buffer = self.buffer.split(b"\n", 1)
             if line:
-                self.process.handle(json.loads(line))
-        return len(value)
+                self.process.handle(json.loads(line.decode("utf-8")))
+        return len(chunk)
 
     def flush(self) -> None:
         return None
@@ -141,7 +148,10 @@ def test_close_exposes_structured_retirement_evidence() -> None:
 
     evidence = client.close()
 
-    assert evidence == {"state": "retired", "method": "terminate"}
+    assert evidence["state"] == "retired"
+    assert evidence["method"] == "terminate"
+    assert evidence["writer"] == "not_started"
+    assert evidence["reader"] == "not_started"
     assert client.retirement_evidence == evidence
     assert process.terminated is True
 
@@ -201,6 +211,77 @@ def test_client_owns_one_reader_and_collects_exact_finalized_assistant_content(t
     assert process.stdout.max_concurrent_reads == 1
     assert len(process.stdout.readers) == 1
     assert process.terminated is True
+
+
+def test_client_binds_provider_and_model_to_native_thread(tmp_path: Path) -> None:
+    process = FakeProcess()
+    client = CodexAppServerClient(
+        "codex",
+        cwd=tmp_path,
+        codex_home=tmp_path / "codex-home",
+        provider="9router",
+        process_factory=lambda *args, **kwargs: process,
+        timeout_seconds=1,
+    )
+
+    with client:
+        client.start_thread(model="combo-normal")
+
+    thread_request = next(request for request in process.requests if request["method"] == "thread/start")
+    assert client.provider == "9router"
+    assert thread_request["params"]["model"] == "combo-normal"
+
+
+def test_client_retries_short_binary_writes(tmp_path: Path) -> None:
+    process = FakeProcess()
+    process.stdin.max_write = 2
+
+    with make_client(process, tmp_path) as client:
+        client.start_thread(model="combo-normal")
+
+    assert any(request["method"] == "thread/start" for request in process.requests)
+
+
+def test_client_rejects_zero_progress_binary_write(tmp_path: Path) -> None:
+    process = FakeProcess()
+    process.stdin.zero_progress = True
+
+    with pytest.raises(NativeAppServerError, match="no progress") as error:
+        with make_client(process, tmp_path):
+            pass
+
+    assert error.value.failure_kind == "NATIVE_SUBMISSION_FAILED"
+
+
+def test_client_close_retires_owned_writer_and_reader_threads(tmp_path: Path) -> None:
+    process = FakeProcess()
+    client = make_client(process, tmp_path)
+    client.start()
+
+    evidence = client.close()
+
+    assert evidence["state"] == "retired"
+    assert client._writer is not None and not client._writer.is_alive()
+    assert client._reader is not None and not client._reader.is_alive()
+
+
+def test_client_writer_rejects_expired_queued_work(tmp_path: Path) -> None:
+    process = FakeProcess()
+    client = make_client(process, tmp_path)
+    client._process = process
+    client._started = True
+    acknowledgment: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
+    writer = threading.Thread(target=client._write_loop, daemon=True)
+    writer.start()
+    client._writes.put((b"{}\n", acknowledgment, 0.0))
+
+    error = acknowledgment.get(timeout=1)
+    client._writes.put((None, None, 0.0))
+    writer.join(timeout=1)
+
+    assert isinstance(error, NativeAppServerError)
+    assert "queued write expired" in str(error)
+    assert not writer.is_alive()
 
 
 def test_client_rejects_idle_turn_as_semantic_success(tmp_path: Path) -> None:
@@ -374,7 +455,7 @@ def test_reader_rejects_malformed_or_oversized_frames(
 
     def handle(request: dict[str, Any]) -> None:
         process.requests.append(request)
-        process.stdout.values.put(line)
+        process.stdout.values.put(line.encode("utf-8"))
 
     process.handle = handle  # type: ignore[method-assign]
     client = make_client(process, tmp_path)
