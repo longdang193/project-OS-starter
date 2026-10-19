@@ -22,6 +22,9 @@ from scripts.project_os_runtime.secretary_results import (
     parse_native_result,
     publish_native_result,
     request_fingerprint,
+    validate_native_binding_payload,
+    validate_native_result_payload,
+    validate_native_submission_payload,
 )
 
 
@@ -35,6 +38,15 @@ FINGERPRINT = request_fingerprint(
         "runtime_grant_digest": "",
     }
 )
+
+
+def test_current_v3_payload_validators_do_not_dispatch_legacy_schemas() -> None:
+    with pytest.raises(ValueError, match="invalid|schema"):
+        validate_native_binding_payload({"schema": "secretary-native-binding.v1"})
+    with pytest.raises(ValueError, match="invalid|schema"):
+        validate_native_submission_payload({"schema": "secretary-native-submission.v2"})
+    with pytest.raises(ValueError, match="invalid|schema"):
+        validate_native_result_payload({"schema": "secretary-native-result.v2"})
 
 
 def payload(content: str = "native answer") -> dict[str, object]:
