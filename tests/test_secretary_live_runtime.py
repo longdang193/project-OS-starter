@@ -94,8 +94,10 @@ def test_reconcile_native_artifacts_requires_current_request_fingerprint(
             "repository_identity": "repo",
             "git_revision": "rev",
             "execution_role": "secretary",
+            "provider_identity": "9router",
             "model_identity": "model",
             "runtime_grant_digest": "",
+            "workspace_change_digest": "workspace",
         }
     )
     output = tmp_path / "normal.json"
@@ -167,6 +169,35 @@ def test_reconcile_native_artifacts_requires_current_request_fingerprint(
             invocation_id="invocation-2",
             started_at="2026-10-18T10:00:04+00:00",
             request_fingerprint_value="0" * 64,
+            logical_operation_id="operation-1",
+            resume=True,
+        )
+
+    legacy_fields = {
+        "task_sha256": "task",
+        "repository_identity": "repo",
+        "git_revision": "rev",
+        "execution_role": "secretary",
+        "model_identity": "model",
+        "runtime_grant_digest": "",
+    }
+    legacy_fingerprint = runtime.hashlib.sha256(
+        json.dumps(legacy_fields, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
+    ).hexdigest()
+    assert legacy_fingerprint != fingerprint
+    for path in (
+        native_binding_path(output),
+        native_submission_path(output),
+        native_result_path(output),
+    ):
+        path.write_text(path.read_text(encoding="utf-8").replace(fingerprint, legacy_fingerprint), encoding="utf-8")
+
+    with pytest.raises(runtime.NativeAppServerError, match="request fingerprint"):
+        _reconcile_native_artifacts(
+            output=output,
+            invocation_id="invocation-3",
+            started_at="2026-10-18T10:00:05+00:00",
+            request_fingerprint_value=fingerprint,
             logical_operation_id="operation-1",
             resume=True,
         )
@@ -339,7 +370,12 @@ def test_native_resume_binds_discovered_operation_before_request_resolution(
     )
     seen: dict[str, object] = {}
 
-    def fake_resolve(request: SecretaryNormalRequest, environment: object) -> object:
+    def fake_resolve(
+        request: SecretaryNormalRequest,
+        environment: object,
+        *,
+        output: Path | None = None,
+    ) -> object:
         seen["logical_operation_id"] = request.logical_operation_id
         raise runtime.NativeAppServerError("stop after binding", failure_kind="NATIVE_RESULT_CONFLICT")
 
@@ -403,12 +439,77 @@ def test_rejected_native_invocation_does_not_overwrite_existing_output(
     output.write_text(json.dumps(prior), encoding="utf-8")
     runtime.native_result_path(output).write_text("{}", encoding="utf-8")
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
-    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _: (False, None, ()))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
 
     result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
 
     assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
     assert json.loads(output.read_text(encoding="utf-8")) == prior
+
+
+def test_foreign_output_without_sidecars_is_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    prior_bytes = b'{"foreign":true}\n'
+    output.write_bytes(prior_bytes)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: pytest.fail("foreign output must not launch"))
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
+    assert output.read_bytes() == prior_bytes
+
+
+def test_binding_claim_race_does_not_persist_losing_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+    from scripts.project_os_runtime.codex_app_server import NativeThread
+
+    output = tmp_path / "normal.json"
+    binding_path = runtime.native_binding_path(output)
+    winner_bytes = b'{"winner":true}\n'
+    binding_path.write_bytes(winner_bytes)
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
+    monkeypatch.setattr(runtime, "_reconcile_native_artifacts", lambda **_: None)
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "codex.exe" if name == "codex" else None)
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: runtime.SECRETARY_PROVIDER)
+
+    class FakeNativeClient:
+        retirement_evidence = {"state": "retired"}
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "FakeNativeClient":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+        def start_thread(self, *, model: str | None = None) -> NativeThread:
+            return NativeThread("thread", "session", True, "fresh-zero-prior-turn")
+
+    monkeypatch.setattr(runtime, "CodexAppServerClient", FakeNativeClient)
+    monkeypatch.setattr(
+        runtime,
+        "publish_native_binding",
+        lambda *args, **kwargs: (_ for _ in ()).throw(runtime.NativeResultConflictError("claim lost")),
+    )
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["failure_kind"] == "NATIVE_RESULT_CONFLICT"
+    assert not output.exists()
+    assert binding_path.read_bytes() == winner_bytes
 
 
 def test_reconcile_native_artifacts_rejects_mismatched_retirement_identity(
@@ -538,7 +639,7 @@ def test_resolved_request_uses_profile_model_and_git_revision(
     )
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "git-head"))
     monkeypatch.setattr(runtime, "_canonical_repository_identity", lambda _: "origin/repo")
-    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _: (False, None, ()))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
 
     resolved = runtime._resolve_normal_request(
         normal_request(worktree=tmp_path, git_revision="stale", repository_identity="stale-repo"),
@@ -550,6 +651,75 @@ def test_resolved_request_uses_profile_model_and_git_revision(
     assert resolved.model_identity == "combo-normal"
     assert resolved.runtime_grant_digest == "not_applicable"
     assert resolved.reuse_allowed is True
+
+
+def test_configured_provider_requires_active_secretary_route(tmp_path: Path) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_text("{}", encoding="utf-8")
+    (codex_home / "config.toml").write_text(
+        'model_provider = "other"\n[model_providers.9router]\nbase_url = "http://localhost"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="active provider must be 9router"):
+        runtime._configured_provider(codex_home)
+
+
+def test_configured_provider_requires_secretary_mapping(tmp_path: Path) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_text("{}", encoding="utf-8")
+    (codex_home / "config.toml").write_text(
+        'model_provider = "9router"\n[model_providers.other]\nbase_url = "http://localhost"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="provider 9router unavailable"):
+        runtime._configured_provider(codex_home)
+
+
+def test_run_normal_resolves_git_anchor_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    calls = 0
+
+    def read_anchor(_: Path) -> tuple[Path, str]:
+        nonlocal calls
+        calls += 1
+        return tmp_path, "head-1"
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", read_anchor)
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: runtime.SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "codex.exe" if name == "codex" else None)
+
+    class FailingNativeClient:
+        retirement_evidence = {"state": "retired"}
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "FailingNativeClient":
+            raise runtime.NativeAppServerError(
+                "stop after resolution", failure_kind="NATIVE_INITIALIZATION_FAILED"
+            )
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(runtime, "CodexAppServerClient", FailingNativeClient)
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=tmp_path / "normal.json")
+
+    assert calls == 1
+    assert result["failure_kind"] == "NATIVE_INITIALIZATION_FAILED"
 
 
 def test_resolved_request_keeps_operation_and_reuse_state_out_of_fingerprint(
@@ -593,7 +763,7 @@ def test_resolved_request_uses_deterministic_dirty_workspace_digest(
     monkeypatch.setattr(
         runtime,
         "_read_only_workspace_identity",
-        lambda _: (True, "change-digest", ()),
+        lambda _, output=None: (True, "change-digest", ()),
     )
 
     resolved = runtime._resolve_normal_request(
@@ -614,6 +784,119 @@ def test_resolved_request_uses_deterministic_dirty_workspace_digest(
             "runtime_grant_digest": resolved.runtime_grant_digest,
         }
     )
+
+
+def test_workspace_identity_excludes_all_native_runtime_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output = tmp_path / "normal.json"
+    status = b"\0".join(
+        [
+            b"?? normal.json",
+            b"?? normal.json.native-binding.json",
+            b"?? normal.json.native-submission.json",
+            b"?? normal.json.native-result.json",
+            b"?? .normal.json.123.tmp",
+            b"?? .normal.json.native-binding.json.abc.tmp",
+            b"?? .normal.json.native-submission.json.release.lock",
+            b"?? .normal.json.native-result.json.release.lock",
+            b"?? input.txt",
+            b"",
+        ]
+    )
+    (tmp_path / "input.txt").write_text("task input", encoding="utf-8")
+
+    def bounded_output(command: object, **_: object) -> tuple[bytes, None]:
+        return (status if "status" in list(command) else b"tracked diff", None)
+
+    monkeypatch.setattr(runtime, "_bounded_git_output", bounded_output)
+
+    dirty, digest, unknown = runtime._read_only_workspace_identity(tmp_path, output)
+
+    assert dirty is True
+    assert digest is not None
+    assert unknown == ()
+
+    status_without_runtime = b"?? input.txt\0"
+    monkeypatch.setattr(
+        runtime,
+        "_bounded_git_output",
+        lambda command, **_: (status_without_runtime if "status" in list(command) else b"tracked diff", None),
+    )
+    _, expected_digest, _ = runtime._read_only_workspace_identity(tmp_path, output)
+    assert digest == expected_digest
+
+
+def test_workspace_identity_disables_reuse_when_git_output_exceeds_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_bounded_git_output",
+        lambda command, **_: (None, "output_limit"),
+    )
+
+    dirty, digest, unknown = runtime._read_only_workspace_identity(tmp_path)
+
+    assert dirty is False
+    assert digest is None
+    assert unknown == ("workspace_identity",)
+
+
+def test_workspace_identity_disables_reuse_for_large_untracked_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    large_file = tmp_path / "large.bin"
+    large_file.write_bytes(b"x" * (runtime._WORKSPACE_UNTRACKED_FILE_MAX_BYTES + 1))
+    monkeypatch.setattr(
+        runtime,
+        "_bounded_git_output",
+        lambda command, **_: (b"?? large.bin\0" if "status" in list(command) else b"", None),
+    )
+
+    dirty, digest, unknown = runtime._read_only_workspace_identity(tmp_path)
+
+    assert dirty is True
+    assert digest is None
+    assert unknown == ("workspace_identity",)
+
+
+def test_bounded_git_output_stops_after_output_limit() -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    output, error = runtime._bounded_git_output(
+        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 1000000)"],
+        max_bytes=1024,
+        timeout_seconds=2,
+    )
+
+    assert output is None
+    assert error == "output_limit"
+
+
+def test_tracked_runtime_path_is_rejected_before_native_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    (tmp_path / ".git").mkdir()
+    output = tmp_path / "normal.json"
+    monkeypatch.setattr(runtime, "_bounded_git_output", lambda *args, **kwargs: (b"normal.json\0", None))
+
+    with pytest.raises(runtime.LaunchBlocked, match="runtime output or sidecar path"):
+        runtime._reject_tracked_runtime_paths(tmp_path, output)
+
+
 def test_normal_outcome_requires_correlated_result_reference() -> None:
     import scripts.secretary_live_runtime as runtime
 
@@ -649,6 +932,8 @@ def test_run_normal_native_app_server_uses_bound_turn_identity(
     from scripts.project_os_runtime.codex_app_server import NativeThread, NativeTurn, NativeTurnEvidence
 
     class FakeNativeClient:
+        retirement_evidence = {"state": "retired", "method": "fake"}
+
         def __init__(self, *args: object, **kwargs: object) -> None:
             return None
 
@@ -684,6 +969,42 @@ def test_run_normal_native_app_server_uses_bound_turn_identity(
     assert persisted["native_authority"] == runtime.NATIVE_APP_SERVER_AUTHORITY
     assert binding["provider"] == runtime.SECRETARY_PROVIDER
     assert binding["model"] == "<unknown:model_identity>"
+
+
+def test_native_client_entry_failure_preserves_retirement_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: runtime.SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime.shutil, "which", lambda name: "codex.exe" if name == "codex" else None)
+
+    class FailingNativeClient:
+        retirement_evidence = {"state": "retired", "method": "entry-failure-cleanup"}
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> "FailingNativeClient":
+            raise runtime.NativeAppServerError(
+                "native initialization failed",
+                failure_kind="NATIVE_INITIALIZATION_FAILED",
+            )
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+    monkeypatch.setattr(runtime, "CodexAppServerClient", FailingNativeClient)
+    output = tmp_path / "normal.json"
+
+    result = runtime.run_normal(normal_request(worktree=tmp_path), output=output)
+
+    assert result["failure_kind"] == "NATIVE_INITIALIZATION_FAILED"
+    assert result["preflight"]["retirement"]["state"] == "retired"
+    assert result["recovery_required"] is False
+    assert not output.exists()
 
 
 def test_run_normal_native_result_survives_unverified_retirement(
@@ -747,7 +1068,7 @@ def test_native_run_reconciles_published_result_without_starting_new_client(
         runtime_grant_digest="grant",
     )
     monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
-    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _: (False, None, ()))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
     fingerprint = runtime._resolve_normal_request(normal, {}).request_fingerprint
     runtime.publish_native_binding(
         runtime.native_binding_path(output),

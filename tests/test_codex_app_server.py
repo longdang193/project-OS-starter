@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -213,13 +214,12 @@ def test_client_owns_one_reader_and_collects_exact_finalized_assistant_content(t
     assert process.terminated is True
 
 
-def test_client_binds_provider_and_model_to_native_thread(tmp_path: Path) -> None:
+def test_client_binds_model_to_native_thread(tmp_path: Path) -> None:
     process = FakeProcess()
     client = CodexAppServerClient(
         "codex",
         cwd=tmp_path,
         codex_home=tmp_path / "codex-home",
-        provider="9router",
         process_factory=lambda *args, **kwargs: process,
         timeout_seconds=1,
     )
@@ -228,7 +228,6 @@ def test_client_binds_provider_and_model_to_native_thread(tmp_path: Path) -> Non
         client.start_thread(model="combo-normal")
 
     thread_request = next(request for request in process.requests if request["method"] == "thread/start")
-    assert client.provider == "9router"
     assert thread_request["params"]["model"] == "combo-normal"
 
 
@@ -263,6 +262,54 @@ def test_client_close_retires_owned_writer_and_reader_threads(tmp_path: Path) ->
     assert evidence["state"] == "retired"
     assert client._writer is not None and not client._writer.is_alive()
     assert client._reader is not None and not client._reader.is_alive()
+
+
+def test_client_rejects_new_writes_after_close_begins(tmp_path: Path) -> None:
+    process = FakeProcess()
+    client = make_client(process, tmp_path)
+    client.start()
+    client.close()
+
+    with pytest.raises(NativeAppServerError, match="client is closing") as error:
+        client._send({"jsonrpc": "2.0", "method": "late"})
+
+    assert error.value.failure_kind == "NATIVE_SUBMISSION_FAILED"
+
+
+def test_client_close_retires_writer_after_inflight_write_with_full_queue(tmp_path: Path) -> None:
+    process = FakeProcess()
+    write_started = threading.Event()
+    release_write = threading.Event()
+
+    class BlockingStdin(FakeStdin):
+        def write(self, value: bytes) -> int:
+            write_started.set()
+            release_write.wait(timeout=1)
+            return super().write(value)
+
+        def close(self) -> None:
+            release_write.set()
+
+    process.stdin = BlockingStdin(process)
+    client = make_client(process, tmp_path)
+    client._process = process
+    client._started = True
+    writer = threading.Thread(target=client._write_loop, daemon=True)
+    client._writer = writer
+    writer.start()
+    first_acknowledgment: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
+    client._writes.put((b'{"jsonrpc":"2.0","method":"initialized","params":{}}\n', first_acknowledgment, time.monotonic() + 1))
+    assert write_started.wait(timeout=1)
+    second_acknowledgment: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
+    client._writes.put((b'{"jsonrpc":"2.0","method":"initialized","params":{}}\n', second_acknowledgment, time.monotonic() + 1))
+
+    evidence = client.close()
+    writer.join(timeout=1)
+
+    assert evidence["state"] == "retired"
+    assert evidence["writer"] == "retired"
+    assert not writer.is_alive()
+    assert first_acknowledgment.get(timeout=1) is None
 
 
 def test_client_writer_rejects_expired_queued_work(tmp_path: Path) -> None:

@@ -132,7 +132,6 @@ class CodexAppServerClient:
         *,
         cwd: Path,
         codex_home: Path,
-        provider: str | None = None,
         environment: Mapping[str, str] | None = None,
         timeout_seconds: float = 120.0,
         attempt_deadline: float | None = None,
@@ -144,7 +143,6 @@ class CodexAppServerClient:
         self.executable = executable
         self.cwd = cwd
         self.codex_home = codex_home
-        self.provider = _required_text(provider, "provider") if provider is not None else None
         self.environment = dict(os.environ if environment is None else environment)
         self.environment["CODEX_HOME"] = str(codex_home.resolve())
         self.timeout_seconds = timeout_seconds
@@ -164,6 +162,7 @@ class CodexAppServerClient:
         self._fatal: NativeAppServerError | None = None
         self._started = False
         self._retired = False
+        self._closing = threading.Event()
         self._retirement_evidence: dict[str, Any] = {"state": "not_attempted"}
 
     @property
@@ -370,9 +369,11 @@ class CodexAppServerClient:
         )
 
     def close(self) -> dict[str, Any]:
-        if self._retired:
-            return self.retirement_evidence
-        self._retired = True
+        with self._state_lock:
+            if self._retired:
+                return self.retirement_evidence
+            self._retired = True
+            self._closing.set()
         process = self._process
         if process is None:
             self._retirement_evidence = {"state": "retired", "method": "not_started"}
@@ -473,6 +474,12 @@ class CodexAppServerClient:
     def _send(self, payload: Mapping[str, Any]) -> None:
         encoded = _serialize_message(payload)
         deadline = self._deadline()
+        with self._state_lock:
+            if self._closing.is_set():
+                raise NativeAppServerError(
+                    "Codex app-server client is closing.",
+                    failure_kind="NATIVE_SUBMISSION_FAILED",
+                )
         if self._clock() >= deadline:
             raise NativeAppServerError(
                 "Codex app-server transport write deadline exhausted.",
@@ -523,6 +530,8 @@ class CodexAppServerClient:
             except queue.Full:
                 pass
             if error is not None:
+                return
+            if self._closing.is_set():
                 return
 
     def _read_stdout(self) -> None:
