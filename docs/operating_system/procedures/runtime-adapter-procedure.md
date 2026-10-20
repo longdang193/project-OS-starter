@@ -196,8 +196,9 @@ binding. `dcode-project` also reads that provider's canonical `wire_api` and
 projects it to DeepAgents' native `use_responses_api` model parameter:
 `chat` maps to `false`, `responses` maps to `true`. Unsupported protocols fail
 before child launch. Agent profiles do not duplicate protocol compatibility;
-the active provider binding owns that fact, so every profile using that provider
-follows the same launch mapping.
+the active provider binding owns that fact. A provider may additionally define
+`wire_api_by_model` for exact model-specific protocol differences; the selected
+model override takes precedence while all unmapped profiles keep `wire_api`.
 
 `dcode-project` loads Codex configuration once per invocation. `--print-config`
 does not read credentials, generate role views, acquire role ownership, or

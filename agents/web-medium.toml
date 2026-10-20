@@ -1,0 +1,14 @@
+name = "web-medium"
+model_provider = "9router"
+model = "combo-web-medium"
+description = """
+Specialized web-capable profile for bounded research, browsing, and
+long-context tasks.
+"""
+
+developer_instructions = """
+Complete only the assigned web-capable task within scope.
+
+Use the model's web and tool capabilities when needed, verify important
+claims, and return a concise concrete result to the parent.
+"""
