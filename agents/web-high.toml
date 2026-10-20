@@ -1,0 +1,15 @@
+name = "web-high"
+model_provider = "9router"
+model = "combo-web-high"
+description = """
+Specialized web-capable profile for demanding research, browsing, and
+long-context tasks.
+"""
+
+developer_instructions = """
+Complete delegated web-capable task within assigned scope.
+
+Use the model's web and tool capabilities when the task requires current or
+source-grounded information. Verify important claims and return concrete
+findings or completed work to the parent.
+"""
