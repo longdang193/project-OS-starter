@@ -1,6 +1,7 @@
 # Local patch hub
 
-`project-OS-starter` owns local overlays that must survive OpenDesign updates.
+`project-OS-starter` owns local overlays and runtime launchers that must survive
+OpenDesign and 9router updates.
 Each overlay is keyed by exact target Git `HEAD`; unknown bases stop without changes.
 
 ## OpenDesign MCP recovery
@@ -126,10 +127,49 @@ Node processes, validates `cli\app` before replacement, packs the CLI before
 global install so npm cannot leave a Junction to a disposable worktree, rejects
 linked global packages, then verifies global `cli.js`, standalone app files,
 `9router.cmd`, and executable version; relaunch with
-`9router --tray --skip-update -p 20128`. Use `-AllowDowngrade` only for
+`9router --tray --skip-update -p 20128 -H 127.0.0.1`. Use `-AllowDowngrade` only for
 intentional older-version installs. When upstream changes a patched file, add a
 new exact-base directory under `overlays/9router-responses/` and rebase the patch
 there. Keep old overlays for existing checkouts.
+
+## 9router + CGW Codex combo runtime
+
+The merged 9router checkout at `0f6d885d` contains the CGW Codex combo shim and
+per-request `reasoning_effort` support. The hub does not duplicate those source
+changes in an overlay; it owns the repeatable install and startup contract.
+
+Keep the local environment in the target checkout at
+`C:\path\to\9router\.env`. The shim loads that file automatically; never
+commit it or print its values. At minimum, add `CGW_SHIM_API_KEY` and
+`CGW_SHIM_MODEL_ALIASES_JSON`; the remaining defaults are documented in
+`tools/cgw-codex-shim/README.md`.
+
+Start both loopback services against the already-installed global 9router:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
+  -TargetRoot C:\path\to\9router
+```
+
+Keep the global runtime on the current release (`0.5.104` at this gate) before
+starting the combo. The launcher installs the version from `TargetRoot` when
+`-InstallGlobal` is supplied; Do not use `-AllowDowngrade` for the combo, or an
+older source checkout can replace the current global runtime and leave the
+shim on an unsupported base.
+
+The launcher verifies `GET /api/health` on 9router at `127.0.0.1:20128` and
+the shim listener at `127.0.0.1:20129`. It refuses missing `.env`, unrelated
+port owners, and a missing global CLI. Requests to the shim use
+`POST http://127.0.0.1:20129/v1/chat/completions`; `reasoning_effort` may be
+`low`, `medium`, or `high` and is applied per request.
+
+Use stable public aliases that map to explicit Codex provider targets. The
+`codex/` prefix is required so 9router selects its Codex OAuth connection rather
+than inferring the OpenAI API provider from a bare `gpt-*` model name:
+
+```dotenv
+CGW_SHIM_MODEL_ALIASES_JSON={"gpt-6.1-sol":"codex/gpt-6.1-sol","gpt-5.6-sol":"codex/gpt-5.6-sol"}
+```
 
 Apply the attribution persistence overlay separately:
 
