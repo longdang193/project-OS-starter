@@ -26,3 +26,17 @@ When a provider exposes different protocols by model, its local Codex provider
 binding may define `wire_api_by_model`. The selected model override takes
 precedence over provider `wire_api`; the 9router web models use `chat`, while
 the general models keep the provider default.
+
+## Herdr pane affinity
+
+Herdr reuses a live Codex pane only when all of these facts match:
+
+- the pane is idle and has no conflicting live process;
+- the incoming task has the same existing task, plan, or assignment identity;
+- the executor, provider, and model profile are compatible.
+
+Different or missing context always selects a new pane. The launcher records a
+short context marker in its generated agent name so reuse does not mix
+unrelated conversations. Idle panes with no live process are released through
+the existing Herdr lifecycle mechanism; no separate reconciliation store is
+created.

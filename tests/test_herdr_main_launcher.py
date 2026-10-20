@@ -1635,6 +1635,79 @@ def test_resolve_launch_binds_codex_prompt_evidence_to_delivery_task(
     )
 
 
+def test_resolve_launch_reuses_same_context_with_prompt_command(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    profile = LAUNCHER.AgentProfile(
+        Path("web-high.toml"),
+        "web-high",
+        "9router",
+        "combo-web-high",
+        None,
+        "test",
+        "do not modify files",
+    )
+    context = "task:subject-1"
+    agent_name = LAUNCHER._contextual_agent_name("web-high", context)
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_preflight_profile_runtime",
+        lambda selected: {
+            "provider": selected.model_provider,
+            "model": selected.model,
+            "url": "http://127.0.0.1:20129/v1/models",
+            "port": 20129,
+            "status": 200,
+        },
+    )
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime",
+        lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "_codex_runtime_mcp_servers", lambda *args, **kwargs: {})
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {
+            "pane": {"cwd": str(ROOT)},
+            "process_info": {"foreground_processes": []},
+            "reuse": True,
+            "agent": {
+                "name": agent_name,
+                "agent_status": "idle",
+                "completion_seq": 7,
+            },
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="web-high",
+        session="codex-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="codex",
+        task="same subject",
+        secretary_task_id="subject-1",
+    )
+
+    assert command[:5] == [
+        "herdr.exe", "--session", "codex-probe", "agent", "prompt",
+    ]
+    assert command[5] == agent_name
+    assert command[6] == "same subject [Runtime Grant: delegation.child_agents = deny]"
+    assert evidence["herdr"]["reuse"] is True
+    assert evidence["herdr"]["context_marker"] == LAUNCHER._context_marker(context)
+
+
 def test_resolve_launch_projects_selected_codex_mcp_server(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4820,6 +4893,228 @@ def test_pane_safety_rejects_existing_agent(monkeypatch: pytest.MonkeyPatch, tmp
 
     with pytest.raises(LAUNCHER.LaunchBlocked, match="already has agent"):
         LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr")
+
+
+def test_context_identity_prefers_existing_task_then_plan_then_assignment() -> None:
+    assert LAUNCHER._stable_context_identity(
+        secretary_task_id="task-1",
+        plan_identity="plan-1",
+        assignment_id="assignment-1",
+    ) == "task:task-1"
+    assert LAUNCHER._stable_context_identity(plan_identity="plan-1") == "plan:plan-1"
+    assert LAUNCHER._stable_context_identity(assignment_id="assignment-1") == "assignment:assignment-1"
+    assert LAUNCHER._stable_context_identity() is None
+
+
+@pytest.mark.parametrize(
+    ("profile_name", "model"),
+    [("web-high", "combo-web-high"), ("normal", "combo-normal")],
+)
+def test_contextual_agent_name_is_stable_for_web_profiles(profile_name: str, model: str) -> None:
+    context = "task:subject-1"
+    first = LAUNCHER._contextual_agent_name(profile_name, context)
+    second = LAUNCHER._contextual_agent_name(profile_name, context)
+
+    assert first == second
+    assert first.startswith(f"{profile_name}-main-ctx-")
+    assert LAUNCHER._agent_context_marker(first) == LAUNCHER._context_marker(context)
+    assert model.startswith("combo-")
+
+
+def _reusable_codex_pane_responses(
+    *,
+    tmp_path: Path,
+    agent_name: str,
+    model: str,
+    process_name: str = "codex.exe",
+    agent_status: str = "idle",
+) -> list[dict[str, object]]:
+    return [
+        {
+            "result": {
+                "panes": [{
+                    "pane_id": "p1",
+                    "cwd": str(tmp_path),
+                    "agent": "codex",
+                    "agent_status": agent_status,
+                }]
+            }
+        },
+        {
+            "result": {
+                "agents": [{
+                    "name": agent_name,
+                    "agent": "codex",
+                    "agent_status": agent_status,
+                    "completion_seq": 4,
+                    "pane_id": "p1",
+                    "agent_session": {"source": "herdr:codex"},
+                }]
+            }
+        },
+        {
+            "result": {
+                "process_info": {
+                    "foreground_processes": [{
+                        "pid": 10,
+                        "name": process_name,
+                        "argv": [
+                            "codex",
+                            "-c",
+                            'model_provider="9router"',
+                            "-c",
+                            f'model="{model}"',
+                        ],
+                        "children": [],
+                    }]
+                }
+            }
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("profile_name", "model"),
+    [("web-high", "combo-web-high"), ("normal", "combo-normal")],
+)
+def test_pane_safety_reuses_same_context_and_compatible_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    profile_name: str,
+    model: str,
+) -> None:
+    context = "task:subject-1"
+    profile = LAUNCHER.AgentProfile(
+        Path(f"{profile_name}.toml"), profile_name, "9router", model, None, "test", "test",
+    )
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name(profile_name, context),
+        model=model,
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._herdr_pane(
+        tmp_path,
+        "session",
+        "p1",
+        "herdr",
+        expected_profile=profile,
+        context_identity=context,
+    )
+
+    assert result["reuse"] is True
+    assert result["agent"]["name"] == LAUNCHER._contextual_agent_name(profile_name, context)
+
+
+def test_pane_safety_rejects_different_or_missing_context(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+    )
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
+        model="combo-web-high",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context mismatch"):
+        LAUNCHER._herdr_pane(
+            tmp_path, "session", "p1", "herdr",
+            expected_profile=profile, context_identity="task:subject-2",
+        )
+
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
+        model="combo-web-high",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="already has agent"):
+        LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr", expected_profile=profile)
+
+
+def test_pane_safety_rejects_active_or_profile_mismatched_pane(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"), "normal", "9router", "combo-normal", 20, "test", "test",
+    )
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("normal", "task:subject-1"),
+        model="combo-normal",
+        agent_status="working",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="active"):
+        LAUNCHER._herdr_pane(
+            tmp_path, "session", "p1", "herdr",
+            expected_profile=profile, context_identity="task:subject-1",
+        )
+
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("normal", "task:subject-1"),
+        model="combo-web-high",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="profile mismatch"):
+        LAUNCHER._herdr_pane(
+            tmp_path, "session", "p1", "herdr",
+            expected_profile=profile, context_identity="task:subject-1",
+        )
+
+
+def test_pane_safety_releases_idle_stale_agent_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+    )
+    commands: list[list[str]] = []
+    responses = iter([
+        {
+            "result": {
+                "panes": [{
+                    "pane_id": "p1", "cwd": str(tmp_path),
+                    "agent": "codex", "agent_status": "idle",
+                }]
+            }
+        },
+        {
+            "result": {
+                "agents": [{
+                    "name": LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
+                    "agent_status": "idle", "completion_seq": 9, "pane_id": "p1",
+                    "agent_session": {"source": "herdr:codex"},
+                }]
+            }
+        },
+        {"result": {"process_info": {"foreground_processes": [{"pid": 1, "name": "powershell.exe", "children": []}]}}},
+        {"result": {"released": True}},
+    ])
+
+    def fake_json(command: list[str], **kwargs):
+        commands.append(command)
+        return next(responses)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+    result = LAUNCHER._herdr_pane(
+        tmp_path,
+        "session",
+        "p1",
+        "herdr",
+        expected_profile=profile,
+        context_identity="task:subject-1",
+    )
+
+    assert result["stale_released"] is True
+    assert any("release-agent" in command for command in commands)
 
 
 def test_pane_safety_rejects_missing_process_evidence(

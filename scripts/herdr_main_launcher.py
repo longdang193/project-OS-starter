@@ -123,6 +123,7 @@ _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _HERDR_AGENT_NAME_MAX_LENGTH = 32
+_HERDR_CONTEXT_MARKER_PATTERN = re.compile(r"-ctx-[0-9a-f]{12}$")
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
@@ -535,6 +536,8 @@ def _herdr_pane(
     env: dict[str, str] | None = None,
     panes: list[Any] | None = None,
     timeout: float = _HERDR_COMMAND_TIMEOUT,
+    expected_profile: AgentProfile | None = None,
+    context_identity: str | None = None,
 ) -> dict[str, Any]:
     if panes is None:
         panes = _result(
@@ -555,8 +558,27 @@ def _herdr_pane(
     pane_cwd = Path(str(selected.get("cwd", ""))).resolve()
     if pane_cwd != cwd.resolve():
         raise TargetCandidateRejected(f"Pane cwd mismatch: expected {cwd}, got {pane_cwd}")
-    if selected.get("agent") or selected.get("agent_status") not in (None, "unknown"):
-        raise TargetCandidateRejected(f"Pane already has agent state: {pane}")
+
+    existing_agent = bool(selected.get("agent") or selected.get("agent_status") not in (None, "unknown"))
+    agent_info: dict[str, Any] | None = None
+    if existing_agent:
+        if executor != "codex" or expected_profile is None or context_identity is None:
+            raise TargetCandidateRejected(f"Pane already has agent state: {pane}")
+        agent_info = _agent_for_pane(
+            herdr,
+            session,
+            pane,
+            env=env,
+            timeout=timeout,
+        )
+        if not isinstance(agent_info, dict):
+            raise TargetCandidateRejected(f"Pane agent identity is unavailable: {pane}")
+        if str(agent_info.get("agent_status") or "unknown") != "idle":
+            raise TargetCandidateRejected(f"Pane agent is active: {pane}")
+        expected_marker = _context_marker(context_identity)
+        actual_marker = _agent_context_marker(agent_info.get("name"))
+        if expected_marker != actual_marker:
+            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
 
     process_payload = _json_command(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -577,6 +599,34 @@ def _herdr_pane(
         processes = _process_records(foreground, require_pid=False)
     except LaunchBlocked as exc:
         raise TargetCandidateRejected(str(exc)) from exc
+
+    if agent_info is not None:
+        if not _process_matches_profile(
+            foreground,
+            model_provider=expected_profile.model_provider,
+            model=expected_profile.model,
+        ):
+            if not processes or all(
+                str(process.get("name", "")).lower() in _SHELL_PROCESS_NAMES
+                for process in processes
+            ):
+                _release_stale_idle_agent(
+                    herdr,
+                    session,
+                    pane,
+                    agent_info,
+                    env=env,
+                    timeout=timeout,
+                )
+                return {"pane": selected, "process_info": process_info, "stale_released": True}
+            raise TargetCandidateRejected(f"Pane profile mismatch: {pane}")
+        return {
+            "pane": selected,
+            "process_info": process_info,
+            "agent": agent_info,
+            "reuse": True,
+        }
+
     for process in processes:
         process_name = str(process.get("name", "unknown"))
         if process_name.lower() not in shell_names:
@@ -687,6 +737,8 @@ def _resolve_target_selector(
     *,
     executor: str = "codex",
     env: dict[str, str] | None = None,
+    expected_profile: AgentProfile | None = None,
+    context_identity: str | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     if session == "auto" and pane != "auto":
         raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
@@ -770,6 +822,8 @@ def _resolve_target_selector(
                 env=env,
                 panes=session_panes,
                 timeout=remaining_timeout(),
+                expected_profile=expected_profile,
+                context_identity=context_identity,
             )
         except TargetCandidateRejected as exc:
             rejections.append({"session": control_session, "pane": pane_id, "reason": str(exc)})
@@ -1782,6 +1836,45 @@ def _unique_agent_name(agent_name: str) -> str:
     return f"{agent_name[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix) - 1]}-{suffix}"
 
 
+def _stable_context_identity(
+    *,
+    secretary_task_id: str | None = None,
+    plan_identity: str | None = None,
+    assignment_id: str | None = None,
+) -> str | None:
+    """Select the strongest existing identity that can bind pane reuse."""
+    for label, value in (
+        ("task", secretary_task_id),
+        ("plan", plan_identity),
+        ("assignment", assignment_id),
+    ):
+        if isinstance(value, str) and value.strip():
+            return f"{label}:{value.strip()}"
+    return None
+
+
+def _context_marker(context_identity: str | None) -> str | None:
+    if not isinstance(context_identity, str) or not context_identity.strip():
+        return None
+    return f"ctx-{_sha256_text(context_identity.strip())[:12]}"
+
+
+def _agent_context_marker(agent_name: str | None) -> str | None:
+    if not isinstance(agent_name, str):
+        return None
+    match = _HERDR_CONTEXT_MARKER_PATTERN.search(agent_name)
+    return match.group(0)[1:] if match else None
+
+
+def _contextual_agent_name(profile_name: str, context_identity: str | None) -> str:
+    marker = _context_marker(context_identity)
+    if marker is None:
+        return _unique_agent_name(f"{profile_name}-main")
+    suffix = f"-{marker}"
+    base = f"{profile_name}-main"
+    return f"{base[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix)]}{suffix}"
+
+
 def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     registry = evidence.get("registry_launcher")
     grant = registry.get("runtime_grant") if isinstance(registry, dict) else None
@@ -1792,6 +1885,102 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
 
 def _shell_process_names(executor: str) -> set[str]:
     return _DEEPAGENTS_SHELL_PROCESS_NAMES if executor == "deepagents" else _SHELL_PROCESS_NAMES
+
+
+def _process_config_values(process: Mapping[str, Any]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    argv = process.get("argv")
+    if isinstance(argv, list):
+        for value in argv:
+            if not isinstance(value, str) or "=" not in value:
+                continue
+            key, raw_value = value.split("=", 1)
+            if key in {"model_provider", "model"}:
+                values[key] = raw_value.strip().strip('"')
+    command_line = process.get("cmdline")
+    if isinstance(command_line, str):
+        for key in ("model_provider", "model"):
+            match = re.search(rf"{key}=\\?\"?([^\"\s]+)", command_line)
+            if match:
+                values.setdefault(key, match.group(1))
+    return values
+
+
+def _process_matches_profile(
+    processes: Any,
+    *,
+    model_provider: str,
+    model: str,
+) -> bool:
+    for process in _process_records(processes, require_pid=False):
+        name = str(process.get("name", "")).lower()
+        if name not in {"codex.exe", "codex"}:
+            continue
+        values = _process_config_values(process)
+        if values.get("model_provider") == model_provider and values.get("model") == model:
+            return True
+    return False
+
+
+def _agent_for_pane(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    env: dict[str, str] | None,
+    timeout: float,
+) -> dict[str, Any] | None:
+    payload = _json_command(
+        [herdr, "--session", session, "agent", "list"],
+        env=env,
+        timeout=timeout,
+    )
+    agents = _result(payload, "agents")
+    if not isinstance(agents, list):
+        raise LaunchBlocked("Herdr agent list is not an array.")
+    return next(
+        (
+            item for item in agents
+            if isinstance(item, dict) and item.get("pane_id") == pane
+        ),
+        None,
+    )
+
+
+def _release_stale_idle_agent(
+    herdr: str,
+    session: str,
+    pane: str,
+    agent: Mapping[str, Any],
+    *,
+    env: dict[str, str] | None,
+    timeout: float,
+) -> None:
+    name = agent.get("name")
+    source = agent.get("agent_session", {}).get("source") if isinstance(agent.get("agent_session"), dict) else None
+    sequence = agent.get("completion_seq")
+    if not all(isinstance(value, str) and value.strip() for value in (name, source)):
+        raise TargetCandidateRejected("Idle pane has stale agent state without release identity.")
+    if not isinstance(sequence, int):
+        raise TargetCandidateRejected("Idle pane has stale agent state without release sequence.")
+    _json_command(
+        [
+            herdr,
+            "--session",
+            session,
+            "pane",
+            "release-agent",
+            "--source",
+            source,
+            "--agent",
+            name,
+            "--seq",
+            str(sequence),
+            pane,
+        ],
+        env=env,
+        timeout=timeout,
+    )
 
 
 def _pane_records(panes: Any) -> list[dict[str, Any]]:
@@ -2771,6 +2960,7 @@ def resolve_launch(
     assignment_id: str | None = None,
     repository_identity: str | None = None,
     plan_identity: str | None = None,
+    secretary_task_id: str | None = None,
     task_sha256: str | None = None,
     grant_digest_value: str | None = None,
     remaining_authorized_task_allowance: int | float | None = None,
@@ -2833,6 +3023,11 @@ def resolve_launch(
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
     runtime_preflight = _preflight_profile_runtime(selected)
+    context_identity = _stable_context_identity(
+        secretary_task_id=secretary_task_id,
+        plan_identity=plan_identity,
+        assignment_id=assignment_id,
+    )
     if name is not None:
         _validate_agent_name(name)
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
@@ -2855,10 +3050,21 @@ def resolve_launch(
         herdr,
         executor=executor,
         env=environment,
+        expected_profile=selected,
+        context_identity=context_identity,
     )
     _record_performance_phase(performance, "target_discovery", target_started)
     worker_started = time.monotonic()
-    pane_state = _herdr_pane(cwd, session, pane, herdr, executor=executor, env=environment)
+    pane_state = _herdr_pane(
+        cwd,
+        session,
+        pane,
+        herdr,
+        executor=executor,
+        env=environment,
+        expected_profile=selected,
+        context_identity=context_identity,
+    )
     if executor == "deepagents":
         allowance = (
             WHOLE_ATTEMPT_WALL_CLOCK_SECONDS
@@ -2877,10 +3083,17 @@ def resolve_launch(
         runtime_grant["wall_clock_seconds"]["enforcement"] = "runtime"
     delivery_task = _project_runtime_grant(task_text, runtime_grant)
     completion_marker = None
-    agent_name = name or (
-        _unique_agent_name(f"{selected.name}-main")
-        if executor == "codex"
-        else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
+    reuse_existing = bool(pane_state.get("reuse"))
+    existing_agent = pane_state.get("agent") if reuse_existing else None
+    agent_name = (
+        str(existing_agent.get("name"))
+        if isinstance(existing_agent, dict) and isinstance(existing_agent.get("name"), str)
+        else name
+        or (
+            _contextual_agent_name(selected.name, context_identity)
+            if executor == "codex"
+            else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
+        )
     )
     if executor == "codex":
         runtime_mcp_servers = _codex_runtime_mcp_servers(
@@ -2901,22 +3114,25 @@ def resolve_launch(
             selected_mcp_servers=codex_mcp_selection["effective_servers"],
             runtime_only_mcp_servers=codex_mcp_selection["runtime_only_servers"],
         )
-        command = [
-            herdr,
-            "--session",
-            session,
-            "agent",
-            "start",
-            agent_name,
-            "--kind",
-            "codex",
-            "--pane",
-            pane,
-            "--timeout",
-            _CODEX_START_TIMEOUT_MS,
-            "--",
-            *runtime_arguments,
-        ]
+        if reuse_existing:
+            command = _codex_assignment_command(herdr, session, agent_name, delivery_task)
+        else:
+            command = [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "start",
+                agent_name,
+                "--kind",
+                "codex",
+                "--pane",
+                pane,
+                "--timeout",
+                _CODEX_START_TIMEOUT_MS,
+                "--",
+                *runtime_arguments,
+            ]
     else:
         direct_mcp = bool(mcp_select and any(value.strip() for value in mcp_select))
         runtime_arguments = [
@@ -2950,6 +3166,9 @@ def resolve_launch(
             "assignment_id": assignment_id,
             "repository_identity": repository_identity,
             "plan_identity": plan_identity,
+            "secretary_task_id": secretary_task_id,
+            "context_identity": context_identity,
+            "context_marker": _context_marker(context_identity),
             "profile": selected.name,
             "profile_source": str(selected.source),
             "executor": executor,
@@ -2987,6 +3206,10 @@ def resolve_launch(
             "pane": pane,
             "agent_name": agent_name,
             "agent_kind": "codex" if executor == "codex" else "pane-process",
+            "context_identity": context_identity,
+            "context_marker": _context_marker(context_identity),
+            "reuse": reuse_existing,
+            "agent": existing_agent if isinstance(existing_agent, dict) else None,
                 "pane_cwd": str(Path(str(pane_state["pane"].get("cwd"))).resolve()),
                 "start_process_ids": sorted(
                     _process_ids(
@@ -3203,6 +3426,7 @@ def _main_body(args: argparse.Namespace) -> int:
             assignment_id=args.assignment_id,
             repository_identity=args.repository_identity,
             plan_identity=args.plan_identity,
+            secretary_task_id=args.secretary_task_id,
             task_sha256=args.task_sha256,
             grant_digest_value=args.grant_digest,
             remaining_authorized_task_allowance=args.remaining_authorized_task_allowance,
@@ -3722,6 +3946,15 @@ def _main_body(args: argparse.Namespace) -> int:
                     "pane": resolved_pane,
                     "agent": agent_name,
                 }
+            elif evidence["herdr"].get("reuse") is True:
+                existing_agent = evidence["herdr"].get("agent")
+                completion_seq = (
+                    existing_agent.get("completion_seq")
+                    if isinstance(existing_agent, dict)
+                    else None
+                )
+                evidence["herdr"]["pre_submit_completion_seq"] = completion_seq
+                evidence["observation"]["pre_submit_completion_seq"] = completion_seq
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)
