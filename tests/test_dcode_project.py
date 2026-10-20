@@ -2222,6 +2222,27 @@ def test_deepagents_model_params_follow_provider_wire_api(
     assert LAUNCHER._deepagents_model_params(config, "9router") == expected
 
 
+def test_deepagents_model_params_use_model_specific_wire_api_override() -> None:
+    config = {
+        "model_providers": {
+            "9router": {
+                "wire_api": "responses",
+                "wire_api_by_model": {
+                    "combo-web-high": "chat",
+                    "combo-web-medium": "chat",
+                },
+            }
+        }
+    }
+
+    assert LAUNCHER._deepagents_model_params(
+        config, "9router", "combo-web-high"
+    ) == {"use_responses_api": False}
+    assert LAUNCHER._deepagents_model_params(
+        config, "9router", "combo-high"
+    ) == {"use_responses_api": True}
+
+
 def test_deepagents_model_params_reject_unknown_wire_api() -> None:
     config = {"model_providers": {"9router": {"wire_api": "legacy"}}}
 
@@ -2458,6 +2479,50 @@ def test_print_config_reports_selected_role_effective_model(
     assert payload["selected_role"] == "normal"
     assert payload["effective_model"] == "openai:combo-normal"
     assert payload["controller_model"] == "openai:combo-high"
+    assert payload["deepagents_model_params"] == {"use_responses_api": False}
+
+
+def test_print_config_uses_chat_transport_for_web_role(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_role(tmp_path, "web-high", model="combo-web-high", rank=50)
+    config_path = tmp_path / "dcode-project.toml"
+    config_path.write_text(
+        '[delegation]\ndefault_executor = "deepagents"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
+    monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_runtime_binding",
+        lambda config: runtime_binding(
+            {
+                "model_providers": {
+                    "9router": {
+                        "wire_api": "responses",
+                        "wire_api_by_model": {"combo-web-high": "chat"},
+                    }
+                }
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_mcp_capabilities",
+        lambda config: {
+            "mcp_servers": [],
+            "mcp_tools": [],
+            "server_tools": {},
+            "mcp_capability_digest": "digest",
+        },
+    )
+
+    assert LAUNCHER.main(["--role", "web-high", "--print-config", "--no-mcp", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
     assert payload["deepagents_model_params"] == {"use_responses_api": False}
 
 

@@ -12,6 +12,34 @@ function Get-ResolvedPath {
   return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 }
 
+function Get-DotEnvValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
+  foreach ($line in Get-Content -LiteralPath $Path) {
+    if ($line -match "^\s*" + [regex]::Escape($Name) + "\s*=\s*(.*)\s*$") {
+      $value = $matches[1].Trim()
+      if ($value.Length -ge 2 -and (($value[0] -eq '"' -and $value[$value.Length - 1] -eq '"') -or ($value[0] -eq "'" -and $value[$value.Length - 1] -eq "'"))) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+      return $value
+    }
+  }
+  return $null
+}
+
+function Test-ShimApiKey {
+  param([Parameter(Mandatory = $true)][string]$ApiKey)
+  try {
+    $headers = @{ Authorization = "Bearer $ApiKey" }
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:20129/v1/models" -Headers $headers -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+    return $response.StatusCode -eq 200
+  } catch {
+    return $false
+  }
+}
+
 function Get-ListeningOwner {
   param([int]$Port)
   $connection = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -61,6 +89,10 @@ if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing local runtime environment: $envPath. Copy .env.example, add CGW_SHIM_API_KEY and CGW_SHIM_MODEL_ALIASES_JSON, and keep .env uncommitted."
 }
+$shimApiKey = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_API_KEY"
+if ([string]::IsNullOrWhiteSpace($shimApiKey)) {
+  throw "Missing CGW_SHIM_API_KEY in $envPath."
+}
 
 $node = (Get-Command node -ErrorAction Stop).Source
 $routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source
@@ -95,8 +127,13 @@ if ($null -eq $shimOwner) {
   Start-ProcessHidden -FilePath $node -ArgumentList @((Join-Path "tools" "cgw-codex-shim\run.js")) -WorkingDirectory $targetPath
 } elseif ($shimOwner.CommandLine -notmatch "cgw-codex-shim[\\/]+run\.js") {
   throw "Port 20129 is already owned by PID $($shimOwner.ProcessId): $($shimOwner.CommandLine)"
+} elseif (-not (Test-ShimApiKey -ApiKey $shimApiKey)) {
+  throw "Existing CGW shim on port 20129 rejected the target .env key; stop PID $($shimOwner.ProcessId) and rerun."
 }
 Wait-Http -Uri ("http://127.0.0.1:{0}/v1/models" -f 20129) -Accept { param($response) $response.StatusCode -in @(200, 401) } | Out-Null
+if (-not (Test-ShimApiKey -ApiKey $shimApiKey)) {
+  throw "CGW shim started on port 20129 but rejected the target .env key."
+}
 
 Write-Output "9router is ready at loopback port 20128."
 Write-Output "CGW Codex shim is ready at loopback port 20129."

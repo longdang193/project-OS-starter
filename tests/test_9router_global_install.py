@@ -32,6 +32,17 @@ def test_combo_launcher_accepts_existing_shim_with_windows_path_separators() -> 
     assert 'Join-Path "tools" "cgw-codex-shim\\run.js"' in script
 
 
+def test_combo_launcher_authenticates_existing_shim_with_target_env_key() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Get-DotEnvValue" in script
+    assert "Authorization" in script
+    assert "rejected the target .env" in script
+    assert "StatusCode -in @(200, 401)" in script
+
+
 def test_combo_readme_does_not_recommend_downgrading_the_global_router() -> None:
     readme = (ROOT / "tools" / "local-patch-hub" / "README.md").read_text(encoding="utf-8")
 

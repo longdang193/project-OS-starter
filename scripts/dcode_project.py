@@ -1283,6 +1283,7 @@ def _runtime_binding(config: dict[str, object]) -> _RuntimeBinding:
 def _deepagents_model_params(
     codex_config: dict[str, object],
     provider_name: str,
+    model: str | None = None,
 ) -> dict[str, bool]:
     providers = codex_config.get("model_providers")
     if not isinstance(providers, dict):
@@ -1291,6 +1292,17 @@ def _deepagents_model_params(
     if not isinstance(provider, dict):
         raise RuntimeError(f"Active Codex provider is unavailable: {provider_name}")
     wire_api = provider.get("wire_api")
+    if model is not None:
+        wire_api_by_model = provider.get("wire_api_by_model")
+        if wire_api_by_model is not None:
+            if not isinstance(wire_api_by_model, dict):
+                raise RuntimeError(
+                    f"Active Codex provider `{provider_name}` must declare "
+                    "`wire_api_by_model` as a table."
+                )
+            model_wire_api = wire_api_by_model.get(model)
+            if model_wire_api is not None:
+                wire_api = model_wire_api
     if not isinstance(wire_api, str) or not wire_api.strip():
         raise RuntimeError(
             f"Active Codex provider `{provider_name}` must declare `wire_api` for DeepAgents."
@@ -2231,11 +2243,7 @@ def main(argv: list[str]) -> int:
     base_url = binding.base_url
     provider_name = binding.provider_name
     codex_config = binding.codex_config
-    deepagents_model_params = (
-        _deepagents_model_params(codex_config, provider_name)
-        if executor == "deepagents"
-        else None
-    )
+    deepagents_model_params: dict[str, bool] | None = None
     needs_mcp_capabilities = bool(
         selection_values or handoff_file or ("--print-config" in child_argv)
     )
@@ -2256,6 +2264,13 @@ def main(argv: list[str]) -> int:
     selected_role = role_by_name.get(role_name) if role_name is not None else None
     if role_name is not None and selected_role is None:
         raise RuntimeError(f"Unknown role `{role_name}`.")
+    if executor == "deepagents":
+        selected_model = (
+            str(selected_role["model"]) if selected_role is not None else model
+        )
+        deepagents_model_params = _deepagents_model_params(
+            codex_config, provider_name, selected_model
+        )
     if "--print-config" in child_argv:
         allowed_print_config_args = {
             "--print-config",
