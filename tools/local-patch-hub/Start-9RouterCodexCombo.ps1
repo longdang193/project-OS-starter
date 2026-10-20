@@ -2,7 +2,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$TargetRoot,
   [switch]$InstallGlobal,
-  [switch]$AllowDowngrade
+  [switch]$AllowDowngrade,
+  [switch]$InstallStartup
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,6 +90,7 @@ if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing local runtime environment: $envPath. Copy .env.example, add CGW_SHIM_API_KEY and CGW_SHIM_MODEL_ALIASES_JSON, and keep .env uncommitted."
 }
+
 $shimApiKey = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_API_KEY"
 if ([string]::IsNullOrWhiteSpace($shimApiKey)) {
   throw "Missing CGW_SHIM_API_KEY in $envPath."
@@ -133,6 +135,12 @@ if ($null -eq $shimOwner) {
 Wait-Http -Uri ("http://127.0.0.1:{0}/v1/models" -f 20129) -Accept { param($response) $response.StatusCode -in @(200, 401) } | Out-Null
 if (-not (Test-ShimApiKey -ApiKey $shimApiKey)) {
   throw "CGW shim started on port 20129 but rejected the target .env key."
+}
+
+if ($InstallStartup) {
+  $startupScript = Join-Path $PSScriptRoot "Install-9RouterCodexComboStartup.ps1"
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startupScript -TargetRoot $targetPath
+  if ($LASTEXITCODE -ne 0) { throw "9router startup registration failed with exit code $LASTEXITCODE." }
 }
 
 Write-Output "9router is ready at loopback port 20128."

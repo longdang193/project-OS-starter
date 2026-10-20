@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 from collections.abc import Callable, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from datetime import datetime, timezone
 import hashlib
@@ -19,6 +19,8 @@ import sys
 import tempfile
 import time
 import tomllib
+import urllib.error
+import urllib.request
 import uuid
 from typing import Any
 
@@ -109,8 +111,12 @@ _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
+_CGW_SHIM_PREFLIGHT_URL = "http://127.0.0.1:20129/v1/models"
+_CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS = 2.0
 _HERDR_DEFAULT_SESSION = "default"
 _PANE_LOCK_PARENT = "herdr-pane-ownership"
+_SHARED_WEB_RUNTIME_LOCK_PARENT = "herdr-shared-web-runtime"
+_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-20128-20129.lock"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
@@ -342,6 +348,42 @@ def _codex_environment(codex_home: Path) -> dict[str, str]:
     return environment
 
 
+def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | None:
+    """Verify the local CGW listener before launching web profiles."""
+    if profile.model_provider != "9router" or not profile.model.startswith("combo-web-"):
+        return None
+    request = urllib.request.Request(
+        _CGW_SHIM_PREFLIGHT_URL,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS) as response:
+            status = int(response.status)
+    except urllib.error.HTTPError as exc:
+        status = int(exc.code)
+    except (OSError, TimeoutError) as exc:
+        raise LaunchBlocked(
+            "BLOCKED_CAPABILITY: CGW Codex shim is unavailable at "
+            f"{_CGW_SHIM_PREFLIGHT_URL}. Start "
+            "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 before launching "
+            f"{profile.name}; provider connection failed: {exc}"
+        ) from exc
+    if status not in {200, 401}:
+        raise LaunchBlocked(
+            "BLOCKED_CAPABILITY: CGW Codex shim at "
+            f"{_CGW_SHIM_PREFLIGHT_URL} returned HTTP {status}; start "
+            "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 and retry."
+        )
+    return {
+        "provider": profile.model_provider,
+        "model": profile.model,
+        "url": _CGW_SHIM_PREFLIGHT_URL,
+        "port": 20129,
+        "status": status,
+    }
+
+
 def _codex_runtime_mcp_servers(
     codex: str,
     cwd: Path,
@@ -551,8 +593,7 @@ def _pane_ownership_lock_path(cwd: Path, session: str, pane: str) -> Path:
 
 
 @contextmanager
-def _pane_ownership_lock(cwd: Path, session: str, pane: str):
-    path = _pane_ownership_lock_path(cwd, session, pane)
+def _exclusive_file_lock(path: Path, conflict_message: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     if os.name == "nt" and os.fstat(fd).st_size == 0:
@@ -571,9 +612,7 @@ def _pane_ownership_lock(cwd: Path, session: str, pane: str):
 
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise LaunchBlocked(
-                f"Another launch owns pane `{session}:{pane}`."
-            ) from exc
+            raise LaunchBlocked(conflict_message) from exc
         acquired = True
         yield
     finally:
@@ -590,6 +629,37 @@ def _pane_ownership_lock(cwd: Path, session: str, pane: str):
                     fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
             os.close(fd)
+
+
+@contextmanager
+def _pane_ownership_lock(cwd: Path, session: str, pane: str):
+    path = _pane_ownership_lock_path(cwd, session, pane)
+    with _exclusive_file_lock(path, f"Another launch owns pane `{session}:{pane}`."):
+        yield
+
+
+def _shared_web_runtime_lock_path() -> Path:
+    return (
+        Path(tempfile.gettempdir())
+        / _SHARED_WEB_RUNTIME_LOCK_PARENT
+        / _SHARED_WEB_RUNTIME_LOCK_NAME
+    )
+
+
+@contextmanager
+def _shared_web_runtime_lock():
+    with _exclusive_file_lock(
+        _shared_web_runtime_lock_path(),
+        "BLOCKED_CAPABILITY: shared CGW web runtime is busy; another web profile is active.",
+    ):
+        yield
+
+
+def _uses_shared_web_runtime(registry_evidence: Mapping[str, Any]) -> bool:
+    return (
+        registry_evidence.get("model_provider") == "9router"
+        and str(registry_evidence.get("model", "")).startswith("combo-web-")
+    )
 
 
 def _run_with_pane_ownership(
@@ -1261,6 +1331,78 @@ def _codex_assignment_command(
         agent_name,
         task,
     ]
+
+
+def _wait_for_shared_web_runtime_turn(
+    herdr: str,
+    session: str,
+    agent_name: str,
+    *,
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    timeout_ms = max(1, int(timeout_seconds * 1000))
+    try:
+        result = _run(
+            [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "wait",
+                agent_name,
+                "--until",
+                "idle",
+                "--timeout",
+                str(timeout_ms),
+            ],
+            env=env,
+            timeout=max(_HERDR_COMMAND_TIMEOUT, timeout_seconds),
+        )
+    except CommandTransportTimeout as exc:
+        raise LaunchBlocked(
+            "shared CGW web runtime wait transport timed out; runtime release is uncertain"
+        ) from exc
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
+        raise LaunchBlocked(f"shared CGW web runtime wait failed: {detail}")
+    return result
+
+
+def _submit_codex_prompt(
+    assignment: list[str],
+    *,
+    herdr: str,
+    session: str,
+    agent_name: str,
+    env: dict[str, str],
+    shared_web_runtime: bool,
+    timeout_seconds: float,
+) -> tuple[
+    subprocess.CompletedProcess[str] | None,
+    dict[str, Any] | None,
+    CommandTransportTimeout | None,
+]:
+    lock = _shared_web_runtime_lock() if shared_web_runtime else nullcontext()
+    with lock:
+        try:
+            assignment_result = _run(
+                assignment,
+                env=env,
+                timeout=_CODEX_ASSIGNMENT_TIMEOUT,
+            )
+        except CommandTransportTimeout as exc:
+            return None, None, exc
+        prompt_result = _classify_codex_prompt_result(assignment_result)
+        if prompt_result["submission"] == "acknowledged" and shared_web_runtime:
+            _wait_for_shared_web_runtime_turn(
+                herdr,
+                session,
+                agent_name,
+                env=env,
+                timeout_seconds=timeout_seconds,
+            )
+        return assignment_result, prompt_result, None
 
 
 
@@ -2690,6 +2832,7 @@ def resolve_launch(
         expected_grant_digest = computed_grant_digest
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
+    runtime_preflight = _preflight_profile_runtime(selected)
     if name is not None:
         _validate_agent_name(name)
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
@@ -2823,6 +2966,7 @@ def resolve_launch(
             "assignment_task_sha256": _sha256_text(task_text),
             "grant_digest": expected_grant_digest,
             "runtime_grant": runtime_grant,
+            "runtime_preflight": runtime_preflight,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
             "mcp_selection_requested": list(mcp_select or []),
@@ -3601,16 +3745,20 @@ def _main_body(args: argparse.Namespace) -> int:
                 agent_name,
                 delivery_task,
             )
-            transport_timeout: CommandTransportTimeout | None = None
-            assignment_result: subprocess.CompletedProcess[str] | None = None
-            try:
-                assignment_result = _run(
-                    assignment,
-                    env=environment,
-                    timeout=_CODEX_ASSIGNMENT_TIMEOUT,
-                )
-            except CommandTransportTimeout as exc:
-                transport_timeout = exc
+            shared_web_runtime = _uses_shared_web_runtime(registry_launcher)
+            assignment_result, prompt_result, transport_timeout = _submit_codex_prompt(
+                assignment,
+                herdr=herdr,
+                session=resolved_session,
+                agent_name=agent_name,
+                env=environment,
+                shared_web_runtime=shared_web_runtime,
+                timeout_seconds=(
+                    max(0.01, _remaining_deepagents_timeout(attempt_deadline))
+                    if shared_web_runtime
+                    else 0.0
+                ),
+            )
             if transport_timeout is not None:
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
@@ -3635,11 +3783,12 @@ def _main_body(args: argparse.Namespace) -> int:
                 return 2
             if assignment_result is None:
                 raise LaunchBlocked("Codex assignment produced no result.")
+            if prompt_result is None:
+                raise LaunchBlocked("Codex prompt classification produced no result.")
             if assignment_result.stdout:
                 print(assignment_result.stdout, end="")
             if assignment_result.stderr:
                 print(assignment_result.stderr, file=sys.stderr, end="")
-            prompt_result = _classify_codex_prompt_result(assignment_result)
             if prompt_result["submission"] == "unknown":
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({

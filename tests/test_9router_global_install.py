@@ -49,3 +49,28 @@ def test_combo_readme_does_not_recommend_downgrading_the_global_router() -> None
     assert "-InstallGlobal -AllowDowngrade" not in readme
     assert "0.5.104" in readme
     assert "Do not use `-AllowDowngrade`" in readme
+
+
+def test_combo_startup_registration_is_available_without_secrets() -> None:
+    startup = (ROOT / "tools" / "local-patch-hub" / "Install-9RouterCodexComboStartup.ps1").read_text(
+        encoding="utf-8"
+    )
+    launcher = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Register-ScheduledTask" in startup
+    assert "AtLogOn" in startup
+    assert "-LogonType Interactive" in startup
+    assert "AllowStartIfOnBatteries" in startup
+    assert "DontStopIfGoingOnBatteries" in startup
+    assert "CGW_SHIM_API_KEY" not in startup
+    assert "InstallStartup" in launcher
+
+
+def test_combo_readme_explains_one_time_startup_registration() -> None:
+    readme = (ROOT / "tools" / "local-patch-hub" / "README.md").read_text(encoding="utf-8")
+
+    assert "Install-9RouterCodexComboStartup.ps1" in readme
+    assert "once" in readme.lower()
+    assert "Windows logon" in readme

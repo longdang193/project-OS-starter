@@ -187,7 +187,9 @@ zero prior turns, the launcher persists the binding, and only then sends one
 for that native session. The legacy rollout/cursor handoff remains a
 compatibility fallback during rollout; missing app-server or LightRSI capability
 blocks before prompt delivery rather than polling an unrelated session.
-`agent wait` is a documented Herdr capability, not current launcher integration.
+The repository launcher uses `agent wait --until idle` for `9router` `combo-web-*`
+turns while holding the shared CGW single-flight lock; a failed or timed-out
+wait remains blocked or uncertain and is never promoted to successful admission.
 Normalize evidence fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
 repository identity, canonical plan identity, and stable lane identity across
 retries; `dcode-project` claims before worker spawn and settles only after

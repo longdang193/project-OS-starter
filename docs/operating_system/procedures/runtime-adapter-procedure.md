@@ -110,8 +110,10 @@ new supervisor or runtime ledger. For DeepAgents, read the correlated lifecycle
 receipt first. A confirmed receipt is authoritative and skips `pane wait-output`,
 `pane process-info`, and `pane read`; unresolved receipts use pane probes only
 for diagnostics or legacy fallback. For Codex, inspect `agent get` and
-`agent read`. `agent wait` remains a documented Herdr capability, not current
-launcher integration. Record executor, session, pane, agent identity, task hash,
+`agent read`. The repository launcher additionally serializes `9router`
+`combo-web-*` prompt turns with a shared runtime lock and holds that lock until
+`agent wait --until idle` succeeds; a failed or timed-out wait is not a
+successful admission. Record executor, session, pane, agent identity, task hash,
 state, and evidence source; keep state `unknown` when evidence is missing or
 stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only

@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import subprocess
 import time
+from contextlib import contextmanager
 
 import pytest
 
@@ -282,6 +283,46 @@ def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     assert 'developer_instructions="do not modify files"' in arguments
     assert "--dangerously-bypass-hook-trust" in arguments
     assert "check_for_update_on_startup=false" in arguments
+
+
+def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_profile(tmp_path, "web-high", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "web-high")
+
+    def refused(*args: object, **kwargs: object) -> object:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", refused)
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*20129"):
+        LAUNCHER._preflight_profile_runtime(profile)
+
+
+def test_web_profile_preflight_accepts_auth_required_cgw_shim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_profile(tmp_path, "web-medium", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "web-medium")
+
+    class Response:
+        status = 401
+
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", lambda *args, **kwargs: Response())
+
+    result = LAUNCHER._preflight_profile_runtime(profile)
+
+    assert result["status"] == 401
+    assert result["port"] == 20129
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
@@ -564,6 +605,142 @@ def test_codex_assignment_command_prompts_started_agent() -> None:
         "xhigh-main",
         "assign lane",
     ]
+
+
+def test_shared_web_runtime_profiles_use_one_single_flight_key() -> None:
+    assert LAUNCHER._uses_shared_web_runtime(
+        {"model_provider": "9router", "model": "combo-web-high"}
+    ) is True
+    assert LAUNCHER._uses_shared_web_runtime(
+        {"model_provider": "9router", "model": "combo-web-medium"}
+    ) is True
+    assert LAUNCHER._uses_shared_web_runtime(
+        {"model_provider": "9router", "model": "combo-high"}
+    ) is False
+    assert LAUNCHER._uses_shared_web_runtime(
+        {"model_provider": "other", "model": "combo-web-high"}
+    ) is False
+
+
+def test_shared_web_runtime_lock_rejects_concurrent_owner_and_releases_after_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "shared-web.lock"
+    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock_path", lambda: lock_path)
+
+    with pytest.raises(RuntimeError, match="sentinel"):
+        with LAUNCHER._shared_web_runtime_lock():
+            with pytest.raises(LAUNCHER.LaunchBlocked, match="shared CGW web runtime"):
+                with LAUNCHER._shared_web_runtime_lock():
+                    pytest.fail("concurrent shared web runtime lock acquired")
+            raise RuntimeError("sentinel")
+
+    with LAUNCHER._shared_web_runtime_lock():
+        pass
+
+
+def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "model_provider": "9router",
+            "model": "combo-web-high",
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "web-high-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+            "pre_submit_completion_seq": 11,
+        },
+    }
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    @contextmanager
+    def fake_runtime_lock():
+        yield
+
+    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "web-high", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 0
+
+    wait_commands = [command for command in commands if command[3:5] == ["agent", "wait"]]
+    assert len(wait_commands) == 1
+    assert wait_commands[0][:8] == [
+        "herdr.exe", "--session", "codex-probe", "agent", "wait",
+        "web-high-main", "--until", "idle",
+    ]
+    assert wait_commands[0][8] == "--timeout"
+    assert int(wait_commands[0][9]) > 0
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["status"] == "submitted"
+
+
+def test_web_prompt_wait_failure_is_not_reported_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "model_provider": "9router",
+            "model": "combo-web-medium",
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "web-medium-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    @contextmanager
+    def fake_runtime_lock():
+        yield
+
+    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
+
+    def fake_run(command, **kwargs):
+        if command[3:5] == ["agent", "wait"]:
+            return subprocess.CompletedProcess(command, 1, "", "wait timed out")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "web-medium", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 2
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["status"] == "blocked"
+    assert "shared CGW web runtime wait failed" in result["failure_kind"]
 
 
 def test_codex_completion_snapshot_reads_status_and_output(
