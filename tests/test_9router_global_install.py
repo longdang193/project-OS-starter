@@ -1,0 +1,40 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+INSTALLER = ROOT / "tools" / "local-patch-hub" / "Install-9RouterGlobal.ps1"
+
+
+def test_global_installer_stops_launcher_and_tray_processes_before_replacement() -> None:
+    script = INSTALLER.read_text(encoding="utf-8")
+
+    assert "9router\\.cmd" in script
+    assert "tray\\.ps1" in script
+    assert "Get-9RouterProcesses" in script
+    assert "remainingProcesses" in script
+
+
+def test_global_installer_rolls_back_when_replacement_or_verification_fails() -> None:
+    script = INSTALLER.read_text(encoding="utf-8")
+
+    assert "$rollbackRoot" in script
+    assert "Move-Item -LiteralPath $packageRoot" in script
+    assert "Restore-9RouterGlobal" in script
+    assert "versionOutput" in script
+
+
+def test_combo_launcher_accepts_existing_shim_with_windows_path_separators() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "cgw-codex-shim[\\\\/]+run\\.js" in script
+    assert 'Join-Path "tools" "cgw-codex-shim\\run.js"' in script
+
+
+def test_combo_readme_does_not_recommend_downgrading_the_global_router() -> None:
+    readme = (ROOT / "tools" / "local-patch-hub" / "README.md").read_text(encoding="utf-8")
+
+    assert "-InstallGlobal -AllowDowngrade" not in readme
+    assert "0.5.104" in readme
+    assert "Do not use `-AllowDowngrade`" in readme

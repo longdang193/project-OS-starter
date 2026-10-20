@@ -7,6 +7,7 @@ function Install-9RouterGlobal {
   $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
   $globalRoot = (& $npm "root" "-g" | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw "$npm global root lookup failed with exit code $LASTEXITCODE." }
+  $globalBinRoot = Split-Path $globalRoot -Parent
   $targetPackage = Get-Content -Raw -LiteralPath (Join-Path $TargetPath "cli\package.json") | ConvertFrom-Json
   $targetVersion = [Version]$targetPackage.version
   $installedPackagePath = Join-Path $globalRoot "9router\package.json"
@@ -20,8 +21,43 @@ function Install-9RouterGlobal {
 
   function Get-9RouterProcesses {
     @(Get-CimInstance Win32_Process | Where-Object {
-      $_.Name -eq "node.exe" -and $_.CommandLine -match "(?i)9router.*(cli\.js|custom-server\.js)"
+      $commandLine = [string]$_.CommandLine
+      ($_.Name -eq "node.exe" -and $commandLine -match "(?i)node_modules[\\/]+9router[\\/]+(cli\.js|app[\\/]+custom-server\.js)") -or
+      ($_.Name -eq "cmd.exe" -and $commandLine -match "(?i)9router\.cmd") -or
+      ($_.Name -in @("powershell.exe", "pwsh.exe") -and $commandLine -match "(?i)node_modules[\\/]+9router[\\/]+src[\\/]+cli[\\/]+tray[\\/]tray\.ps1")
     })
+  }
+
+  function Restore-9RouterGlobal {
+    param(
+      [Parameter(Mandatory = $true)][string]$RollbackRoot,
+      [Parameter(Mandatory = $true)][string]$PackageRoot,
+      [Parameter(Mandatory = $true)][string]$GlobalBinRoot
+    )
+
+    $failedRoot = Join-Path $RollbackRoot "failed"
+    $failedPackageRoot = Join-Path $failedRoot "package"
+    $failedBinRoot = Join-Path $failedRoot "bin"
+    $rollbackPackageRoot = Join-Path $RollbackRoot "package"
+    $rollbackBinRoot = Join-Path $RollbackRoot "bin"
+    New-Item -ItemType Directory -Path $failedRoot, $failedBinRoot -Force | Out-Null
+
+    if (Test-Path -LiteralPath $PackageRoot) {
+      Move-Item -LiteralPath $PackageRoot -Destination $failedPackageRoot -Force
+    }
+    foreach ($binName in @("9router", "9router.cmd", "9router.ps1")) {
+      $binPath = Join-Path $GlobalBinRoot $binName
+      if (Test-Path -LiteralPath $binPath) {
+        Move-Item -LiteralPath $binPath -Destination (Join-Path $failedBinRoot $binName) -Force
+      }
+      $rollbackBinPath = Join-Path $rollbackBinRoot $binName
+      if (Test-Path -LiteralPath $rollbackBinPath) {
+        Move-Item -LiteralPath $rollbackBinPath -Destination $binPath -Force
+      }
+    }
+    if (Test-Path -LiteralPath $rollbackPackageRoot) {
+      Move-Item -LiteralPath $rollbackPackageRoot -Destination $PackageRoot -Force
+    }
   }
 
   foreach ($process in @(Get-9RouterProcesses)) {
@@ -57,6 +93,11 @@ function Install-9RouterGlobal {
   }
   $packageStage = Join-Path ([IO.Path]::GetTempPath()) ("9router-package-" + [Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $packageStage | Out-Null
+  $rollbackRoot = Join-Path ([IO.Path]::GetTempPath()) ("9router-rollback-" + [Guid]::NewGuid().ToString("N"))
+  $packageRoot = Join-Path $globalRoot "9router"
+  $rollbackPackageRoot = Join-Path $rollbackRoot "package"
+  $rollbackBinRoot = Join-Path $rollbackRoot "bin"
+  $rollbackReady = $false
   try {
     Push-Location -LiteralPath (Join-Path $TargetPath "cli")
     try {
@@ -75,37 +116,71 @@ function Install-9RouterGlobal {
       throw "$npm pack failed with exit code $packExitCode and created no package archive. $($packDetails -join ' ')"
     }
     if ($packExitCode -ne 0) { Write-Warning "$npm pack returned exit code $packExitCode after creating $($packageFile.Name); continuing with the verified archive." }
-    & $npm "install" "-g" "--force" $packageFile.FullName
-    if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
+    try {
+      New-Item -ItemType Directory -Path $rollbackRoot, $rollbackBinRoot -Force | Out-Null
+      if (Test-Path -LiteralPath $packageRoot) {
+        $packageItem = Get-Item -LiteralPath $packageRoot -Force
+        if ($packageItem.LinkType) {
+          throw "Refusing to replace linked global 9router package: $packageRoot"
+        }
+        Move-Item -LiteralPath $packageRoot -Destination $rollbackPackageRoot -Force
+      }
+      foreach ($binName in @("9router", "9router.cmd", "9router.ps1")) {
+        $binPath = Join-Path $globalBinRoot $binName
+        if (Test-Path -LiteralPath $binPath) {
+          Move-Item -LiteralPath $binPath -Destination (Join-Path $rollbackBinRoot $binName) -Force
+        }
+      }
+      $rollbackReady = $true
+
+      & $npm "install" "-g" "--force" $packageFile.FullName
+      if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
+
+      $packageItem = Get-Item -LiteralPath $packageRoot -ErrorAction SilentlyContinue
+      if ($null -eq $packageItem -or $packageItem.LinkType) {
+        throw "Global 9router install is not a copied package directory: $packageRoot"
+      }
+      $entryPath = Join-Path $packageRoot "cli.js"
+      $cmdShim = Join-Path $globalBinRoot "9router.cmd"
+      if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
+        throw "Global 9router install is incomplete: missing $entryPath"
+      }
+      $installedAppPath = Join-Path $packageRoot "app"
+      if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and
+          -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) {
+        throw "Global 9router install is incomplete: missing standalone app under $installedAppPath"
+      }
+      if (-not (Test-Path -LiteralPath $cmdShim -PathType Leaf)) {
+        throw "Global 9router install is incomplete: missing $cmdShim"
+      }
+
+      $versionOutput = (& $cmdShim "--version" 2>&1 | Out-String).Trim()
+      $versionExitCode = $LASTEXITCODE
+      if ($versionExitCode -ne 0 -or $versionOutput -ne [string]$targetPackage.version) {
+        throw "Global 9router install is unusable: expected version $($targetPackage.version), got '$versionOutput'."
+      }
+    } catch {
+      $installError = $_
+      $hasRollbackArtifacts = $rollbackReady -or
+        (Test-Path -LiteralPath $rollbackPackageRoot) -or
+        (@(Get-ChildItem -LiteralPath $rollbackBinRoot -File -ErrorAction SilentlyContinue).Count -gt 0)
+      if ($hasRollbackArtifacts) {
+        try {
+          Restore-9RouterGlobal -RollbackRoot $rollbackRoot -PackageRoot $packageRoot -GlobalBinRoot $globalBinRoot
+        } catch {
+          throw "Global 9router install failed: $($installError.Exception.Message) Rollback failed: $($_.Exception.Message). Recovery artifacts remain at $rollbackRoot."
+        }
+      }
+      throw $installError
+    }
+
+    if (Test-Path -LiteralPath $rollbackRoot) {
+      Remove-Item -LiteralPath $rollbackRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
   } finally {
     if (Test-Path -LiteralPath $packageStage) {
       Remove-Item -LiteralPath $packageStage -Recurse -Force -ErrorAction SilentlyContinue
     }
-  }
-
-  $packageRoot = Join-Path $globalRoot "9router"
-  $packageItem = Get-Item -LiteralPath $packageRoot -ErrorAction SilentlyContinue
-  if ($null -eq $packageItem -or $packageItem.LinkType) {
-    throw "Global 9router install is not a copied package directory: $packageRoot"
-  }
-  $entryPath = Join-Path $packageRoot "cli.js"
-  $cmdShim = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
-  if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
-    throw "Global 9router install is incomplete: missing $entryPath"
-  }
-  $installedAppPath = Join-Path $packageRoot "app"
-  if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and
-      -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) {
-    throw "Global 9router install is incomplete: missing standalone app under $installedAppPath"
-  }
-  if (-not (Test-Path -LiteralPath $cmdShim -PathType Leaf)) {
-    throw "Global 9router install is incomplete: missing $cmdShim"
-  }
-
-  $versionOutput = (& $cmdShim "--version" 2>&1 | Out-String).Trim()
-  $versionExitCode = $LASTEXITCODE
-  if ($versionExitCode -ne 0 -or $versionOutput -ne [string]$targetPackage.version) {
-    throw "Global 9router install is unusable: expected version $($targetPackage.version), got '$versionOutput'."
   }
 
   Write-Output "Installed 9router global package and verified cli.js, 9router.cmd, and version $versionOutput."

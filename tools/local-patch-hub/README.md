@@ -144,12 +144,18 @@ commit it or print its values. At minimum, add `CGW_SHIM_API_KEY` and
 `CGW_SHIM_MODEL_ALIASES_JSON`; the remaining defaults are documented in
 `tools/cgw-codex-shim/README.md`.
 
-Install the current checkout globally and start both loopback services:
+Start both loopback services against the already-installed global 9router:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
-  -TargetRoot C:\path\to\9router -InstallGlobal -AllowDowngrade
+  -TargetRoot C:\path\to\9router
 ```
+
+Keep the global runtime on the current release (`0.5.104` at this gate) before
+starting the combo. The launcher installs the version from `TargetRoot` when
+`-InstallGlobal` is supplied; Do not use `-AllowDowngrade` for the combo, or an
+older source checkout can replace the current global runtime and leave the
+shim on an unsupported base.
 
 The launcher verifies `GET /api/health` on 9router at `127.0.0.1:20128` and
 the shim listener at `127.0.0.1:20129`. It refuses missing `.env`, unrelated

@@ -92,8 +92,8 @@ Wait-Http -Uri ("http://127.0.0.1:{0}/api/health" -f 20128) -Accept { param($res
 
 $shimOwner = Get-ListeningOwner 20129
 if ($null -eq $shimOwner) {
-  Start-ProcessHidden -FilePath $node -ArgumentList @("tools\\cgw-codex-shim\\run.js") -WorkingDirectory $targetPath
-} elseif ($shimOwner.CommandLine -notmatch "cgw-codex-shim[\\/]run\.js") {
+  Start-ProcessHidden -FilePath $node -ArgumentList @((Join-Path "tools" "cgw-codex-shim\run.js")) -WorkingDirectory $targetPath
+} elseif ($shimOwner.CommandLine -notmatch "cgw-codex-shim[\\/]+run\.js") {
   throw "Port 20129 is already owned by PID $($shimOwner.ProcessId): $($shimOwner.CommandLine)"
 }
 Wait-Http -Uri ("http://127.0.0.1:{0}/v1/models" -f 20129) -Accept { param($response) $response.StatusCode -in @(200, 401) } | Out-Null
