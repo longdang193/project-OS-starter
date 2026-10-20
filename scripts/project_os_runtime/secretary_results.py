@@ -160,6 +160,11 @@ def _validate_binding(payload: object) -> dict[str, Any]:
     return dict(payload)
 
 
+def validate_native_binding_payload(payload: object) -> dict[str, Any]:
+    """Validate one current-v3 binding payload without schema dispatch."""
+    return _validate_binding(payload)
+
+
 def _validate_v2_binding(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("native binding payload invalid")
@@ -251,7 +256,7 @@ def parse_native_binding(
             return {"state": "unknown", "detail": "native binding unavailable"}
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and raw.get("schema") == NATIVE_BINDING_SCHEMA:
-            payload = _validate_binding(raw)
+            payload = validate_native_binding_payload(raw)
         elif isinstance(raw, dict) and raw.get("schema") == NATIVE_BINDING_V2_SCHEMA:
             payload = _validate_v2_binding(raw)
         else:
@@ -294,6 +299,11 @@ def _validate_submission(payload: object) -> dict[str, Any]:
     if payload.get("status") != "accepted":
         raise ValueError("native submission status invalid")
     return dict(payload)
+
+
+def validate_native_submission_payload(payload: object) -> dict[str, Any]:
+    """Validate one current-v3 submission payload without schema dispatch."""
+    return _validate_submission(payload)
 
 
 def _validate_v2_submission(payload: object) -> dict[str, Any]:
@@ -364,7 +374,7 @@ def parse_native_submission(
             return {"state": "unknown", "detail": "native submission unavailable"}
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and raw.get("schema") == NATIVE_SUBMISSION_SCHEMA:
-            payload = _validate_submission(raw)
+            payload = validate_native_submission_payload(raw)
         elif isinstance(raw, dict) and raw.get("schema") == NATIVE_SUBMISSION_V2_SCHEMA:
             payload = _validate_v2_submission(raw)
         else:
@@ -513,6 +523,11 @@ def _validate_contract(payload: object, *, require_content_digest: bool) -> dict
     return normalized
 
 
+def validate_native_result_payload(payload: object) -> dict[str, Any]:
+    """Validate one current-v3 result payload without schema dispatch."""
+    return validate_persisted_result(payload)
+
+
 def _validate_legacy_contract(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("native result payload invalid")
@@ -653,7 +668,7 @@ def parse_native_result(
             return {"state": "unknown", "detail": "native result unavailable"}
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload, dict) and payload.get("schema") == NATIVE_RESULT_SCHEMA:
-            normalized = validate_persisted_result(payload)
+            normalized = validate_native_result_payload(payload)
         elif isinstance(payload, dict) and payload.get("schema") == NATIVE_RESULT_V2_SCHEMA:
             normalized = _validate_v2_contract(payload, require_content_digest=False)
         else:
@@ -710,6 +725,9 @@ __all__ = [
     "parse_native_binding",
     "parse_native_submission",
     "parse_native_result",
+    "validate_native_binding_payload",
+    "validate_native_submission_payload",
+    "validate_native_result_payload",
     "publish_native_result",
     "publish_native_binding",
     "publish_native_submission",

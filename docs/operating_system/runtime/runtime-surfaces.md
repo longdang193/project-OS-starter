@@ -168,6 +168,16 @@ resources remain caller-owned through `runtime.json`.
   relationships are proven; incomplete delivery remains recovery-required and
   non-retryable; foreign or uncertain bytes remain read-only. The legacy
   `--resume` flag is only a compatibility hint and never grants ownership.
+  Existing output ownership additionally requires at least one current-writer
+  binding in `preflight.attempt_id` or `preflight.retirement.attempt_id` that
+  matches the current v3 sidecar attempt. A top-level `attempt_id`, when
+  present, is consistency-only and cannot establish ownership by itself.
+  Current-v3 recovery reads use a no-follow bounded regular-file reader,
+  consume at most `NATIVE_RESULT_MAX_BYTES + 1` bytes, compare descriptor
+  identity/type/size after the read, and confirm the final pathname still
+  resolves to the same regular object. Same-inode concurrent byte mutation is
+  not guaranteed to be detected. Historical v1/v2/legacy readers remain
+  read-only compatibility paths and never authorize current-v3 ownership.
   LightRSI remains an independent history/context/replay/audit system, while
   v1/v2 result and binding decoders retain read-only historical compatibility.
   Current automatic recovery requires the current request-fingerprint contract,
@@ -179,6 +189,13 @@ resources remain caller-owned through `runtime.json`.
 - Bound `TaskResult` records carry assignment/attempt identity, progress, checkpoint, remaining work, and verification references through atomic publication; valid task results report evidence only and never grant acceptance or continuation.
 - Runtime deployment stages marker-owned output, validates it, then swaps one complete target tree; failed activation restores prior target content.
 - Launcher evidence records monotonic `preflight`, `target_discovery`, `worker_initialization`, `delivery`, `observation`, and `retirement` durations plus launcher subprocess counts. Values use explicit measured/not-attempted/unavailable status, include total duration and retry attribution, and stay workload-specific; no optimization claim is valid without matching baseline evidence.
+- `scripts/benchmark_completion_monitoring.py` provides a deterministic
+  20-repetition characterization of the Herdr completion-monitoring seam under
+  fake time. Its evidence is workload-specific and diagnostic; it does not
+  measure Git preflight, workspace hashing, app-server startup, native
+  publication/read-back, or retirement latency. A missing direct-native proof
+  is `BLOCKED_CAPABILITY`, not synthetic success, and keeps the freeze
+  verification incomplete.
 - Native Codex CoS may pass `--session auto --pane auto`; `scripts/secretary_live_runtime.py` bootstraps a task-owned workspace before invoking the repository launcher when automatic selectors are used, then passes the default session and verified workspace-qualified pane. Exact selectors remain unchanged after the server check. Probe-owned workspace cleanup is required for a successful result; unresolved cleanup remains `BLOCKED_CAPABILITY`. The repository launcher discovers eligible matching-`--cwd` panes from the selected Herdr session, validates workspace-qualified pane IDs, filters shell-only foreground processes, sorts candidates deterministically, and selects the first. Workspace IDs are not Herdr session names. Candidate evidence records the full eligible set. An `auto` session with an exact pane fails closed; a named session with `pane=auto` resolves only within that session. No eligible target returns `target_resolution:not_found`. `HERDR_ENV` is not a controller dispatch gate; launcher child environments remove it.
 - Herdr target evidence records session provenance as `shared/default` for the default session and `pre-existing` for other selected sessions. Existing sessions remain preserved; no deletion is enabled without direct exclusive-ownership and empty-session evidence.
 - Herdr observation is bounded and transient: DeepAgents reads the correlated lifecycle receipt first; confirmed receipts skip pane `wait-output`, `process-info`, and `read` commands. Unresolved receipts use pane waits and pull probes for diagnostics or legacy fallback only; Codex uses exact-agent `agent get`/`agent read`, captures the monotonic pre-submit `completion_seq`, and uses pane reads only as bounded fallback diagnostics. `agent wait` remains a documented Herdr capability, not current launcher integration. Initial or stale state is `unknown`, and silence may become `stuck_suspected` only as controller evidence. Observation never auto-kills, retries, advances, releases an assignment claim, or stores raw output. Replacement requires canonical `BLOCKED | RECONCILE | ELIGIBLE` settlement evidence.
