@@ -4,7 +4,7 @@ function Install-9RouterGlobal {
     [switch]$AllowDowngrade
   )
 
-  $npm = (Get-Command npm -ErrorAction Stop).Source
+  $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
   $globalRoot = (& $npm "root" "-g" | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw "$npm global root lookup failed with exit code $LASTEXITCODE." }
   $targetPackage = Get-Content -Raw -LiteralPath (Join-Path $TargetPath "cli\package.json") | ConvertFrom-Json
@@ -39,15 +39,17 @@ function Install-9RouterGlobal {
   }
 
   $cliPath = Join-Path $TargetPath "cli"
-  $buildExitCode = 0
-  Push-Location -LiteralPath $cliPath
-  try {
-    & $npm "run" "build"
-    $buildExitCode = $LASTEXITCODE
-  } finally {
-    Pop-Location
+  $buildLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-build-" + [Guid]::NewGuid().ToString("N") + ".log")
+  $buildErrorLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-build-" + [Guid]::NewGuid().ToString("N") + ".err.log")
+  $buildProcess = Start-Process -FilePath $npm -ArgumentList @("run", "build") -WorkingDirectory $cliPath -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $buildLog -RedirectStandardError $buildErrorLog
+  $buildExitCode = $buildProcess.ExitCode
+  if ($buildExitCode -ne 0) {
+    $buildDetails = @()
+    if (Test-Path -LiteralPath $buildErrorLog -PathType Leaf) { $buildDetails += @(Get-Content -LiteralPath $buildErrorLog -Tail 20) }
+    if (Test-Path -LiteralPath $buildLog -PathType Leaf) { $buildDetails += @(Get-Content -LiteralPath $buildLog -Tail 20) }
+    throw "$npm build failed with exit code $buildExitCode. $($buildDetails -join ' ')"
   }
-  if ($buildExitCode -ne 0) { throw "$npm build failed with exit code $buildExitCode." }
+  Remove-Item -LiteralPath $buildLog, $buildErrorLog -Force -ErrorAction SilentlyContinue
   $builtAppPath = Join-Path $TargetPath "cli\app"
   if (-not (Test-Path -LiteralPath (Join-Path $builtAppPath "server.js") -PathType Leaf) -and
       -not (Test-Path -LiteralPath (Join-Path $builtAppPath "custom-server.js") -PathType Leaf)) {
@@ -58,14 +60,21 @@ function Install-9RouterGlobal {
   try {
     Push-Location -LiteralPath (Join-Path $TargetPath "cli")
     try {
-      & $npm "pack" "--pack-destination" $packageStage
-      $packExitCode = $LASTEXITCODE
+      $packLog = Join-Path $packageStage "npm-pack.log"
+      $packErrorLog = Join-Path $packageStage "npm-pack.err.log"
+      $packProcess = Start-Process -FilePath $npm -ArgumentList @("pack", "--ignore-scripts", "--pack-destination", $packageStage) -WorkingDirectory (Join-Path $TargetPath "cli") -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $packLog -RedirectStandardError $packErrorLog
+      $packExitCode = $packProcess.ExitCode
     } finally {
       Pop-Location
     }
-    if ($packExitCode -ne 0) { throw "$npm pack failed with exit code $packExitCode." }
     $packageFile = @(Get-ChildItem -LiteralPath $packageStage -Filter "9router-*.tgz" -File) | Select-Object -First 1
-    if ($null -eq $packageFile) { throw "9router package archive was not created." }
+    if ($null -eq $packageFile) {
+      $packDetails = @()
+      if (Test-Path -LiteralPath $packErrorLog -PathType Leaf) { $packDetails += @(Get-Content -LiteralPath $packErrorLog -Tail 20) }
+      if (Test-Path -LiteralPath $packLog -PathType Leaf) { $packDetails += @(Get-Content -LiteralPath $packLog -Tail 20) }
+      throw "$npm pack failed with exit code $packExitCode and created no package archive. $($packDetails -join ' ')"
+    }
+    if ($packExitCode -ne 0) { Write-Warning "$npm pack returned exit code $packExitCode after creating $($packageFile.Name); continuing with the verified archive." }
     & $npm "install" "-g" "--force" $packageFile.FullName
     if ($LASTEXITCODE -ne 0) { throw "$npm global install failed with exit code $LASTEXITCODE." }
   } finally {

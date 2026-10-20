@@ -77,6 +77,10 @@ if ((Test-Path -LiteralPath $transformerPath -PathType Leaf) -and
     $responsesTranslator -match "state\.responseOutput\[Number\(data\.output_index\)\]" -and
     $responsesTranslator -match "output:\s*state\.responseOutput\.filter\(Boolean\)" -and
     $stream -match "reconstructedOutput = state\.responseOutput\.filter\(Boolean\)"
+  $mergedResponsesFix = $head -eq "0f6d885dec0e83c80f4dda56f7a7bf5871cdd809" -and
+    $transformer -match "output:\s*state\.responseOutput\.filter\(Boolean\)" -and
+    $responsesTranslator -match "output:\s*\(state\.responseOutput \|\| \[\]\)\.filter\(Boolean\)"
+  $nativeFix = $nativeFix -or $mergedResponsesFix
 }
 
 if ($nativeFix) {
