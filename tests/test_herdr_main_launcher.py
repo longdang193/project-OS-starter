@@ -1653,6 +1653,17 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
     context = "task:subject-1"
     agent_name = LAUNCHER._contextual_agent_name("web-high", context)
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_preflight_profile_runtime",
+        lambda selected: {
+            "provider": selected.model_provider,
+            "model": selected.model,
+            "url": "http://127.0.0.1:20129/v1/models",
+            "port": 20129,
+            "status": 200,
+        },
+    )
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(
