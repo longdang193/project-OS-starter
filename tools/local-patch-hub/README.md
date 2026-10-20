@@ -151,6 +151,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-
   -TargetRoot C:\path\to\9router
 ```
 
+To avoid rerunning the launcher after every Windows restart, register a
+per-user logon task once. This starts the same launcher 30 seconds after each
+Windows logon, keeps the existing global 9router version, and does not store
+`.env` values or API keys in Task Scheduler:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
+  -TargetRoot C:\path\to\9router `
+  -InstallStartup
+```
+
+The command starts the runtime immediately and registers the task for future
+logons. To remove the automatic startup task later:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Install-9RouterCodexComboStartup.ps1 `
+  -Uninstall
+```
+
 Keep the global runtime on the current release (`0.5.104` at this gate) before
 starting the combo. The launcher installs the version from `TargetRoot` when
 `-InstallGlobal` is supplied; Do not use `-AllowDowngrade` for the combo, or an
