@@ -1,0 +1,1392 @@
+diff --git a/src/app/api/models/test/ping.js b/src/app/api/models/test/ping.js
+index c9fa3ccfa935e5e6cb1c397a119641494f61ec64..50b23d32bdb7be3eccbbdc413e270c8986a9e853 100644
+--- a/src/app/api/models/test/ping.js
++++ b/src/app/api/models/test/ping.js
+@@ -1,11 +1,16 @@
+ import { getApiKeys } from "@/lib/localDb";
+-import { resolveProviderId } from "@/shared/constants/providers.js";
+-import { unwrapClineEnvelope } from "open-sse/shared/clineEnvelope.js";
+ import { UPDATER_CONFIG } from "@/shared/constants/config";
+ import { getConsistentMachineId } from "@/shared/utils/machineId";
+ 
+ const CLI_TOKEN_SALT = "9r-cli-auth";
+ 
++function isExpectedCgwModel(requestedModel, returnedModel) {
++  if (!String(requestedModel).startsWith("cgw/")) return true;
++  const returned = typeof returnedModel === "string" ? returnedModel : "";
++  const publicModel = String(requestedModel).slice("cgw/".length);
++  return returned === requestedModel || returned === publicModel;
++}
++
+ function createSilentWavFile() {
+   const sampleRate = 16000;
+   const channels = 1;
+@@ -43,10 +48,7 @@ async function getInternalHeaders() {
+   let apiKey = null;
+   try {
+     const keys = await getApiKeys();
+-    // Prefer an unrestricted key so a dashboard model test is not refused just
+-    // because the first key happens to be restricted.
+-    const activeKeys = keys.filter((k) => k.isActive !== false);
+-    apiKey = (activeKeys.find((k) => !k.access?.restricted) || activeKeys[0])?.key || null;
++    apiKey = keys.find((k) => k.isActive !== false)?.key || null;
+   } catch {}
+ 
+   const headers = { "Content-Type": "application/json" };
+@@ -135,36 +137,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
+     return { ok: true, latencyMs, error: null, status: res.status };
+   }
+ 
+-  if (kind === "systemone") {
+-    const res = await fetch(`${baseUrl}/api/v1/systemone`, {
+-      method: "POST",
+-      headers,
+-      body: JSON.stringify({
+-        model,
+-        state: "Customer: I was charged twice for my order this morning.",
+-        questions: {
+-          probe: { type: "noul", instructions: "Is the customer reporting a billing problem?" },
+-        },
+-      }),
+-      signal: AbortSignal.timeout(15000),
+-    });
+-    const latencyMs = Date.now() - start;
+-    const rawText = await res.text().catch(() => "");
+-    let parsed = null;
+-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+-
+-    if (!res.ok) {
+-      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+-      return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
+-    }
+-
+-    const hasAnswers = parsed?.answers && typeof parsed.answers === "object" && Object.keys(parsed.answers).length > 0;
+-    if (!hasAnswers) {
+-      return { ok: false, latencyMs, status: res.status, error: "Provider returned no answers for this model" };
+-    }
+-    return { ok: true, latencyMs, error: null, status: res.status };
+-  }
+-
++  const probeTimeoutMs = String(model).startsWith("cgw/") ? 30000 : 15000;
+   const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
+     method: "POST",
+     headers,
+@@ -178,7 +151,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
+       stream: false,
+       messages: [{ role: "user", content: "hi" }],
+     }),
+-    signal: AbortSignal.timeout(15000),
++    signal: AbortSignal.timeout(probeTimeoutMs),
+   });
+   const latencyMs = Date.now() - start;
+ 
+@@ -186,14 +159,9 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
+   let parsed = null;
+   try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+ 
+-  // Unwrap before the choices checks below. No-op for providers that do not
+-  // opt in via transport.quirks.clineEnvelope.
+-  const providerId = resolveProviderId(String(model).split("/")[0]);
+-  parsed = unwrapClineEnvelope(parsed, providerId);
+-
+   if (!res.ok) {
+     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+-    return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 500)}` : ""}`, status: res.status };
++    return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
+   }
+ 
+   const providerStatus = parsed?.status;
+@@ -221,6 +189,15 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
+     };
+   }
+ 
++  if (!isExpectedCgwModel(model, parsed?.model)) {
++    return {
++      ok: false,
++      latencyMs,
++      status: res.status,
++      error: `Provider returned model ${parsed?.model || "<missing>"}; expected ${model}`,
++    };
++  }
++
+   const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
+ 
+   // Soft-pass (issue #3010): a reasoning model may burn its whole budget on
+diff --git a/src/sse/services/model.js b/src/sse/services/model.js
+index ba4cc6c24a70ea287e0c4b8b9ba09d094d1cd4ed..e91dfc02f388404ff5fc7359bfae4bddf51a90c9 100644
+--- a/src/sse/services/model.js
++++ b/src/sse/services/model.js
+@@ -1,5 +1,5 @@
+ // Re-export from open-sse with localDb integration
+-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
++import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
+ import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+ import REGISTRY from "open-sse/providers/registry/index.js";
+ 
+@@ -16,6 +16,24 @@ for (const entry of REGISTRY) {
+   for (const alias of entry.aliases || []) RESERVED_PROVIDER_PREFIXES.add(alias);
+ }
+ 
++async function resolveCompatibleNode(prefix, type) {
++  const nodes = await getProviderNodes({ type });
++  const matches = nodes.filter((node) => node.prefix === prefix);
++  if (matches.length <= 1) return matches[0] || null;
++
++  const activeConnections = await getProviderConnections({ isActive: true });
++  const validatedMatches = matches.filter((node) => activeConnections.some(
++    (connection) => connection.provider === node.id && connection.testStatus === "active"
++  ));
++  if (validatedMatches.length === 1) return validatedMatches[0];
++
++  const providerNames = matches.map((node) => `${node.name || node.id} (${node.id})`).join(", ");
++  throw new Error(
++    `Ambiguous compatible provider prefix '${prefix}' for ${type}; ` +
++    `validated active matches: ${validatedMatches.length}; candidates: ${providerNames}`
++  );
++}
++
+ export function parseModel(modelStr) {
+   const parsed = parseModelCore(modelStr);
+   if (parsed?.providerAlias && LOCAL_PROVIDER_ALIASES[parsed.providerAlias]) {
+@@ -42,20 +60,17 @@ export async function getModelInfo(modelStr) {
+     // Provider-node prefixes are user-defined. They must not override built-in
+     // provider ids/aliases such as `cf`, `cloudflare-ai`, `openai`, or `hf`.
+     if (!RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias)) {
+-      const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
+-      const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
++      const matchedOpenAI = await resolveCompatibleNode(parsed.providerAlias, "openai-compatible");
+       if (matchedOpenAI) {
+         return { provider: matchedOpenAI.id, model: parsed.model };
+       }
+ 
+-      const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible" });
+-      const matchedAnthropic = anthropicNodes.find((node) => node.prefix === parsed.providerAlias);
++      const matchedAnthropic = await resolveCompatibleNode(parsed.providerAlias, "anthropic-compatible");
+       if (matchedAnthropic) {
+         return { provider: matchedAnthropic.id, model: parsed.model };
+       }
+ 
+-      const embeddingNodes = await getProviderNodes({ type: "custom-embedding" });
+-      const matchedEmbedding = embeddingNodes.find((node) => node.prefix === parsed.providerAlias);
++      const matchedEmbedding = await resolveCompatibleNode(parsed.providerAlias, "custom-embedding");
+       if (matchedEmbedding) {
+         return { provider: matchedEmbedding.id, model: parsed.model };
+       }
+diff --git a/tools/cgw-codex-shim/README.md b/tools/cgw-codex-shim/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..097b99193dc85e7ba219469b489b26f53cde612b
+--- /dev/null
++++ b/tools/cgw-codex-shim/README.md
+@@ -0,0 +1,81 @@
++# CGW Chat Shim
++
++This directory contains a loopback-only OpenAI-compatible adapter for the
++installed CGW runtime. It translates one plain-text, single-turn Chat
++Completions request into one direct CGW Responses request.
++
++## Scope
++
++- `GET /v1/models` exposes only aliases configured in
++  `CGW_SHIM_MODEL_ALIASES_JSON`.
++- `POST /v1/chat/completions` accepts exactly one non-empty `user` message.
++- `reasoning_effort` accepts `low`, `medium`, or `high` and is sent to CGW as
++  the per-request Responses `reasoning.effort` value.
++- `stream: true` returns buffered compatibility SSE; it is not live token
++  streaming.
++- Tools, system messages, multi-turn context, images, audio, and response-format
++  options are rejected before dispatch.
++- The service binds only to loopback and requires a dedicated local bearer key.
++- CGW inference is performed directly against its local `/v1/responses` bridge;
++  it never launches `codex exec` and never routes CGW aliases through 9Router's
++  Codex provider.
++- A missing CGW bearer fails closed before dispatch. Upstream failures after
++  dispatch include `x-9router-no-replay: 1` as an advisory diagnostic for the
++  parent 9Router replay policy.
++
++## Configuration
++
++The shim automatically loads `.env` from the repository root when any shim
++entrypoint starts. Existing process environment variables remain authoritative.
++Keep the real `.env` uncommitted.
++
++Start the long-running shim with:
++
++```powershell
++node tools/cgw-codex-shim/run.js
++```
++
++The equivalent variables are:
++
++```dotenv
++CGW_SHIM_HOST=127.0.0.1
++CGW_SHIM_PORT=20129
++CGW_SHIM_API_KEY=use-a-dedicated-local-key
++CGW_SHIM_MODEL_ALIASES_JSON={"gpt-6.1-sol":"chatgpt-web/gpt-6-sol","gpt-5.6-sol":"chatgpt-web/gpt-5.6-sol"}
++CGW_SHIM_CGW_BASE_URL=http://127.0.0.1:17841/v1
++# Use one of these local-only bearer sources. Never commit the value.
++CGW_SHIM_CGW_BEARER_FILE=C:\\Users\\me\\.codex\\cgw-bearer.env
++# CGW_SHIM_CGW_BEARER=use-a-current-native-bearer
++```
++
++The bearer file may contain a raw token or one of these assignments:
++
++```dotenv
++CGW_SHIM_CGW_BEARER=...
++OPENAI_ACCESS_TOKEN=...
++ACCESS_TOKEN=...
++```
++
++The bearer must be accepted by the authenticated CGW Responses bridge. An
++OpenAI API key beginning with `sk-` is not a substitute for this bearer. The
++shim reads the bearer at request time and never logs or returns it.
++
++The default limits are bounded and can be overridden with
++`CGW_SHIM_MAX_BODY_BYTES`, `CGW_SHIM_MAX_CONCURRENT`, `CGW_SHIM_MAX_QUEUE`,
++`CGW_SHIM_TIMEOUT_MS`, and `CGW_SHIM_TERMINATION_GRACE_MS`.
++
++## Checks
++
++```powershell
++node --test tools/cgw-codex-shim/test/*.test.js
++node tools/cgw-codex-shim/smoke.js --help
++```
++
++For a live inference smoke, configure a valid bearer and run:
++
++```powershell
++node tools/cgw-codex-shim/smoke.js --model gpt-6.1-sol --prompt "Reply with CGW_SHIM_CHAT_OK only."
++```
++
++The command prints only the selected alias and returned text. It does not print
++the bearer key or request headers.
+diff --git a/tools/cgw-codex-shim/cgwResponses.js b/tools/cgw-codex-shim/cgwResponses.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..21869547363715aaffbedbe8cce46e809d699c2b
+--- /dev/null
++++ b/tools/cgw-codex-shim/cgwResponses.js
+@@ -0,0 +1,170 @@
++import { readFileSync } from "node:fs";
++import { randomUUID } from "node:crypto";
++
++function errorWithState(message, dispatchStarted, code, statusCode) {
++  const error = new Error(message);
++  error.dispatchStarted = dispatchStarted;
++  error.code = code;
++  if (statusCode) error.statusCode = statusCode;
++  return error;
++}
++
++function normalizeBearer(value) {
++  const token = String(value || "").trim();
++  if (!token) return null;
++  return token.replace(/^Bearer\s+/i, "").trim() || null;
++}
++
++async function readResponseTextBounded(response, maxBytes) {
++  const limit = Number(maxBytes);
++  if (!Number.isInteger(limit) || limit < 1 || !response.body?.getReader) {
++    const rawText = await response.text();
++    if (Number.isInteger(limit) && limit > 0 && Buffer.byteLength(rawText, "utf8") > limit) {
++      throw errorWithState("CGW response body too large", true, "cgw_response_too_large", 502);
++    }
++    return rawText;
++  }
++
++  const reader = response.body.getReader();
++  const chunks = [];
++  let size = 0;
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      size += value.byteLength;
++      if (size > limit) {
++        await reader.cancel().catch(() => {});
++        throw errorWithState("CGW response body too large", true, "cgw_response_too_large", 502);
++      }
++      chunks.push(Buffer.from(value));
++    }
++  } finally {
++    reader.releaseLock();
++  }
++  return Buffer.concat(chunks).toString("utf8");
++}
++
++export function readBearerToken(filePath) {
++  const lines = readFileSync(filePath, "utf8").split(/\r?\n/);
++  for (const line of lines) {
++    const match = line.match(/^\s*(?:CGW_SHIM_CGW_BEARER|OPENAI_ACCESS_TOKEN|ACCESS_TOKEN)\s*=\s*(.*?)\s*$/);
++    if (match) return normalizeBearer(match[1]);
++  }
++  return normalizeBearer(readFileSync(filePath, "utf8"));
++}
++
++export function resolveBearer(config, sourceEnv = process.env) {
++  const direct = normalizeBearer(sourceEnv.CGW_SHIM_CGW_BEARER);
++  if (direct) return direct;
++  if (config.cgw.bearerFile) {
++    const fileValue = readBearerToken(config.cgw.bearerFile);
++    if (fileValue) return fileValue;
++  }
++  throw errorWithState(
++    "CGW bearer is not configured; set CGW_SHIM_CGW_BEARER or CGW_SHIM_CGW_BEARER_FILE",
++    false,
++    "cgw_bearer_missing",
++    503,
++  );
++}
++
++export function buildCgwResponseRequest({ baseUrl, bearer, model, prompt, reasoningEffort, signal }) {
++  const url = new URL("responses", `${String(baseUrl).replace(/\/$/, "")}/`);
++  const threadId = `thread_${randomUUID()}`;
++  const turnId = `turn_${randomUUID()}`;
++  const itemId = `msg_${randomUUID()}`;
++  const body = {
++    model,
++    input: [{
++      type: "message",
++      id: itemId,
++      role: "user",
++      content: [{ type: "input_text", text: prompt }],
++      internal_chat_message_metadata_passthrough: { turn_id: turnId },
++    }],
++    client_metadata: {
++      "x-codex-turn-metadata": JSON.stringify({ request_kind: "turn", thread_id: threadId, turn_id: turnId }),
++    },
++    store: false,
++    stream: false,
++  };
++  if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
++  return {
++    url,
++    init: {
++      method: "POST",
++      headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
++      body: JSON.stringify(body),
++      signal,
++    },
++  };
++}
++
++export function extractResponseText(payload) {
++  if (typeof payload?.output_text === "string" && payload.output_text.trim()) return payload.output_text;
++  const output = Array.isArray(payload?.output) ? payload.output : [];
++  const finalOutput = output.filter((item) => item?.phase === "final_answer");
++  const items = (finalOutput.length ? finalOutput : output)
++    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
++    .map((item) => item?.text || item?.value || "")
++    .filter((value) => typeof value === "string" && value.trim());
++  const text = items.at(-1) || "";
++  return text.trim() ? text : null;
++}
++
++export async function runCgwTurn({ config, model, prompt, reasoningEffort, signal, bearer, fetchImpl = fetch }) {
++  const resolvedBearer = bearer || resolveBearer(config);
++  const timeoutSignal = AbortSignal.timeout(config.limits.timeoutMs);
++  const requestSignal = signal && AbortSignal.any ? AbortSignal.any([signal, timeoutSignal]) : signal || timeoutSignal;
++  const request = buildCgwResponseRequest({
++    baseUrl: config.cgw.baseUrl,
++    bearer: resolvedBearer,
++    model,
++    prompt,
++    reasoningEffort,
++    signal: requestSignal,
++  });
++
++  let response;
++  try {
++    response = await fetchImpl(request.url, request.init);
++  } catch (error) {
++    if (error?.name === "TimeoutError" || error?.name === "AbortError") {
++      throw errorWithState("CGW request timed out or was aborted", true, "cgw_request_aborted", 504);
++    }
++    throw errorWithState(error?.message || "CGW request failed", true, "cgw_request_failed", 502);
++  }
++
++  let rawText;
++  try {
++    rawText = await readResponseTextBounded(response, config.limits.maxOutputBytes);
++  } catch (error) {
++    if (error?.code === "cgw_response_too_large") throw error;
++    throw errorWithState(error?.message || "CGW response could not be read", true, "cgw_response_read_failed", 502);
++  }
++  let payload = null;
++  try { payload = rawText ? JSON.parse(rawText) : null; } catch {}
++  if (!response.ok) {
++    const detail = payload?.error?.message || payload?.error || rawText;
++    throw errorWithState(
++      `CGW HTTP ${response.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`,
++      true,
++      "cgw_upstream_error",
++      response.status,
++    );
++  }
++
++  if (payload?.model !== model) {
++    throw errorWithState(
++      `CGW model mismatch: requested ${model}, received ${payload?.model || "<missing>"}`,
++      true,
++      "cgw_model_mismatch",
++      502,
++    );
++  }
++
++  const text = extractResponseText(payload);
++  if (!text) throw errorWithState("CGW returned no assistant text", true, "cgw_empty_response", 502);
++  return { text, dispatchStarted: true, model: payload.model };
++}
+diff --git a/tools/cgw-codex-shim/compatibility.md b/tools/cgw-codex-shim/compatibility.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..2c7114660515c3cba49b3089176d8120e4ce70a6
+--- /dev/null
++++ b/tools/cgw-codex-shim/compatibility.md
+@@ -0,0 +1,32 @@
++# CGW / 9Router Compatibility Matrix
++
++Recorded on 2026-10-21 (Europe/Berlin) during the direct CGW transport gate.
++
++| Component | Observed value | Result |
++| --- | --- | --- |
++| Development checkout | current working tree | Direct CGW transport under test |
++| Installed 9Router | `9router-app` `0.5.104` | Running on `http://127.0.0.1:20128` |
++| CGW runtime | `codex-chatgpt-web` `6.1.12-win32-x64` | Responses bridge on `http://127.0.0.1:17841` |
++| Shim | `tools/cgw-codex-shim/run.js` | Chat Completions compatibility on `http://127.0.0.1:20129` |
++| CGW transport | Direct `POST /v1/responses` | Does not invoke `codex exec` or 9Router Codex provider |
++| Model selection | `gpt-5.6-sol`, `gpt-6.1-sol` | Alias target is sent unchanged to CGW |
++| Thinking override | `reasoning_effort=low|medium|high` | Sent as Responses `reasoning.effort` |
++| Test validation | `POST /api/v1/chat/completions` with `hi` | Requires a real completion and matching returned model |
++
++## Root cause corrected
++
++The previous shim translated Chat Completions into `codex exec`, configured that
++child to call 9Router on port `20128`, and qualified targets as
++`codex/gpt-*`. That path selected a Codex OAuth connection and consumed Codex
++quota even though the public model prefix was `cgw`.
++
++The shim now translates directly to CGW's authenticated Responses bridge on
++port `17841`. It fails closed when no CGW bearer is configured, so it cannot
++silently fall back to native Codex execution.
++
++## Authentication
++
++CGW requires a valid native bearer in the incoming request. The shim accepts
++that bearer only from the local `CGW_SHIM_CGW_BEARER` environment variable or
++`CGW_SHIM_CGW_BEARER_FILE`. A regular `sk-*` API key is rejected by CGW and is
++not treated as a fallback.
+diff --git a/tools/cgw-codex-shim/config.js b/tools/cgw-codex-shim/config.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a35fda25a3f0a0859dcecc3c807d308aa0b7ecd0
+--- /dev/null
++++ b/tools/cgw-codex-shim/config.js
+@@ -0,0 +1,91 @@
++import "./env.js";
++
++const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
++
++function positiveInteger(value, name, { allowZero = false } = {}) {
++  const number = Number(value);
++  const minimum = allowZero ? 0 : 1;
++  if (!Number.isInteger(number) || number < minimum) {
++    throw new Error(`${name} must be an integer >= ${minimum}`);
++  }
++  return number;
++}
++
++function booleanValue(value, name, fallback) {
++  if (value == null || value === "") return fallback;
++  if (value === true || value === "true" || value === "1") return true;
++  if (value === false || value === "false" || value === "0") return false;
++  throw new Error(`${name} must be true or false`);
++}
++
++function requiredString(value, name) {
++  const result = String(value ?? "").trim();
++  if (!result) throw new Error(`${name} is required`);
++  return result;
++}
++
++function requiredLoopbackUrl(value, name) {
++  const result = requiredString(value, name);
++  let url;
++  try { url = new URL(result); } catch { throw new Error(`${name} must be a valid URL`); }
++  if (url.protocol !== "http:" || !LOOPBACK_HOSTS.has(url.hostname)) {
++    throw new Error(`${name} must be an http loopback URL`);
++  }
++  return result.replace(/\/$/, "");
++}
++
++export function parseModelAliases(raw) {
++  let parsed;
++  try {
++    parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
++  } catch {
++    throw new Error("model aliases must be valid JSON");
++  }
++  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
++    throw new Error("model aliases must be an object");
++  }
++
++  const aliases = {};
++  for (const [alias, targetModel] of Object.entries(parsed)) {
++    if (!alias.trim() || /\s/.test(alias)) throw new Error("model alias must be non-empty and contain no whitespace");
++    const model = String(targetModel ?? "").trim();
++    if (!model) throw new Error(`target model for alias ${alias} is required`);
++    if (!model.startsWith("chatgpt-web/")) {
++      throw new Error(`CGW target model for alias ${alias} must use the chatgpt-web/ browser route`);
++    }
++    aliases[alias] = model;
++  }
++  if (!Object.keys(aliases).length) throw new Error("at least one model alias is required");
++  return Object.fromEntries(Object.entries(aliases).sort(([left], [right]) => left.localeCompare(right)));
++}
++
++export function loadConfig(env = process.env) {
++  const host = String(env.CGW_SHIM_HOST || "127.0.0.1").trim();
++  if (!LOOPBACK_HOSTS.has(host)) throw new Error("CGW_SHIM_HOST must be a loopback address");
++
++  const apiKey = requiredString(env.CGW_SHIM_API_KEY, "CGW_SHIM_API_KEY");
++  const modelAliases = parseModelAliases(env.CGW_SHIM_MODEL_ALIASES_JSON);
++  const port = positiveInteger(env.CGW_SHIM_PORT ?? "20129", "CGW_SHIM_PORT", { allowZero: true });
++  if (port > 65535) throw new Error("CGW_SHIM_PORT must be <= 65535");
++
++  const cgwBaseUrl = requiredLoopbackUrl(env.CGW_SHIM_CGW_BASE_URL || "http://127.0.0.1:17841/v1", "CGW_SHIM_CGW_BASE_URL");
++
++  return {
++    host,
++    port,
++    apiKey,
++    modelAliases,
++    limits: {
++      maxBodyBytes: positiveInteger(env.CGW_SHIM_MAX_BODY_BYTES ?? "65536", "CGW_SHIM_MAX_BODY_BYTES"),
++      maxConcurrent: positiveInteger(env.CGW_SHIM_MAX_CONCURRENT ?? "1", "CGW_SHIM_MAX_CONCURRENT"),
++      maxQueue: positiveInteger(env.CGW_SHIM_MAX_QUEUE ?? "8", "CGW_SHIM_MAX_QUEUE", { allowZero: true }),
++      timeoutMs: positiveInteger(env.CGW_SHIM_TIMEOUT_MS ?? "120000", "CGW_SHIM_TIMEOUT_MS"),
++      maxOutputBytes: positiveInteger(env.CGW_SHIM_MAX_OUTPUT_BYTES ?? "2097152", "CGW_SHIM_MAX_OUTPUT_BYTES"),
++      terminationGraceMs: positiveInteger(env.CGW_SHIM_TERMINATION_GRACE_MS ?? "1500", "CGW_SHIM_TERMINATION_GRACE_MS"),
++    },
++    cgw: {
++      baseUrl: cgwBaseUrl,
++      bearerFile: String(env.CGW_SHIM_CGW_BEARER_FILE || "").trim() || null,
++    },
++  };
++}
+diff --git a/tools/cgw-codex-shim/env.js b/tools/cgw-codex-shim/env.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..32ab5b7c14b5f44f845a8b016280ec38323492cf
+--- /dev/null
++++ b/tools/cgw-codex-shim/env.js
+@@ -0,0 +1,16 @@
++import { loadEnvFile } from "node:process";
++import { fileURLToPath } from "node:url";
++
++const repositoryEnvPath = fileURLToPath(new URL("../../.env", import.meta.url));
++
++export function loadEnvFileIntoProcess(filePath = repositoryEnvPath) {
++  try {
++    loadEnvFile(filePath);
++    return true;
++  } catch (error) {
++    if (error?.code === "ENOENT") return false;
++    throw error;
++  }
++}
++
++loadEnvFileIntoProcess();
+diff --git a/tools/cgw-codex-shim/http.js b/tools/cgw-codex-shim/http.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..5027df668955e6e47b004aaf231494072693e661
+--- /dev/null
++++ b/tools/cgw-codex-shim/http.js
+@@ -0,0 +1,50 @@
++export function parseBearerToken(header) {
++  if (typeof header !== "string") return null;
++  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
++  return match?.[1]?.trim() || null;
++}
++
++export async function readJsonBody(request, maxBytes) {
++  const body = await request.text();
++  if (Buffer.byteLength(body, "utf8") > maxBytes) throw new Error("request body too large");
++  try {
++    return JSON.parse(body || "{}");
++  } catch {
++    throw new Error("request body must be valid JSON");
++  }
++}
++
++const REASONING_EFFORTS = new Set(["low", "medium", "high"]);
++
++function parseReasoningEffort(value) {
++  if (value === undefined) return undefined;
++  if (typeof value !== "string" || !REASONING_EFFORTS.has(value)) {
++    throw new Error("reasoning_effort must be one of: low, medium, high");
++  }
++  return value;
++}
++
++export function validateChatRequest(body, modelAliases) {
++  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("request body must be an object");
++  if (body.tools !== undefined || body.tool_choice !== undefined) throw new Error("tools are not supported");
++  if (body.response_format !== undefined || body.modalities !== undefined || body.audio !== undefined) throw new Error("multimodal and response-format options are not supported");
++  if (typeof body.model !== "string" || !modelAliases[body.model]) throw new Error("unknown model alias");
++  if (!Array.isArray(body.messages) || body.messages.length !== 1) throw new Error("exactly one user message is supported");
++  const [message] = body.messages;
++  if (message?.role !== "user") throw new Error("only one user message is supported");
++  if (typeof message.content !== "string" || !message.content.trim()) throw new Error("message content must be plain text");
++  const result = { model: modelAliases[body.model], prompt: message.content };
++  if (body.reasoning_effort !== undefined) result.reasoningEffort = parseReasoningEffort(body.reasoning_effort);
++  return result;
++}
++
++export function jsonResponse(body, status = 200, headers = {}) {
++  return new Response(JSON.stringify(body), {
++    status,
++    headers: { "content-type": "application/json; charset=utf-8", ...headers },
++  });
++}
++
++export function errorResponse(status, message, headers = {}) {
++  return jsonResponse({ error: { message, type: "cgw_codex_shim_error" } }, status, headers);
++}
+diff --git a/tools/cgw-codex-shim/package.json b/tools/cgw-codex-shim/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..d375cebba016b32041a5c70aabaa66d462b32efd
+--- /dev/null
++++ b/tools/cgw-codex-shim/package.json
+@@ -0,0 +1,5 @@
++{
++  "name": "cgw-codex-shim",
++  "private": true,
++  "type": "module"
++}
+diff --git a/tools/cgw-codex-shim/run.js b/tools/cgw-codex-shim/run.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ad2d12d3c7daa623cee4d86ea8245bf2b96dc91
+--- /dev/null
++++ b/tools/cgw-codex-shim/run.js
+@@ -0,0 +1,31 @@
++import { runCgwTurn } from "./cgwResponses.js";
++import { loadConfig } from "./config.js";
++import { startServer } from "./server.js";
++
++function formatAddress(address) {
++  const host = address.address.includes(":") ? `[${address.address}]` : address.address;
++  return `http://${host}:${address.port}`;
++}
++
++async function main() {
++  const config = loadConfig();
++  const runtime = await startServer({
++    config,
++    executeTurn: (request) => runCgwTurn({ config, ...request }),
++  });
++  let shutdownPromise;
++
++  const shutdown = () => {
++    if (!shutdownPromise) shutdownPromise = runtime.close();
++    return shutdownPromise;
++  };
++
++  process.once("SIGINT", () => { void shutdown(); });
++  process.once("SIGTERM", () => { void shutdown(); });
++  console.log(`CGW Chat shim listening at ${formatAddress(runtime.address)}`);
++}
++
++main().catch((error) => {
++  console.error(`cgw-codex-shim failed: ${error.message}`);
++  process.exitCode = 1;
++});
+diff --git a/tools/cgw-codex-shim/server.js b/tools/cgw-codex-shim/server.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea3de6d91722af2244123f20ff614a39b3feea30
+--- /dev/null
++++ b/tools/cgw-codex-shim/server.js
+@@ -0,0 +1,187 @@
++import http from "node:http";
++import { randomUUID } from "node:crypto";
++import { errorResponse, jsonResponse, parseBearerToken, validateChatRequest } from "./http.js";
++
++class WorkQueue {
++  constructor(maxConcurrent, maxQueue) {
++    this.maxConcurrent = maxConcurrent;
++    this.maxQueue = maxQueue;
++    this.active = 0;
++    this.queue = [];
++  }
++
++  run(task) {
++    return new Promise((resolve, reject) => {
++      const item = { task, resolve, reject };
++      if (this.active < this.maxConcurrent) {
++        this.start(item);
++      } else if (this.queue.length < this.maxQueue) {
++        this.queue.push(item);
++      } else {
++        const error = new Error("native execution queue is full");
++        error.statusCode = 429;
++        reject(error);
++      }
++    });
++  }
++
++  start(item) {
++    this.active += 1;
++    Promise.resolve().then(item.task).then(item.resolve, item.reject).finally(() => {
++      this.active -= 1;
++      const next = this.queue.shift();
++      if (next) this.start(next);
++    });
++  }
++}
++
++function writeResponse(response, body, status = 200, headers = {}) {
++  const payload = Buffer.from(body);
++  response.writeHead(status, { "content-length": payload.length, ...headers });
++  response.end(payload);
++}
++
++function writeJson(response, body, status = 200, headers = {}) {
++  writeResponse(response, JSON.stringify(body), status, {
++    "content-type": "application/json; charset=utf-8",
++    ...headers,
++  });
++}
++
++function writeSse(response, { id, model, text }) {
++  response.writeHead(200, {
++    "cache-control": "no-cache, no-transform",
++    "connection": "keep-alive",
++    "content-type": "text/event-stream; charset=utf-8",
++    "x-accel-buffering": "no",
++  });
++  const created = Math.floor(Date.now() / 1000);
++  const write = (payload) => response.write(`data: ${JSON.stringify(payload)}\n\n`);
++  write({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] });
++  write({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
++  response.write("data: [DONE]\n\n");
++  response.end();
++}
++
++async function readNodeBody(request, maxBytes) {
++  const chunks = [];
++  let size = 0;
++  for await (const chunk of request) {
++    size += chunk.length;
++    if (size > maxBytes) throw Object.assign(new Error("request body too large"), { statusCode: 413 });
++    chunks.push(chunk);
++  }
++  try {
++    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
++  } catch {
++    throw Object.assign(new Error("request body must be valid JSON"), { statusCode: 400 });
++  }
++}
++
++export function createRequestHandler({ config, executeTurn }) {
++  const queue = new WorkQueue(config.limits.maxConcurrent, config.limits.maxQueue);
++  const activeControllers = new Set();
++
++  const requestHandler = async function requestHandler(request, response) {
++    const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
++    if (url.pathname === "/health") {
++      writeJson(response, { ok: true, service: "cgw-codex-shim" });
++      return;
++    }
++
++    if (parseBearerToken(request.headers.authorization) !== config.apiKey) {
++      writeJson(response, { error: { message: "invalid bearer token", type: "authentication_error" } }, 401, { "www-authenticate": "Bearer" });
++      return;
++    }
++
++    if (request.method === "GET" && url.pathname === "/v1/models") {
++      writeJson(response, {
++        object: "list",
++        data: Object.keys(config.modelAliases).map((id) => ({ id, object: "model", owned_by: "cgw-codex-shim" })),
++      });
++      return;
++    }
++
++    if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
++      writeJson(response, { error: { message: "not found", type: "not_found" } }, 404);
++      return;
++    }
++
++    let body;
++    try {
++      body = await readNodeBody(request, config.limits.maxBodyBytes);
++    } catch (error) {
++      writeJson(response, { error: { message: error.message, type: "invalid_request_error" } }, error.statusCode || 400);
++      return;
++    }
++
++    let requestInfo;
++    try {
++      requestInfo = validateChatRequest(body, config.modelAliases);
++    } catch (error) {
++      writeJson(response, { error: { message: error.message, type: "invalid_request_error" } }, 400);
++      return;
++    }
++
++    const abortController = new AbortController();
++    activeControllers.add(abortController);
++    const onAborted = () => abortController.abort(new Error("client disconnected"));
++    request.once("aborted", onAborted);
++    request.once("close", () => { if (!request.complete) onAborted(); });
++    const id = `chatcmpl-${randomUUID()}`;
++    try {
++      const result = await queue.run(() => executeTurn({
++        model: requestInfo.model,
++        prompt: requestInfo.prompt,
++        reasoningEffort: requestInfo.reasoningEffort,
++        signal: abortController.signal,
++      }));
++      if (response.destroyed) return;
++      if (body.stream === true) {
++        writeSse(response, { id, model: body.model, text: result.text });
++      } else {
++        writeJson(response, {
++          id,
++          object: "chat.completion",
++          created: Math.floor(Date.now() / 1000),
++          model: body.model,
++          choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }],
++        });
++      }
++    } catch (error) {
++      if (response.destroyed) return;
++      const headers = error.dispatchStarted ? { "x-9router-no-replay": "1" } : {};
++      writeJson(response, { error: { message: error.message || "native execution failed", type: "upstream_error", code: error.code || "native_execution_failed" } }, error.statusCode || 502, headers);
++    } finally {
++      activeControllers.delete(abortController);
++      request.off("aborted", onAborted);
++    }
++  };
++
++  requestHandler.shutdown = () => {
++    for (const controller of activeControllers) {
++      controller.abort(new Error("server shutting down"));
++    }
++  };
++
++  return requestHandler;
++}
++
++export async function startServer({ config, executeTurn }) {
++  const requestHandler = createRequestHandler({ config, executeTurn });
++  const server = http.createServer((request, response) => {
++    void requestHandler(request, response);
++  });
++  await new Promise((resolve, reject) => {
++    server.once("error", reject);
++    server.listen(config.port, config.host, resolve);
++  });
++  return {
++    server,
++    address: server.address(),
++    close: () => new Promise((resolve, reject) => {
++      requestHandler.shutdown();
++      server.close((error) => error ? reject(error) : resolve());
++    }),
++  };
++}
+diff --git a/tools/cgw-codex-shim/smoke.js b/tools/cgw-codex-shim/smoke.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..727af433b5fad4ae37618b28185e962349a7510d
+--- /dev/null
++++ b/tools/cgw-codex-shim/smoke.js
+@@ -0,0 +1,66 @@
++import { loadConfig } from "./config.js";
++import { runCgwTurn } from "./cgwResponses.js";
++import { startServer } from "./server.js";
++
++function printHelp() {
++  console.log(`Usage: node tools/cgw-codex-shim/smoke.js [options]
++
++Options:
++  --model <alias>   Configured shim alias (defaults to the first alias)
++  --prompt <text>   Single prompt (defaults to CGW_SHIM_SMOKE_PROMPT)
++  --help            Show this help
++
++Required environment is documented in tools/cgw-codex-shim/README.md.
++`);
++}
++
++function parseArgs(argv) {
++  const options = {};
++  for (let index = 0; index < argv.length; index += 1) {
++    const arg = argv[index];
++    if (arg === "--help") options.help = true;
++    else if (arg === "--model") options.model = argv[++index];
++    else if (arg === "--prompt") options.prompt = argv[++index];
++    else throw new Error(`unknown option: ${arg}`);
++  }
++  return options;
++}
++
++async function main() {
++  const options = parseArgs(process.argv.slice(2));
++  if (options.help) {
++    printHelp();
++    return;
++  }
++
++  const config = loadConfig();
++  const model = options.model || Object.keys(config.modelAliases)[0];
++  if (!config.modelAliases[model]) throw new Error(`model alias is not configured: ${model}`);
++  const prompt = options.prompt || process.env.CGW_SHIM_SMOKE_PROMPT || "Reply with CGW_SHIM_CHAT_OK only.";
++  const runtime = await startServer({
++    config,
++    executeTurn: (request) => runCgwTurn({ config, ...request }),
++  });
++
++  try {
++    const baseUrl = `http://${runtime.address.address}:${runtime.address.port}`;
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: {
++        authorization: `Bearer ${config.apiKey}`,
++        "content-type": "application/json",
++      },
++      body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
++    });
++    const body = await response.json();
++    if (!response.ok) throw new Error(body?.error?.message || `shim returned HTTP ${response.status}`);
++    console.log(JSON.stringify({ ok: true, model, text: body.choices?.[0]?.message?.content || "" }));
++  } finally {
++    await runtime.close();
++  }
++}
++
++main().catch((error) => {
++  console.error(`smoke failed: ${error.message}`);
++  process.exitCode = 1;
++});
+diff --git a/tools/cgw-codex-shim/test/cgw-responses.test.js b/tools/cgw-codex-shim/test/cgw-responses.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b0578547f14bd19b953ca9d2d2d57b07e8d4c5e
+--- /dev/null
++++ b/tools/cgw-codex-shim/test/cgw-responses.test.js
+@@ -0,0 +1,110 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { buildCgwResponseRequest, extractResponseText, readBearerToken, resolveBearer, runCgwTurn } from "../cgwResponses.js";
++import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++
++const config = {
++  cgw: { baseUrl: "http://127.0.0.1:17841/v1", bearerFile: null },
++  limits: { timeoutMs: 1000, maxOutputBytes: 256 },
++};
++
++test("builds a direct CGW Responses request with the requested model and effort", () => {
++  const request = buildCgwResponseRequest({
++    ...config.cgw,
++    bearer: "cgw-token",
++    model: "chatgpt-web/gpt-6-sol",
++    prompt: "Reply with CGW_OK only.",
++    reasoningEffort: "high",
++  });
++  assert.equal(request.url.toString(), "http://127.0.0.1:17841/v1/responses");
++  assert.equal(request.init.headers.authorization, "Bearer cgw-token");
++  const body = JSON.parse(request.init.body);
++  assert.equal(body.model, "chatgpt-web/gpt-6-sol");
++  assert.equal(body.input[0].role, "user");
++  assert.deepEqual(body.input[0].content, [{ type: "input_text", text: "Reply with CGW_OK only." }]);
++  assert.match(body.input[0].id, /^msg_[A-Za-z0-9-]+$/);
++  assert.match(body.input[0].internal_chat_message_metadata_passthrough.turn_id, /^turn_[A-Za-z0-9-]+$/);
++  assert.match(body.client_metadata["x-codex-turn-metadata"], /"request_kind":"turn"/);
++  assert.equal(body.store, false);
++  assert.equal(body.stream, false);
++  assert.deepEqual(body.reasoning, { effort: "high" });
++});
++
++test("extracts assistant text from Responses output", () => {
++  assert.equal(extractResponseText({ output_text: "direct" }), "direct");
++  assert.equal(extractResponseText({ output: [{ type: "message", content: [{ type: "output_text", text: "nested" }] }] }), "nested");
++  assert.equal(extractResponseText({ output: [] }), null);
++  assert.equal(extractResponseText({ output: [
++    { type: "message", content: [{ type: "output_text", text: "commentary" }] },
++    { type: "message", content: [{ type: "output_text", text: "final" }] },
++  ] }), "final");
++});
++
++test("reads a bearer from a local env file without exposing it in the request contract", async () => {
++  const directory = await mkdtemp(path.join(os.tmpdir(), "cgw-bearer-"));
++  const filePath = path.join(directory, "cgw.env");
++  try {
++    await writeFile(filePath, "CGW_SHIM_CGW_BEARER=local-token\n", "utf8");
++    assert.equal(readBearerToken(filePath), "local-token");
++    assert.equal(resolveBearer({ cgw: { bearerFile: filePath } }, {}), "local-token");
++  } finally {
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++
++test("runs real CGW inference through Responses without invoking native Codex", async () => {
++  let call;
++  const result = await runCgwTurn({
++    config,
++    model: "chatgpt-web/gpt-5.6-sol",
++    prompt: "Reply with CGW_OK only.",
++    signal: undefined,
++    bearer: "test-bearer",
++    fetchImpl: async (url, init) => {
++      call = { url: String(url), init };
++      return new Response(JSON.stringify({ id: "resp_1", model: "chatgpt-web/gpt-5.6-sol", output_text: "CGW_OK" }), { status: 200 });
++    },
++  });
++  assert.equal(result.text, "CGW_OK");
++  assert.equal(call.url, "http://127.0.0.1:17841/v1/responses");
++  assert.equal(call.init.headers.authorization, "Bearer test-bearer");
++  const body = JSON.parse(call.init.body);
++  assert.equal(body.model, "chatgpt-web/gpt-5.6-sol");
++  assert.equal(body.input[0].internal_chat_message_metadata_passthrough.turn_id.length > 0, true);
++  assert.match(body.client_metadata["x-codex-turn-metadata"], /"turn_id"/);
++});
++
++test("rejects a CGW response whose model does not match the requested browser model", async () => {
++  await assert.rejects(() => runCgwTurn({
++    config,
++    model: "chatgpt-web/gpt-5.6-sol",
++    prompt: "Reply with CGW_OK only.",
++    bearer: "test-bearer",
++    fetchImpl: async () => new Response(JSON.stringify({ model: "chatgpt-web/gpt-6-sol", output_text: "wrong" }), { status: 200 }),
++  }), /model mismatch/);
++});
++
++test("rejects a successful CGW response without a model identity", async () => {
++  await assert.rejects(() => runCgwTurn({
++    config,
++    model: "chatgpt-web/gpt-5.6-sol",
++    prompt: "Reply with CGW_OK only.",
++    bearer: "test-bearer",
++    fetchImpl: async () => new Response(JSON.stringify({ output_text: "CGW_OK" }), { status: 200 }),
++  }), /model mismatch/);
++});
++
++test("bounds the CGW response body before parsing it", async () => {
++  await assert.rejects(() => runCgwTurn({
++    config,
++    model: "chatgpt-web/gpt-5.6-sol",
++    prompt: "Reply with CGW_OK only.",
++    bearer: "test-bearer",
++    fetchImpl: async () => new Response(JSON.stringify({
++      model: "chatgpt-web/gpt-5.6-sol",
++      output_text: "x".repeat(500),
++    }), { status: 200 }),
++  }), /response body too large/);
++});
+diff --git a/tools/cgw-codex-shim/test/config.test.js b/tools/cgw-codex-shim/test/config.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..6d5c8d8a9193ed6abb1e9007251a695d3d7c9b0c
+--- /dev/null
++++ b/tools/cgw-codex-shim/test/config.test.js
+@@ -0,0 +1,76 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { mkdtemp, writeFile, rm } from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { loadConfig, parseModelAliases } from "../config.js";
++import { loadEnvFileIntoProcess } from "../env.js";
++
++const baseEnv = {
++  CGW_SHIM_API_KEY: "test-key",
++  CGW_SHIM_MODEL_ALIASES_JSON: JSON.stringify({ "gpt-test": "chatgpt-web/gpt-test" }),
++  CGW_SHIM_CGW_BASE_URL: "http://127.0.0.1:17841/v1",
++  CGW_SHIM_CGW_BEARER_FILE: "C:/cgw-bearer.env",
++};
++
++test("parses deterministic model aliases", () => {
++  assert.deepEqual(parseModelAliases('{"gpt-a":"chatgpt-web/gpt-a","gpt-b":"chatgpt-web/gpt-b"}'), {
++    "gpt-a": "chatgpt-web/gpt-a",
++    "gpt-b": "chatgpt-web/gpt-b",
++  });
++});
++
++test("loads dotenv values into the process environment", async () => {
++  const directory = await mkdtemp(path.join(os.tmpdir(), "cgw-codex-shim-"));
++  const envPath = path.join(directory, ".env");
++  const name = "CGW_SHIM_TEST_LOADED_VALUE";
++  const previous = process.env[name];
++
++  try {
++    await writeFile(envPath, `${name}=loaded-from-dotenv\n`, "utf8");
++    delete process.env[name];
++    assert.equal(loadEnvFileIntoProcess(envPath), true);
++    assert.equal(process.env[name], "loaded-from-dotenv");
++  } finally {
++    if (previous === undefined) delete process.env[name];
++    else process.env[name] = previous;
++    await rm(directory, { recursive: true, force: true });
++  }
++});
++test("rejects malformed or empty model aliases", () => {
++  assert.throws(() => parseModelAliases("[]"), /object/);
++  assert.throws(() => parseModelAliases('{"":"native"}'), /alias/);
++  assert.throws(() => parseModelAliases('{"public":""}'), /target model/);
++  assert.throws(() => parseModelAliases('{"public":"gpt-5.6-sol"}'), /chatgpt-web/);
++});
++
++test("loads fail-closed loopback configuration", () => {
++  const config = loadConfig(baseEnv);
++  assert.equal(config.host, "127.0.0.1");
++  assert.equal(config.apiKey, "test-key");
++  assert.deepEqual(config.modelAliases, { "gpt-test": "chatgpt-web/gpt-test" });
++  assert.equal(config.cgw.baseUrl, "http://127.0.0.1:17841/v1");
++  assert.equal(config.cgw.bearerFile, "C:/cgw-bearer.env");
++});
++
++test("rejects non-loopback binds and missing dedicated keys", () => {
++  assert.throws(() => loadConfig({ ...baseEnv, CGW_SHIM_HOST: "0.0.0.0" }), /loopback/);
++  assert.throws(() => loadConfig({ ...baseEnv, CGW_SHIM_CGW_BASE_URL: "https://example.test/v1" }), /http loopback/);
++  const { CGW_SHIM_API_KEY: _, ...withoutKey } = baseEnv;
++  assert.throws(() => loadConfig(withoutKey), /CGW_SHIM_API_KEY/);
++});
++
++test("parses bounded numeric settings", () => {
++  const config = loadConfig({
++    ...baseEnv,
++    CGW_SHIM_MAX_BODY_BYTES: "1024",
++    CGW_SHIM_MAX_CONCURRENT: "2",
++    CGW_SHIM_MAX_QUEUE: "3",
++    CGW_SHIM_TIMEOUT_MS: "5000",
++  });
++  assert.equal(config.limits.maxBodyBytes, 1024);
++  assert.equal(config.limits.maxConcurrent, 2);
++  assert.equal(config.limits.maxQueue, 3);
++  assert.equal(config.limits.timeoutMs, 5000);
++  assert.throws(() => loadConfig({ ...baseEnv, CGW_SHIM_TIMEOUT_MS: "0" }), /TIMEOUT/i);
++});
+diff --git a/tools/cgw-codex-shim/test/http-boundary.test.js b/tools/cgw-codex-shim/test/http-boundary.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1f4d79ef06f5ff22849734db520e699e15e93ff
+--- /dev/null
++++ b/tools/cgw-codex-shim/test/http-boundary.test.js
+@@ -0,0 +1,51 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { validateChatRequest, parseBearerToken, readJsonBody } from "../http.js";
++
++test("accepts exactly one plain user message", () => {
++  const result = validateChatRequest({
++    model: "gpt-test",
++    messages: [{ role: "user", content: "hello" }],
++  }, { "gpt-test": "chatgpt-web/gpt-test" });
++  assert.deepEqual(result, { model: "chatgpt-web/gpt-test", prompt: "hello" });
++});
++
++test("accepts only low, medium, and high reasoning effort values", () => {
++  for (const effort of ["low", "medium", "high"]) {
++    const result = validateChatRequest({
++      model: "gpt-test",
++      reasoning_effort: effort,
++      messages: [{ role: "user", content: "hello" }],
++    }, { "gpt-test": "chatgpt-web/gpt-test" });
++    assert.equal(result.reasoningEffort, effort);
++  }
++  assert.throws(() => validateChatRequest({
++    model: "gpt-test",
++    reasoning_effort: "normal",
++    messages: [{ role: "user", content: "hello" }],
++  }, { "gpt-test": "chatgpt-web/gpt-test" }), /reasoning_effort/);
++});
++
++test("rejects unsupported roles, tools, and multimodal content", () => {
++  assert.throws(() => validateChatRequest({ model: "gpt-test", messages: [{ role: "system", content: "x" }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /user message/);
++  assert.throws(() => validateChatRequest({ model: "gpt-test", tools: [], messages: [{ role: "user", content: "x" }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /tools/);
++  assert.throws(() => validateChatRequest({ model: "gpt-test", messages: [{ role: "user", content: [{ type: "image_url" }] }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /text/);
++});
++
++test("parses bearer authentication without accepting malformed values", () => {
++  assert.equal(parseBearerToken("Bearer secret"), "secret");
++  assert.equal(parseBearerToken("Basic secret"), null);
++  assert.equal(parseBearerToken("Bearer"), null);
++});
++
++test("reads bounded JSON bodies", async () => {
++  const request = new Request("http://127.0.0.1", {
++    method: "POST",
++    body: JSON.stringify({ hello: "world" }),
++  });
++  assert.deepEqual(await readJsonBody(request, 1024), { hello: "world" });
++  await assert.rejects(() => readJsonBody(new Request("http://127.0.0.1", {
++    method: "POST",
++    body: "x".repeat(20),
++  }), 5), /body too large/);
++});
+diff --git a/tools/cgw-codex-shim/test/server.test.js b/tools/cgw-codex-shim/test/server.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4a5d2370a257b580948cec02f52197a2cd3c936
+--- /dev/null
++++ b/tools/cgw-codex-shim/test/server.test.js
+@@ -0,0 +1,168 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { startServer } from "../server.js";
++
++function testConfig(overrides = {}) {
++  return {
++    host: "127.0.0.1",
++    port: 0,
++    apiKey: "test-key",
++    modelAliases: { "gpt-test": "gpt-test" },
++    limits: { maxBodyBytes: 64 * 1024, maxConcurrent: 1, maxQueue: 2, timeoutMs: 1000 },
++    cgw: { baseUrl: "http://127.0.0.1:17841/v1", bearerFile: null },
++    ...overrides,
++  };
++}
++
++async function withServer(executeTurn, callback, config = testConfig()) {
++  const runtime = await startServer({ config, executeTurn });
++  try {
++    return await callback(`http://${runtime.address.address}:${runtime.address.port}`);
++  } finally {
++    await runtime.close();
++  }
++}
++
++function headers() {
++  return { authorization: "Bearer test-key", "content-type": "application/json" };
++}
++
++test("lists only configured aliases and requires auth", async () => {
++  await withServer(async () => ({ text: "unused", dispatchStarted: true }), async (baseUrl) => {
++    const unauthorized = await fetch(`${baseUrl}/v1/models`);
++    assert.equal(unauthorized.status, 401);
++    const response = await fetch(`${baseUrl}/v1/models`, { headers: { authorization: "Bearer test-key" } });
++    assert.equal(response.status, 200);
++    assert.deepEqual((await response.json()).data.map((item) => item.id), ["gpt-test"]);
++  });
++});
++
++test("returns a non-stream chat completion", async () => {
++  await withServer(async ({ model, prompt }) => {
++    assert.equal(model, "gpt-test");
++    assert.equal(prompt, "hello");
++    return { text: "hello back", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }),
++    });
++    assert.equal(response.status, 200);
++    const body = await response.json();
++    assert.equal(body.model, "gpt-test");
++    assert.equal(body.choices[0].message.content, "hello back");
++  });
++});
++
++test("passes reasoning effort through to CGW execution", async () => {
++  await withServer(async ({ reasoningEffort }) => {
++    assert.equal(reasoningEffort, "high");
++    return { text: "reasoned", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", reasoning_effort: "high", messages: [{ role: "user", content: "hello" }] }),
++    });
++    assert.equal(response.status, 200);
++  });
++});
++
++test("returns valid buffered SSE", async () => {
++  await withServer(async () => ({ text: "streamed", dispatchStarted: true }), async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", stream: true, messages: [{ role: "user", content: "hello" }] }),
++    });
++    assert.equal(response.status, 200);
++    assert.match(response.headers.get("content-type"), /text\/event-stream/);
++    const text = await response.text();
++    assert.match(text, /data: \{.*"delta".*streamed.*\}/);
++    assert.match(text, /data: \[DONE\]/);
++  });
++});
++
++test("rejects context and multimodal input before execution", async () => {
++  let calls = 0;
++  await withServer(async () => { calls += 1; return { text: "bad", dispatchStarted: true }; }, async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [
++        { role: "user", content: "old" },
++        { role: "user", content: "new" },
++      ] }),
++    });
++    assert.equal(response.status, 400);
++    assert.equal(calls, 0);
++  });
++});
++
++test("marks CGW failures as non-replayable after dispatch", async () => {
++  await withServer(async () => {
++    const error = new Error("CGW failed");
++    error.dispatchStarted = true;
++    throw error;
++  }, async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }),
++    });
++    assert.equal(response.status, 502);
++    assert.equal(response.headers.get("x-9router-no-replay"), "1");
++  });
++});
++
++test("shares concurrency and queue limits across requests", async () => {
++  let release;
++  const gate = new Promise((resolve) => { release = resolve; });
++  let calls = 0;
++  await withServer(async () => {
++    calls += 1;
++    await gate;
++    return { text: "ok", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const request = () => fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }),
++    });
++
++    const first = request();
++    await new Promise((resolve) => setTimeout(resolve, 25));
++    const second = request();
++    const third = request();
++    await new Promise((resolve) => setTimeout(resolve, 25));
++    assert.equal(calls, 1);
++
++    release();
++    const responses = await Promise.all([first, second]);
++    assert.deepEqual(responses.map((response) => response.status), [200, 200]);
++    assert.equal((await third).status, 429);
++  }, testConfig({ limits: { maxBodyBytes: 64 * 1024, maxConcurrent: 1, maxQueue: 1, timeoutMs: 1000 } }));
++});
++
++test("aborts active turns during server shutdown", async () => {
++  let started;
++  const startedPromise = new Promise((resolve) => { started = resolve; });
++  const runtime = await startServer({
++    config: testConfig(),
++    executeTurn: ({ signal }) => new Promise((_, reject) => {
++      started();
++      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
++    }),
++  });
++  const baseUrl = `http://${runtime.address.address}:${runtime.address.port}`;
++  const responsePromise = fetch(`${baseUrl}/v1/chat/completions`, {
++    method: "POST",
++    headers: headers(),
++    body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }),
++  });
++
++  await startedPromise;
++  await runtime.close();
++  assert.equal((await responsePromise).status, 502);
++});
