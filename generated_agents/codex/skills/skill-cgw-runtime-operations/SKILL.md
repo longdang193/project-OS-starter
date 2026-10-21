@@ -24,6 +24,20 @@ Herdr -> 9Router -> CGW. Native Codex subagents must not select or launch
 CGW-backed profiles directly; `web-high` and `web-medium` are Herdr-only
 profiles and are not exposed through the native Codex adapter.
 
+For CGW-backed web work, use Herdr with the native `codex` executor by default:
+
+```text
+Herdr -> Codex pane -> 9Router chat route -> CGW
+```
+
+This removes the DeepAgents model-retry and worker-wrapper boundary that can
+re-submit an identical prompt after a provider-side failure. Select
+`--executor deepagents` only when the task contract explicitly requires a
+DeepAgents worker; never use it as an automatic fallback for a CGW request.
+After a settled lifecycle receipt without a semantic task report, classify the
+attempt as `unverified`, reconcile the original attempt, and do not re-submit
+the same task.
+
 Keep one workflow for CGW routing, readiness, probing, quota safety, and installation. Do not create separate queues, reconcilers, profile registries, or cleanup frameworks for this skill.
 
 ## When to Use
