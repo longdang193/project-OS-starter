@@ -62,6 +62,34 @@ The commonly used local boundaries are:
 
 These ports are evidence hints, not a new configuration system. If the configured values differ, use the configured values and record them in the probe result.
 
+### 1a. Materialize a local review packet
+
+CGW receives the delivered prompt content; it cannot resolve a local Windows
+path, open a repository file, or use the controller filesystem tools. A plan
+review must therefore be prepared locally by the existing Herdr/controller
+path before delivery. A path-only instruction such as
+`C:\repo\docs\plan.md` is not review input.
+
+The bounded packet must contain:
+
+- the plan text or the explicitly selected plan sections;
+- only the named or relevant source and test excerpts needed for the review;
+- repository identity, exact `HEAD` or base commit, file paths, and content
+  hashes for provenance;
+- the read-only scope, stable context identifier, requested profile, and
+  requested review question.
+
+Apply a request-size budget before sending. Keep the plan and highest-priority
+excerpts first, report any omitted sections, and stop on `413 Payload Too
+Large` rather than blindly retrying or falling back. Do not include credentials,
+environment values, or unrelated repository contents. If the controller cannot
+read and attach the requested content, report `incomplete` instead of claiming
+that CGW reviewed the local file.
+
+Use the existing Herdr/controller delivery path to build this packet. Do not
+add a filesystem service, packet queue, scheduler, or reconciliation framework;
+the packet is request-scoped evidence, not a second runtime owner.
+
 ### 2. Check readiness at the real boundary
 
 Run the existing CGW readiness probe before delivery. `/health` is liveness only and is insufficient.
