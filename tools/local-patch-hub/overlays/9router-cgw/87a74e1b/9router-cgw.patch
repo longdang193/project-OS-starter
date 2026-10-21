@@ -256,29 +256,32 @@ index 00000000..e2acc200
 +});
 diff --git a/tools/cgw-codex-shim/README.md b/tools/cgw-codex-shim/README.md
 new file mode 100644
-index 00000000..45b84bf53acbac82a1ae6fddec0779f12be21fe8
+index 00000000..622608c9
 --- /dev/null
 +++ b/tools/cgw-codex-shim/README.md
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,105 @@
 +# CGW Chat Shim
 +
 +This directory contains a loopback-only OpenAI-compatible adapter for the
-+installed CGW runtime. It translates one plain-text, single-turn Chat
-+Completions request into one direct CGW Responses request.
++installed CGW runtime. It translates plain-text Chat Completions requests into
++one direct CGW Responses request.
 +
 +## Scope
 +
 +- `GET /v1/models` exposes only aliases configured in
 +  `CGW_SHIM_MODEL_ALIASES_JSON`.
-+- `POST /v1/chat/completions` accepts exactly one non-empty `user` message.
++- `POST /v1/chat/completions` accepts one or more non-empty plain-text messages;
++  a single `user` message is passed unchanged and interactive multi-message
++  context is flattened into one labeled CGW prompt.
 +- `reasoning_effort` accepts `low`, `medium`, or `high`. The public `low` value
 +  is translated to CGW's `instant` Responses effort; `medium` and `high` are
 +  passed through unchanged.
 +- `stream: true` returns buffered compatibility SSE; it is not live token
 +  streaming.
 +- Client tool declarations are ignored because CGW Chat is text-only; tools are never
-+  executed. System messages, multi-turn context, images, audio, and response-format
-+  options are rejected before dispatch.
++  executed. Text-only system, developer, user, assistant, tool, and function
++  messages are flattened before dispatch; images, audio, and response-format
++  options are rejected.
 +- The service binds only to loopback and requires a dedicated local bearer key.
 +- CGW inference is performed directly against its local `/v1/responses` bridge;
 +  it never launches `codex exec` and never routes CGW aliases through 9Router's
@@ -364,7 +367,7 @@ index 00000000..45b84bf53acbac82a1ae6fddec0779f12be21fe8
 +the bearer key or request headers.
 diff --git a/tools/cgw-codex-shim/cgwResponses.js b/tools/cgw-codex-shim/cgwResponses.js
 new file mode 100644
-index 00000000..d3a0514fee9b9116a91c639fa64be60f62ff186c
+index 00000000..d3a0514f
 --- /dev/null
 +++ b/tools/cgw-codex-shim/cgwResponses.js
 @@ -0,0 +1,174 @@
@@ -471,6 +474,10 @@ index 00000000..d3a0514fee9b9116a91c639fa64be60f62ff186c
 +  };
 +}
 +
++export function mapReasoningEffort(reasoningEffort) {
++  return reasoningEffort === "low" ? "instant" : reasoningEffort;
++}
++
 +export function extractResponseText(payload) {
 +  if (typeof payload?.output_text === "string" && payload.output_text.trim()) return payload.output_text;
 +  const output = Array.isArray(payload?.output) ? payload.output : [];
@@ -481,10 +488,6 @@ index 00000000..d3a0514fee9b9116a91c639fa64be60f62ff186c
 +    .filter((value) => typeof value === "string" && value.trim());
 +  const text = items.at(-1) || "";
 +  return text.trim() ? text : null;
-+}
-+
-+export function mapReasoningEffort(reasoningEffort) {
-+  return reasoningEffort === "low" ? "instant" : reasoningEffort;
 +}
 +
 +export async function runCgwTurn({ config, model, prompt, reasoningEffort, signal, bearer, fetchImpl = fetch }) {
@@ -544,7 +547,7 @@ index 00000000..d3a0514fee9b9116a91c639fa64be60f62ff186c
 +}
 diff --git a/tools/cgw-codex-shim/compatibility.md b/tools/cgw-codex-shim/compatibility.md
 new file mode 100644
-index 00000000..737b3376ef86142461a07cb7e1f3bdd2446cdd3b
+index 00000000..6531aa4f
 --- /dev/null
 +++ b/tools/cgw-codex-shim/compatibility.md
 @@ -0,0 +1,32 @@
@@ -560,8 +563,8 @@ index 00000000..737b3376ef86142461a07cb7e1f3bdd2446cdd3b
 +| Shim | `tools/cgw-codex-shim/run.js` | Chat Completions compatibility on `http://127.0.0.1:20129` |
 +| CGW transport | Direct `POST /v1/responses` | Does not invoke `codex exec` or 9Router Codex provider |
 +| Model selection | `gpt-5.6-sol`, `gpt-6.1-sol` | Alias target is sent unchanged to CGW |
-+| Thinking override | `reasoning_effort=low|medium|high` | Sent as Responses `reasoning.effort` |
-+| Test validation | `POST /api/v1/chat/completions` with `hi` | Requires a real completion and matching returned model |
++| Thinking override | `reasoning_effort=low|medium|high` | `low` becomes Responses `reasoning.effort=instant`; other values pass through |
++| Test validation | `POST /api/v1/chat/completions` with `hi` or an interactive multi-message context | Requires a real completion and matching returned model |
 +
 +## Root cause corrected
 +
@@ -703,10 +706,10 @@ index 00000000..32ab5b7c
 +loadEnvFileIntoProcess();
 diff --git a/tools/cgw-codex-shim/http.js b/tools/cgw-codex-shim/http.js
 new file mode 100644
-index 00000000..949b0ccb8d2af13c6217576c0eedbf72f5fb60e3
+index 00000000..e2737abd
 --- /dev/null
 +++ b/tools/cgw-codex-shim/http.js
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,72 @@
 +export function parseBearerToken(header) {
 +  if (typeof header !== "string") return null;
 +  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
@@ -724,6 +727,24 @@ index 00000000..949b0ccb8d2af13c6217576c0eedbf72f5fb60e3
 +}
 +
 +const REASONING_EFFORTS = new Set(["low", "medium", "high"]);
++const TEXT_MESSAGE_ROLES = new Set(["system", "developer", "user", "assistant", "tool", "function"]);
++
++function normalizeTextContent(content) {
++  if (typeof content === "string") {
++    return content.trim();
++  }
++  if (!Array.isArray(content)) {
++    throw new Error("message content must be plain text");
++  }
++  const text = content.map((part) => {
++    if (!part || typeof part !== "object" || !["text", "input_text", "output_text"].includes(part.type) || typeof part.text !== "string") {
++      throw new Error("message content must be plain text");
++    }
++    return part.text;
++  }).join("").trim();
++  if (!text) throw new Error("message content must be plain text");
++  return text;
++}
 +
 +function parseReasoningEffort(value) {
 +  if (value === undefined) return undefined;
@@ -737,11 +758,15 @@ index 00000000..949b0ccb8d2af13c6217576c0eedbf72f5fb60e3
 +  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("request body must be an object");
 +  if (body.response_format !== undefined || body.modalities !== undefined || body.audio !== undefined) throw new Error("multimodal and response-format options are not supported");
 +  if (typeof body.model !== "string" || !modelAliases[body.model]) throw new Error("unknown model alias");
-+  if (!Array.isArray(body.messages) || body.messages.length !== 1) throw new Error("exactly one user message is supported");
-+  const [message] = body.messages;
-+  if (message?.role !== "user") throw new Error("only one user message is supported");
-+  if (typeof message.content !== "string" || !message.content.trim()) throw new Error("message content must be plain text");
-+  const result = { model: modelAliases[body.model], prompt: message.content };
++  if (!Array.isArray(body.messages) || body.messages.length === 0) throw new Error("at least one text message is required");
++  const messages = body.messages.map((message) => {
++    if (!message || !TEXT_MESSAGE_ROLES.has(message.role)) throw new Error("only text message roles are supported");
++    return { role: message.role, content: normalizeTextContent(message.content) };
++  });
++  const prompt = messages.length === 1 && messages[0].role === "user"
++    ? messages[0].content
++    : messages.map(({ role, content }) => `[${role}]\n${content}`).join("\n\n");
++  const result = { model: modelAliases[body.model], prompt };
 +  if (body.tools !== undefined || body.tool_choice !== undefined) result.toolsIgnored = true;
 +  if (body.reasoning_effort !== undefined) result.reasoningEffort = parseReasoningEffort(body.reasoning_effort);
 +  return result;
@@ -1092,7 +1117,7 @@ index 00000000..727af433
 +});
 diff --git a/tools/cgw-codex-shim/test/cgw-responses.test.js b/tools/cgw-codex-shim/test/cgw-responses.test.js
 new file mode 100644
-index 00000000..af7c1be1f85ccc17b52d58a7f4b76938854db314
+index 00000000..af7c1be1
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/cgw-responses.test.js
 @@ -0,0 +1,122 @@
@@ -1314,20 +1339,45 @@ index 00000000..a4525608
 +});
 diff --git a/tools/cgw-codex-shim/test/http-boundary.test.js b/tools/cgw-codex-shim/test/http-boundary.test.js
 new file mode 100644
-index 00000000..e44374ea7122e30f4e9268f776d36f2f13e7322b
+index 00000000..8401c95c
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/http-boundary.test.js
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,89 @@
 +import test from "node:test";
 +import assert from "node:assert/strict";
 +import { validateChatRequest, parseBearerToken, readJsonBody } from "../http.js";
 +
-+test("accepts exactly one plain user message", () => {
++test("accepts one plain user message", () => {
 +  const result = validateChatRequest({
 +    model: "gpt-test",
 +    messages: [{ role: "user", content: "hello" }],
 +  }, { "gpt-test": "chatgpt-web/gpt-test" });
 +  assert.deepEqual(result, { model: "chatgpt-web/gpt-test", prompt: "hello" });
++});
++
++test("flattens interactive multi-message text into one CGW prompt", () => {
++  const result = validateChatRequest({
++    model: "gpt-test",
++    messages: [
++      { role: "system", content: "Follow the review contract." },
++      { role: "user", content: "Reply with CGW_LIVE_PROBE_OK." },
++    ],
++  }, { "gpt-test": "chatgpt-web/gpt-test" });
++  assert.equal(result.prompt, "[system]\nFollow the review contract.\n\n[user]\nReply with CGW_LIVE_PROBE_OK.");
++});
++
++test("flattens text-only content blocks from interactive Codex messages", () => {
++  const result = validateChatRequest({
++    model: "gpt-test",
++    messages: [{
++      role: "user",
++      content: [
++        { type: "input_text", text: "Reply with " },
++        { type: "text", text: "CGW_LIVE_PROBE_OK." },
++      ],
++    }],
++  }, { "gpt-test": "chatgpt-web/gpt-test" });
++  assert.equal(result.prompt, "Reply with CGW_LIVE_PROBE_OK.");
 +});
 +
 +test("accepts only low, medium, and high reasoning effort values", () => {
@@ -1361,7 +1411,7 @@ index 00000000..e44374ea7122e30f4e9268f776d36f2f13e7322b
 +});
 +
 +test("rejects unsupported roles and multimodal content", () => {
-+  assert.throws(() => validateChatRequest({ model: "gpt-test", messages: [{ role: "system", content: "x" }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /user message/);
++  assert.throws(() => validateChatRequest({ model: "gpt-test", messages: [{ role: "unknown", content: "x" }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /text message roles/);
 +  assert.throws(() => validateChatRequest({ model: "gpt-test", messages: [{ role: "user", content: [{ type: "image_url" }] }] }, { "gpt-test": "chatgpt-web/gpt-test" }), /text/);
 +});
 +
@@ -1384,10 +1434,10 @@ index 00000000..e44374ea7122e30f4e9268f776d36f2f13e7322b
 +});
 diff --git a/tools/cgw-codex-shim/test/server.test.js b/tools/cgw-codex-shim/test/server.test.js
 new file mode 100644
-index 00000000..be8cd83419d1af333672a7911ae161560d9dfc2c
+index 00000000..668d5fad
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/server.test.js
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,250 @@
 +import http from "node:http";
 +import test from "node:test";
 +import assert from "node:assert/strict";
@@ -1496,19 +1546,32 @@ index 00000000..be8cd83419d1af333672a7911ae161560d9dfc2c
 +  });
 +});
 +
-+test("rejects context and multimodal input before execution", async () => {
++test("accepts text context but rejects multimodal input before execution", async () => {
 +  let calls = 0;
-+  await withServer(async () => { calls += 1; return { text: "bad", dispatchStarted: true }; }, async (baseUrl) => {
-+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++  let prompt;
++  await withServer(async ({ prompt: receivedPrompt }) => {
++    calls += 1;
++    prompt = receivedPrompt;
++    return { text: "ok", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const contextResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
 +      method: "POST",
 +      headers: headers(),
 +      body: JSON.stringify({ model: "gpt-test", messages: [
-+        { role: "user", content: "old" },
-+        { role: "user", content: "new" },
++        { role: "system", content: "Follow the contract." },
++        { role: "user", content: "Reply with ok." },
 +      ] }),
 +    });
-+    assert.equal(response.status, 400);
-+    assert.equal(calls, 0);
++    assert.equal(contextResponse.status, 200);
++    assert.equal(prompt, "[system]\nFollow the contract.\n\n[user]\nReply with ok.");
++
++    const multimodalResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: [{ type: "image_url", image_url: "https://example.test/image.png" }] }] }),
++    });
++    assert.equal(multimodalResponse.status, 400);
++    assert.equal(calls, 1);
 +  });
 +});
 +
