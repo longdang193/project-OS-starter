@@ -62,3 +62,15 @@ def test_cgw_skill_requires_direct_evidence_and_existing_debugging_workflows() -
         "native quota is unchanged",
     ):
         assert text in skill
+
+
+def test_cgw_skill_requires_compact_review_packets() -> None:
+    skill = normalized_skill()
+    for text in (
+        "keep the herdr task itself compact",
+        "do not paste the current chat transcript",
+        "codex_context_json",
+        "413 payload too large",
+        "rebuild the request instead of truncating or retrying it",
+    ):
+        assert text in skill

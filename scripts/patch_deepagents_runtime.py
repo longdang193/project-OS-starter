@@ -163,6 +163,25 @@ _MODEL_RETRY_BUDGET_PATCHED = """# Herdr's observation transport timeout is 60s.
 # timeout and suppress the worker receipt.
 _MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 10.0
 """
+_MODEL_RETRY_NO_REPLAY_HELPER = """def _has_no_replay_marker(exc: BaseException) -> bool:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return False
+    try:
+        value = headers.get("x-9router-no-replay")
+        if value is None:
+            value = headers.get("X-9Router-No-Replay")
+    except (AttributeError, TypeError):
+        return False
+    return isinstance(value, str) and value.strip() == "1"
+
+
+"""
+_MODEL_RETRY_NO_REPLAY_GUARD = """    if _has_no_replay_marker(exc):
+        return False
+
+"""
 
 
 def _replace_once(target: Path, old: str, new: str, label: str) -> bool:
@@ -256,6 +275,26 @@ def patch_model_retry_budget(target: Path) -> bool:
     return changed
 
 
+def patch_model_retry_no_replay(target: Path) -> bool:
+    content = target.read_text(encoding="utf-8")
+    changed = False
+    if _MODEL_RETRY_NO_REPLAY_HELPER not in content:
+        anchor = "def _direct_model_error_retryability("
+        if anchor not in content:
+            raise RuntimeError(f"Unsupported DeepAgents model retry runtime: {target}")
+        content = content.replace(anchor, _MODEL_RETRY_NO_REPLAY_HELPER + anchor, 1)
+        changed = True
+    if _MODEL_RETRY_NO_REPLAY_GUARD not in content:
+        anchor = "    if isinstance(exc, ModelError):\n"
+        if anchor not in content:
+            raise RuntimeError(f"Unsupported DeepAgents model retry runtime: {target}")
+        content = content.replace(anchor, _MODEL_RETRY_NO_REPLAY_GUARD + anchor, 1)
+        changed = True
+    if changed:
+        target.write_text(content, encoding="utf-8")
+    return changed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mcp_tools", type=Path)
@@ -268,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     changed = patch_stdio_lookup(args.mcp_tools) or changed
     changed = patch_headless_mcp_guard(auto_mode) or changed
     changed = patch_model_retry_budget(model_retry) or changed
+    changed = patch_model_retry_no_replay(model_retry) or changed
     if utility.exists() and not fastmcp_runtime:
         changed = patch_windows_lookup(utility) or changed
         changed = patch_windows_process(utility) or changed

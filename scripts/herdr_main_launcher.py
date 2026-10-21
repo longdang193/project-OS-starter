@@ -126,6 +126,11 @@ _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _HERDR_AGENT_NAME_MAX_LENGTH = 32
 _HERDR_CONTEXT_MARKER_PATTERN = re.compile(r"-ctx-[0-9a-f]{12}$")
+_CODEX_TRANSPORT_ENVELOPE_MARKERS = (
+    "act as the model backend for the codex task encoded below.",
+    "<codex_context_json>",
+    "<codex_transport_resume>",
+)
 _DEEPAGENTS_RESULT_SCHEMA = RESULT_SCHEMA
 _DEEPAGENTS_RESULT_MAX_BYTES = RESULT_MAX_BYTES
 _DEEPAGENTS_RESULT_MAX_AGE_SECONDS = RESULT_MAX_AGE_SECONDS
@@ -1004,7 +1009,13 @@ def _validate_task(task: str | None) -> str:
         raise LaunchBlocked(f"Task text exceeds {_MAX_TASK_LENGTH} characters.")
     if "\r" in task:
         raise LaunchBlocked("Task text cannot contain carriage returns.")
-    return task.strip()
+    normalized = task.strip()
+    if any(marker in normalized.casefold() for marker in _CODEX_TRANSPORT_ENVELOPE_MARKERS):
+        raise LaunchBlocked(
+            "Task contains a Codex transport envelope; send only the bounded task "
+            "or a GitHub revision URL."
+        )
+    return normalized
 
 
 def _normalize_secretary_runtime_binding(

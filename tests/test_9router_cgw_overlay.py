@@ -1,9 +1,38 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCH_ROOT = ROOT / "tools" / "local-patch-hub"
 OVERLAY_ROOT = PATCH_ROOT / "overlays" / "9router-cgw" / "87a74e1b"
+
+
+def _assert_unified_patch_hunks_match_their_headers(patch: str) -> None:
+    lines = patch.splitlines()
+    for index, line in enumerate(lines):
+        match = re.match(
+            r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@",
+            line,
+        )
+        if match is None:
+            continue
+        expected_old = int(match.group(2) or 1)
+        expected_new = int(match.group(4) or 1)
+        actual_old = 0
+        actual_new = 0
+        for hunk_line in lines[index + 1 :]:
+            if hunk_line.startswith("@@ ") or hunk_line.startswith("diff --git "):
+                break
+            if hunk_line.startswith("+++") or hunk_line.startswith("---"):
+                continue
+            if hunk_line.startswith("+"):
+                actual_new += 1
+            elif hunk_line.startswith("-"):
+                actual_old += 1
+            elif hunk_line.startswith(" ") or hunk_line == "":
+                actual_old += 1
+                actual_new += 1
+        assert (actual_old, actual_new) == (expected_old, expected_new), line
 
 
 def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
@@ -13,7 +42,7 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     readme = (PATCH_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert '"id": "9router-cgw-chat-runtime"' in manifest
-    assert '"version": "1.1.1"' in manifest
+    assert '"version": "1.1.3"' in manifest
     assert '"baseCommit": "87a74e1bda3677193c6f71a7e2100c90311f0689"' in manifest
     assert '"targetVersion": "0.5.104"' in manifest
     assert "src/app/api/models/test/ping.js" in patch
@@ -30,6 +59,9 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     assert "accepts native sub-agent context above the legacy 64 KiB budget" in patch
     assert "open-sse/services/accountFallback.js" in patch
     assert "tests/unit/account-fallback-cgw-queue.test.js" in patch
+    assert "x-9router-no-replay" in patch
+    assert "stops combo fallback after CGW dispatch" in patch
+    assert "failed after dispatch; replay disabled" in patch
     assert "--3way" in script
     assert "--cached" in script
     assert "GIT_INDEX_FILE" in script
@@ -47,3 +79,26 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     assert "CGW aliases must target `chatgpt-web/*`" in readme
     assert "optional `tools` and `tool_choice` metadata" in readme
     assert "/health` alone proves liveness" in readme
+    assert "stops both account and combo fallback" in readme
+    _assert_unified_patch_hunks_match_their_headers(patch)
+
+
+def test_cgw_overlay_manifest_bumps_receipt_identity_for_payload_changes() -> None:
+    manifest = (OVERLAY_ROOT / "manifest.json").read_text(encoding="utf-8")
+    patch = (OVERLAY_ROOT / "9router-cgw.patch").read_text(encoding="utf-8")
+    launcher = (PATCH_ROOT / "Start-9RouterCodexCombo.ps1").read_text(encoding="utf-8")
+
+    assert '"version": "1.1.3"' in manifest
+    assert '"version": "1.1.2"' not in manifest
+    assert "open-sse/executors/base.js" in patch
+    assert "stops executor retries after CGW dispatch" in patch
+    assert "receipt.overlayVersion -eq $ExpectedOverlayVersion" in launcher
+
+
+def test_combo_launcher_rejects_stale_cgw_receipts() -> None:
+    launcher = (PATCH_ROOT / "Start-9RouterCodexCombo.ps1").read_text(encoding="utf-8")
+
+    assert "Get-ExpectedCgwOverlayVersion" in launcher
+    assert "ExpectedOverlayVersion" in launcher
+    assert "receipt.overlayVersion -eq $ExpectedOverlayVersion" in launcher
+    assert "Refusing to start a stale 9router CGW runtime receipt" in launcher
