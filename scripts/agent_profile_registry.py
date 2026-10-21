@@ -22,7 +22,7 @@ REQUIRED_KEYS = {
     "description",
     "developer_instructions",
 }
-ALLOWED_KEYS = REQUIRED_KEYS | {"rank"}
+ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "herdr_only"}
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ class AgentProfile:
     rank: int | None
     description: str
     developer_instructions: str
+    herdr_only: bool = False
 
 
 def _required_string(payload: dict[str, object], key: str, source: Path) -> str:
@@ -84,6 +85,9 @@ def load_agent_profiles(
             raise ValueError(f"Agent profile ranks must be unique: {source}")
         if rank is not None:
             ranks.add(rank)
+        herdr_only = payload.get("herdr_only", False)
+        if not isinstance(herdr_only, bool):
+            raise ValueError(f"Agent profile `{source}` `herdr_only` must be a boolean.")
         if name in profiles:
             raise ValueError(f"Duplicate agent profile: {name}")
         profiles[name] = AgentProfile(
@@ -94,6 +98,7 @@ def load_agent_profiles(
             rank=rank,
             description=_required_string(payload, "description", source),
             developer_instructions=_required_string(payload, "developer_instructions", source),
+            herdr_only=herdr_only,
         )
     if not profiles:
         raise ValueError(f"No agent profiles found under: {agents_root}")

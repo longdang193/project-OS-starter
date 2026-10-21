@@ -148,13 +148,14 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
 
 
-def _write_agent_role(path: Path, *, name: str = "normal", extra: str = "") -> None:
+def _write_agent_role(path: Path, *, name: str = "normal", rank: int | None = 20, extra: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    rank_line = "" if rank is None else f"rank = {rank}\n"
     path.write_text(
         f'''name = "{name}"
 model_provider = "9router"
 model = "combo-{name}"
-rank = 20
+{rank_line}
 description = "Role description"
 developer_instructions = "Return ROLE_OK."
 {extra}''',
@@ -191,6 +192,29 @@ def test_sync_codex_agents_tree_generates_parseable_toml_and_removes_stale_outpu
     }
     assert not stale.exists()
     assert SYNC._sync_codex_agents_tree(root, mapping, check=True) == []
+
+
+def test_sync_codex_agents_tree_omits_herdr_only_profiles(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    _write_agent_role(root / "agents" / "normal.toml")
+    _write_agent_role(
+        root / "agents" / "web-high.toml",
+        name="web-high",
+        rank=None,
+        extra="herdr_only = true\n",
+    )
+    mapping = SYNC.Mapping(
+        source="agents",
+        destination="generated_agents/codex/agents",
+        mode="render_codex_agents_tree",
+        comment_prefix="#",
+        include_glob="*.toml",
+        native_only=True,
+    )
+
+    assert SYNC._sync_codex_agents_tree(root, mapping, check=False) == []
+    assert (root / "generated_agents" / "codex" / "agents" / "normal.toml").exists()
+    assert not (root / "generated_agents" / "codex" / "agents" / "web-high.toml").exists()
 
 
 @pytest.mark.parametrize(

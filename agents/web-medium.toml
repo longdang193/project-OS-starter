@@ -1,6 +1,7 @@
 name = "web-medium"
 model_provider = "9router"
 model = "combo-web-medium"
+herdr_only = true
 description = """
 Specialized web-capable profile for bounded research, browsing, and
 long-context tasks.

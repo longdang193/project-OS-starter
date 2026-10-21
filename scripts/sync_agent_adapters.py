@@ -38,6 +38,7 @@ class Mapping:
     mode: str
     comment_prefix: str
     include_glob: str | None
+    native_only: bool = False
 
 
 AgentRole = AgentProfile
@@ -114,6 +115,7 @@ def _load_mapping(path: Path) -> tuple[str, list[Mapping]]:
                 mode=str(raw.get("mode", "copy_file")),
                 comment_prefix=str(raw.get("comment_prefix", "#")),
                 include_glob=str(raw["include_glob"]) if "include_glob" in raw else None,
+                native_only=raw.get("native_only", False),
             )
         )
     return platform, mappings
@@ -450,6 +452,8 @@ def _sync_codex_agents_tree(
     agent_roles = roles if roles is not None else _load_agent_roles(
         src_root, mapping.include_glob or "*.toml"
     )
+    if mapping.native_only:
+        agent_roles = [role for role in agent_roles if not role.herdr_only]
     issues: list[str] = []
     for role in agent_roles:
         dst = dst_root / f"{role.name}.toml"
@@ -533,10 +537,12 @@ def run() -> int:
                     continue
                 try:
                     pattern = mapping.include_glob or "*.toml"
-                    cache_key = (mapping.source, pattern)
+                    cache_key = (mapping.source, pattern, mapping.native_only)
                     roles = agent_role_cache.get(cache_key)
                     if roles is None:
                         roles = _load_agent_roles(src_root, pattern)
+                        if mapping.native_only:
+                            roles = [role for role in roles if not role.herdr_only]
                         agent_role_cache[cache_key] = roles
                 except ValueError as exc:
                     issues.append(str(exc))

@@ -18,4 +18,5 @@ mappings:
     destination: generated_agents/codex/agents
     mode: render_codex_agents_tree
     include_glob: "*.toml"
+    native_only: true
     comment_prefix: "#"

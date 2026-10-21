@@ -155,6 +155,10 @@ adds the CGW Chat shim, real inference-based model tests, and per-request
 `reasoning_effort` support. The shim translates the public Chat Completions
 request into a direct authenticated CGW Responses request; it does not launch
 `codex exec` and must not route `cgw/*` through the 9router Codex provider.
+Codex may include optional `tools` and `tool_choice` metadata in a text-only
+review request. The shim ignores that metadata and never executes tools. GitHub
+review must be supplied through the GitHub source workflow or delivered prompt text;
+the CGW shim does not read the local filesystem.
 
 Apply and install the pinned runtime overlay from a clean `v0.5.104` checkout:
 
@@ -230,7 +234,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-
 
 The launcher verifies 9router health and the shim listener. Model tests still
 send a real `POST http://127.0.0.1:20129/v1/chat/completions` prompt; they do
-not use a catalog-only shortcut. The shim then sends `POST
+not use a catalog-only shortcut. The readiness check must include an authenticated inference request;
+`/health` alone proves liveness, not CGW routing. Restart an existing shim process
+after applying an overlay so it loads the patched validator. The shim then sends `POST
 http://127.0.0.1:17841/v1/responses` with the requested model and optional
 reasoning effort.
 
