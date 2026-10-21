@@ -1,3 +1,18 @@
+diff --git a/open-sse/services/accountFallback.js b/open-sse/services/accountFallback.js
+index bc329e55981a30de66ae25d31b0c6bdba3958aaf..73c8f87e69a27fa566b8ec66f263e095769468b9 100644
+--- a/open-sse/services/accountFallback.js
++++ b/open-sse/services/accountFallback.js
+@@ -25,6 +25,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
+     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
+     : "";
+ 
++  if (lowerError.includes("cgw execution queue is full")) {
++    return { shouldFallback: false, cooldownMs: 0, newBackoffLevel: backoffLevel };
++  }
++
+   for (const rule of ERROR_RULES) {
+     if (rule.provider && rule.provider !== provider) continue;
+     // Text-based rule: match substring in error message
 diff --git a/src/app/api/models/test/ping.js b/src/app/api/models/test/ping.js
 index c9fa3ccfa935e5e6cb1c397a119641494f61ec64..50b23d32bdb7be3eccbbdc413e270c8986a9e853 100644
 --- a/src/app/api/models/test/ping.js
@@ -172,12 +187,50 @@ index ba4cc6c24a70ea287e0c4b8b9ba09d094d1cd4ed..e91dfc02f388404ff5fc7359bfae4bdd
        if (matchedEmbedding) {
          return { provider: matchedEmbedding.id, model: parsed.model };
        }
+diff --git a/tests/unit/account-fallback-cgw-queue.test.js b/tests/unit/account-fallback-cgw-queue.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2acc2009eaad41e16e79a39872117174af32fbb
+--- /dev/null
++++ b/tests/unit/account-fallback-cgw-queue.test.js
+@@ -0,0 +1,32 @@
++import { describe, it, expect } from "vitest";
++import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
++import { handleComboChat } from "../../open-sse/services/combo.js";
++
++describe("CGW queue saturation", () => {
++  it("does not trigger account fallback or quota backoff", () => {
++    expect(checkFallbackError(429, "CGW execution queue is full", 2)).toEqual({
++      shouldFallback: false,
++      cooldownMs: 0,
++      newBackoffLevel: 2,
++    });
++  });
++
++  it("stops combo fallback on the local queue boundary", async () => {
++    let calls = 0;
++    const result = await handleComboChat({
++      body: { model: "combo-web-high" },
++      models: ["cgw/gpt-6.1-sol", "cgw/gpt-5.6-sol"],
++      handleSingleModel: async () => {
++        calls += 1;
++        return new Response(JSON.stringify({ error: { message: "CGW execution queue is full" } }), {
++          status: 429,
++          headers: { "content-type": "application/json" },
++        });
++      },
++      log: { info() {}, warn() {} },
++    });
++
++    expect(result.status).toBe(429);
++    expect(calls).toBe(1);
++  });
++});
 diff --git a/tools/cgw-codex-shim/README.md b/tools/cgw-codex-shim/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..097b99193dc85e7ba219469b489b26f53cde612b
+index 0000000000000000000000000000000000000000..223d6f373380426baaac2be36fdc0951b9d1b3bd
 --- /dev/null
 +++ b/tools/cgw-codex-shim/README.md
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,89 @@
 +# CGW Chat Shim
 +
 +This directory contains a loopback-only OpenAI-compatible adapter for the
@@ -243,6 +296,14 @@ index 0000000000000000000000000000000000000000..097b99193dc85e7ba219469b489b26f5
 +The default limits are bounded and can be overridden with
 +`CGW_SHIM_MAX_BODY_BYTES`, `CGW_SHIM_MAX_CONCURRENT`, `CGW_SHIM_MAX_QUEUE`,
 +`CGW_SHIM_TIMEOUT_MS`, and `CGW_SHIM_TERMINATION_GRACE_MS`.
++
++The default queue admits one active CGW request and keeps up to eight additional
++requests waiting. The tenth simultaneous request receives HTTP `429`. This is
++the shim's CGW chat queue, not a native `codex exec` queue. Herdr's normal
++`combo-web-*` single-flight admission should keep this queue nearly empty;
++direct clients, bypassed Herdr launches, or duplicate retries can still fill it.
++If native `codex exec` output appears, the request used a different or stale
++adapter path and did not come through this direct CGW transport.
 +
 +## Checks
 +
@@ -698,7 +759,7 @@ index 0000000000000000000000000000000000000000..5ad2d12d3c7daa623cee4d86ea8245bf
 +});
 diff --git a/tools/cgw-codex-shim/server.js b/tools/cgw-codex-shim/server.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..ea3de6d91722af2244123f20ff614a39b3feea30
+index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b97d58d2c7
 --- /dev/null
 +++ b/tools/cgw-codex-shim/server.js
 @@ -0,0 +1,187 @@
@@ -722,7 +783,7 @@ index 0000000000000000000000000000000000000000..ea3de6d91722af2244123f20ff614a39
 +      } else if (this.queue.length < this.maxQueue) {
 +        this.queue.push(item);
 +      } else {
-+        const error = new Error("native execution queue is full");
++        const error = new Error("CGW execution queue is full");
 +        error.statusCode = 429;
 +        reject(error);
 +      }
@@ -1218,10 +1279,10 @@ index 0000000000000000000000000000000000000000..b1f4d79ef06f5ff22849734db520e699
 +});
 diff --git a/tools/cgw-codex-shim/test/server.test.js b/tools/cgw-codex-shim/test/server.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..a4a5d2370a257b580948cec02f52197a2cd3c936
+index 0000000000000000000000000000000000000000..041c0f89f1d2b21e82a7257cb12b84d4115867d0
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/server.test.js
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,172 @@
 +import test from "node:test";
 +import assert from "node:assert/strict";
 +import { startServer } from "../server.js";
@@ -1365,7 +1426,11 @@ index 0000000000000000000000000000000000000000..a4a5d2370a257b580948cec02f52197a
 +    release();
 +    const responses = await Promise.all([first, second]);
 +    assert.deepEqual(responses.map((response) => response.status), [200, 200]);
-+    assert.equal((await third).status, 429);
++    const rejected = await third;
++    assert.equal(rejected.status, 429);
++    const payload = await rejected.json();
++    assert.equal(payload.error.message, "CGW execution queue is full");
++    assert.doesNotMatch(payload.error.message, /native execution/i);
 +  }, testConfig({ limits: { maxBodyBytes: 64 * 1024, maxConcurrent: 1, maxQueue: 1, timeoutMs: 1000 } }));
 +});
 +

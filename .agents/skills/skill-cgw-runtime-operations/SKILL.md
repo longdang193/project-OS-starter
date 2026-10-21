@@ -1,0 +1,155 @@
+---
+name: skill-cgw-runtime-operations
+description: Use when routing work through CGW, validating CGW-backed 9Router or Herdr execution, diagnosing native-execution leakage, or installing the persistent 9Router CGW overlay.
+required_reads: []
+distribution_tier: starter_kit
+---
+
+# CGW Runtime Operations
+
+## Role
+
+Use this skill for operational work that must prove a request reaches the Chat-to-CGW path rather than native Codex execution. It defines the procedure and evidence contract; it does not replace Herdr scheduling, the 9Router transport implementation, or patch-hub installation ownership.
+
+Keep one workflow for CGW routing, readiness, probing, quota safety, and installation. Do not create separate queues, reconcilers, profile registries, or cleanup frameworks for this skill.
+
+## When to Use
+
+Use when:
+
+- a task requests a `cgw/*` model or CGW-backed `web-high`, `web-medium`, or `web-normal` execution;
+- a probe must prove the requested model and `reasoning_effort` were forwarded;
+- a request reports native quota consumption, `401`, `429`, `502`, `503`, or provider/model mismatch;
+- Herdr pane reuse, stale idle state, duplicate retries, or native execution leakage is suspected;
+- the persistent 9Router CGW overlay must be installed, verified, upgraded, or rolled back.
+
+Do not use this skill for ordinary native Codex work that does not cross CGW. Use `skill-systematic-debugging` for the root-cause investigation, `skill-test-driven-development` for behavior changes, and `skill-backend-verification` for direct boundary evidence.
+
+## Non-Negotiable Invariants
+
+1. **Transport invariant:** `cgw/*` requests use the direct Chat-to-CGW Responses shim. Never route `cgw/*` through native `codex exec`, raw `gpt-*` passthrough, or an unverified fallback.
+2. **Model invariant:** the requested model is explicit and remains identifiable at the CGW boundary. Do not infer success from a process command line or a health response.
+3. **Reasoning invariant:** forward the requested `reasoning_effort` unchanged unless the provider contract explicitly rejects it; record the rejection rather than silently changing it.
+4. **Quota invariant:** CGW requests use chat mode. A successful CGW probe must not consume native Codex execution quota. A quota change is a failed verification, not an expected side effect.
+5. **Fail-closed invariant:** missing context, incompatible profile, unauthenticated readiness, unknown overlay base, or ambiguous routing stops delivery instead of falling back.
+
+## Ownership Boundaries
+
+- **Herdr owns scheduling and pane lifecycle.** It decides admission, context matching, active/idle state, and retirement.
+- **9Router owns transport and error classification.** It forwards the request, authenticates the CGW path, preserves model parameters, and distinguishes local capacity from provider failures.
+- **The persistent patch hub owns installation and rollback.** It matches an exact package version and Git base, applies the overlay, writes the durable receipt, and refuses unknown releases.
+- **This skill owns the operating procedure and evidence checklist.** It must not duplicate any of those runtime owners.
+
+## Delivery Procedure
+
+### 1. Resolve the canonical configuration
+
+Read the existing launcher, environment, profile registry, and patch-hub receipt before changing anything. Prefer configured values over hardcoded values. Resolve the CGW upstream, router, shim, profile, context identifier, and credential source from the existing runtime configuration.
+
+The commonly used local boundaries are:
+
+- `20128`: 9Router entrypoint;
+- `20129`: local Codex/CGW shim boundary;
+- `17841`: CGW upstream Responses endpoint.
+
+These ports are evidence hints, not a new configuration system. If the configured values differ, use the configured values and record them in the probe result.
+
+### 2. Check readiness at the real boundary
+
+Run the existing CGW readiness probe before delivery. `/health` is liveness only and is insufficient.
+
+Readiness must prove all of the following:
+
+- the router and shim processes are reachable;
+- the expected profile and provider/model binding are present;
+- authentication is accepted at the request boundary;
+- a minimal inference request can reach CGW;
+- the response is classified as CGW chat transport rather than native execution.
+
+Do not retry an unauthenticated or queue-full request through another account, native executor, or raw provider endpoint.
+
+### 3. Match the Herdr pane
+
+Use an existing pane only when this exact predicate is true:
+
+```text
+reuse = idle && same_context && compatible_profile
+```
+
+The context identifier should be an existing thread, plan, task-group, repository/work-item, or other stable identifier already available to the workflow. Missing or different context means allocate a new pane. An active pane or a pane with a conflicting live process is unavailable.
+
+Profile compatibility is required in addition to context compatibility. A pane bound to `gpt-*` native execution is not compatible with a `cgw/*` request, even if the pane is idle. Do not mix unrelated subjects in one pane.
+
+Use the existing lifecycle cleanup for stale idle state and the existing completion/retirement mechanism for finished panes. Do not add reconciliation logic here.
+
+### 4. Deliver one controlled probe
+
+Send a real, minimal prompt through the same route used by the intended work. The probe must capture:
+
+- requested profile and model;
+- resolved provider and model at the CGW boundary;
+- `reasoning_effort` requested and observed;
+- transport path and endpoint;
+- HTTP status and normalized error class;
+- native process evidence, if any;
+- quota before and after the probe when quota accounting is part of the claim.
+
+The probe is successful only when the requested model is listed or otherwise proven by the response, the reasoning setting is preserved, the CGW path is confirmed, and native quota is unchanged. A liveness `200` without inference proof is incomplete.
+
+### 5. Classify failures without causing retry storms
+
+Keep these failure classes separate:
+
+- **Authentication/configuration:** `401`, missing key, invalid bearer, or wrong endpoint. Stop and repair the binding.
+- **Local capacity:** `429` queue full, single-flight saturation, or a stale occupied pane. Stop duplicate retries, clean stale lifecycle state, and retry one request at a time.
+- **Provider availability:** `502` or `503` after the request reached the intended upstream. Preserve the provider failure and do not reinterpret it as a model fallback.
+- **Routing defect:** the response identifies native execution, the wrong provider, or the wrong model. Stop immediately and use `skill-systematic-debugging` to trace shared callers and all routing paths.
+
+9Router must not turn local queue saturation into an account fallback or a retry storm. Herdr remains the primary scheduler; the shim queue is only a defensive boundary for bypasses and duplicate retries.
+
+### 6. Verify installation and future releases
+
+Install and update through the persistent patch-hub overlay only. Verify the durable receipt against the installed 9Router package version, exact Git base, overlay digest, and runtime entrypoint.
+
+Never use `npm install -g 9router` as a recovery path for the CGW runtime. If the package version or Git base is unknown, stop and register a new exact-base overlay. Do not guess a patch target or apply a patch to a future release.
+
+The overlay procedure must remain idempotent, preserve tracked user changes, detect conflicts, and support verification without mutation. Rollback uses the existing patch-hub mechanism and receipt; do not invent a second rollback store.
+
+## Evidence Checklist
+
+Before reporting success, record:
+
+- the exact workspace, package version, Git base, overlay receipt, and profile;
+- the readiness command and authenticated inference result;
+- the requested and observed model;
+- the requested and observed `reasoning_effort`;
+- the endpoint/provider and error classification, if applicable;
+- quota before and after, when quota safety is claimed;
+- no-native-process evidence for CGW work;
+- focused automated test output and any skipped or unavailable checks.
+
+For material backend behavior, the direct boundary evidence from `skill-backend-verification` is mandatory. For a confirmed defect, follow `skill-systematic-debugging` to establish the root cause and shared callers, then use `skill-test-driven-development` to add focused regression proof before changing behavior.
+
+## Stop Conditions
+
+Stop and report `blocked` when:
+
+- the configured CGW endpoint or credential source cannot be resolved;
+- readiness reaches only `/health` and no authenticated inference probe is available;
+- the requested profile cannot be proven compatible with the selected pane;
+- the response identifies native execution or a different provider/model;
+- quota changes during a CGW probe;
+- the local queue is saturated and no existing lifecycle cleanup can release stale state;
+- the installed release has no exact-base persistent overlay.
+
+Do not hide these conditions with retries, profile substitution, account fallback, or a native execution fallback.
+
+## Completion Result
+
+Return one of:
+
+- **verified:** CGW routing, model/reasoning forwarding, quota behavior, installation state, and required evidence are proven;
+- **incomplete:** implementation or evidence remains within the approved scope;
+- **blocked:** progress requires an external runtime, credential, release overlay, or user decision.
+
+State the exact failed claim and evidence for `incomplete` or `blocked`. Do not claim CGW usage from configuration alone.
