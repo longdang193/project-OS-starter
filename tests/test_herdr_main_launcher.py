@@ -640,6 +640,21 @@ def test_shared_web_runtime_lock_rejects_concurrent_owner_and_releases_after_fai
         pass
 
 
+def test_shared_web_runtime_lock_waits_within_bounded_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "shared-web.lock"
+    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock_path", lambda: lock_path)
+
+    with LAUNCHER._shared_web_runtime_lock():
+        started = time.monotonic()
+        with pytest.raises(LAUNCHER.LaunchBlocked, match="shared CGW web runtime"):
+            with LAUNCHER._shared_web_runtime_lock(timeout_seconds=0.03):
+                pytest.fail("concurrent shared web runtime lock acquired")
+        assert time.monotonic() - started >= 0.02
+
+
 def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -667,7 +682,7 @@ def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
 
     @contextmanager
-    def fake_runtime_lock():
+    def fake_runtime_lock(timeout_seconds=0.0):
         yield
 
     monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
@@ -720,7 +735,7 @@ def test_web_prompt_wait_failure_is_not_reported_as_success(
     }
     monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
     @contextmanager
-    def fake_runtime_lock():
+    def fake_runtime_lock(timeout_seconds=0.0):
         yield
 
     monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
