@@ -27,6 +27,11 @@ def test_cgw_skill_defines_transport_readiness_and_quota_invariants() -> None:
         "reasoning_effort",
         "chat mode",
         "local queue saturation",
+        "600-second cgw request budget",
+        "900-second herdr attempt budget",
+        "1800-second outer watchdog",
+        "does not authorize a late extension",
+        "retired and its lifecycle evidence is reconciled",
     ):
         assert text in skill
 

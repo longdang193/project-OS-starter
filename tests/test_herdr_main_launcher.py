@@ -622,6 +622,35 @@ def test_shared_web_runtime_profiles_use_one_single_flight_key() -> None:
     ) is False
 
 
+def test_cgw_timeout_policy_is_longer_than_provider_default_but_below_watchdog() -> None:
+    policy = LAUNCHER._timeout_policy(
+        {"model_provider": "9router", "model": "combo-web-high"}
+    )
+
+    assert policy == {
+        "runtime": "cgw",
+        "request_timeout_seconds": 600.0,
+        "herdr_attempt_timeout_seconds": 900.0,
+        "outer_watchdog_seconds": 1800.0,
+        "timeout_action": "reconcile_retirement_before_retry",
+    }
+    assert (
+        policy["request_timeout_seconds"]
+        < policy["herdr_attempt_timeout_seconds"]
+        < policy["outer_watchdog_seconds"]
+    )
+
+
+def test_native_timeout_policy_remains_unchanged() -> None:
+    policy = LAUNCHER._timeout_policy(
+        {"model_provider": "9router", "model": "combo-high"}
+    )
+
+    assert policy["runtime"] == "native"
+    assert policy["request_timeout_seconds"] is None
+    assert policy["herdr_attempt_timeout_seconds"] == LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
+
+
 def test_shared_web_runtime_lock_rejects_concurrent_owner_and_releases_after_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

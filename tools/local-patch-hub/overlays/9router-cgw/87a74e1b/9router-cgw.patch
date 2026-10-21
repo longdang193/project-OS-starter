@@ -1,8 +1,14 @@
 diff --git a/open-sse/services/accountFallback.js b/open-sse/services/accountFallback.js
-index bc329e55981a30de66ae25d31b0c6bdba3958aaf..73c8f87e69a27fa566b8ec66f263e095769468b9 100644
+index bc329e55..bdd51a86 100644
 --- a/open-sse/services/accountFallback.js
 +++ b/open-sse/services/accountFallback.js
-@@ -25,6 +25,10 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
+@@ -20,13 +20,16 @@ export function getQuotaCooldown(backoffLevel = 0) {
+  * @param {number} backoffLevel - Current backoff level for exponential backoff
+  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
+  */
+-export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null) {
++export function checkFallbackError(status, errorText, backoffLevel = 0) {
+   const lowerError = errorText
      ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
      : "";
  
@@ -11,10 +17,33 @@ index bc329e55981a30de66ae25d31b0c6bdba3958aaf..73c8f87e69a27fa566b8ec66f263e095
 +  }
 +
    for (const rule of ERROR_RULES) {
-     if (rule.provider && rule.provider !== provider) continue;
+-    if (rule.provider && rule.provider !== provider) continue;
      // Text-based rule: match substring in error message
+     if (rule.text && lowerError && lowerError.includes(rule.text)) {
+       if (rule.backoff) {
+@@ -46,20 +49,6 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
+     }
+   }
+ 
+-  // Request-scoped client errors that matched no rule above: a 400 caused by the
+-  // request itself (context overflow, malformed body, unsupported parameter) says
+-  // nothing about the credential, so cooling the account down only removes a
+-  // healthy connection from rotation. With a single connection it is worse: every
+-  // later request in the window fails with a copy of this very error
+-  // ("all 1 accounts locked for <model> | lastError=[400]: ..."), which hides the
+-  // real cause from the caller and makes unrelated sessions look like they hit the
+-  // same limit. Hand the upstream error back for this request instead.
+-  // Account-scoped statuses keep their rules above (401/402/403/404/429), and the
+-  // text rules still win for rate-limit / quota / capacity wording.
+-  if (status >= 400 && status < 500 && status !== 401 && status !== 402 && status !== 403 && status !== 429) {
+-    return { shouldFallback: false, cooldownMs: 0 };
+-  }
+-
+   // Default: transient cooldown for any unmatched error
+   return { shouldFallback: true, cooldownMs: TRANSIENT_COOLDOWN_MS };
+ }
 diff --git a/src/app/api/models/test/ping.js b/src/app/api/models/test/ping.js
-index c9fa3ccfa935e5e6cb1c397a119641494f61ec64..50b23d32bdb7be3eccbbdc413e270c8986a9e853 100644
+index c9fa3ccf..50b23d32 100644
 --- a/src/app/api/models/test/ping.js
 +++ b/src/app/api/models/test/ping.js
 @@ -1,11 +1,16 @@
@@ -128,7 +157,7 @@ index c9fa3ccfa935e5e6cb1c397a119641494f61ec64..50b23d32bdb7be3eccbbdc413e270c89
  
    // Soft-pass (issue #3010): a reasoning model may burn its whole budget on
 diff --git a/src/sse/services/model.js b/src/sse/services/model.js
-index ba4cc6c24a70ea287e0c4b8b9ba09d094d1cd4ed..e91dfc02f388404ff5fc7359bfae4bddf51a90c9 100644
+index ba4cc6c2..e91dfc02 100644
 --- a/src/sse/services/model.js
 +++ b/src/sse/services/model.js
 @@ -1,5 +1,5 @@
@@ -189,7 +218,7 @@ index ba4cc6c24a70ea287e0c4b8b9ba09d094d1cd4ed..e91dfc02f388404ff5fc7359bfae4bdd
        }
 diff --git a/tests/unit/account-fallback-cgw-queue.test.js b/tests/unit/account-fallback-cgw-queue.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..e2acc2009eaad41e16e79a39872117174af32fbb
+index 00000000..e2acc200
 --- /dev/null
 +++ b/tests/unit/account-fallback-cgw-queue.test.js
 @@ -0,0 +1,32 @@
@@ -227,10 +256,10 @@ index 0000000000000000000000000000000000000000..e2acc2009eaad41e16e79a3987211717
 +});
 diff --git a/tools/cgw-codex-shim/README.md b/tools/cgw-codex-shim/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..223d6f373380426baaac2be36fdc0951b9d1b3bd
+index 00000000..ff4b0acc
 --- /dev/null
 +++ b/tools/cgw-codex-shim/README.md
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,100 @@
 +# CGW Chat Shim
 +
 +This directory contains a loopback-only OpenAI-compatible adapter for the
@@ -255,6 +284,16 @@ index 0000000000000000000000000000000000000000..223d6f373380426baaac2be36fdc0951
 +- A missing CGW bearer fails closed before dispatch. Upstream failures after
 +  dispatch include `x-9router-no-replay: 1` as an advisory diagnostic for the
 +  parent 9Router replay policy.
++- Requests that disconnect while waiting in the bounded queue are removed before
++  CGW dispatch, so abandoned retries do not consume CGW execution capacity.
++
++The default queue admits one active CGW request and keeps up to eight additional
++requests waiting. The tenth simultaneous request receives HTTP `429`. This is
++the shim's CGW chat queue, not a native `codex exec` queue. Herdr's normal
++`combo-web-*` single-flight admission should keep this queue nearly empty;
++direct clients, bypassed Herdr launches, or duplicate retries can still fill it.
++If native `codex exec` output appears, the request used a different or stale
++adapter path and did not come through this direct CGW transport.
 +
 +## Configuration
 +
@@ -296,14 +335,15 @@ index 0000000000000000000000000000000000000000..223d6f373380426baaac2be36fdc0951
 +The default limits are bounded and can be overridden with
 +`CGW_SHIM_MAX_BODY_BYTES`, `CGW_SHIM_MAX_CONCURRENT`, `CGW_SHIM_MAX_QUEUE`,
 +`CGW_SHIM_TIMEOUT_MS`, and `CGW_SHIM_TERMINATION_GRACE_MS`.
-+
-+The default queue admits one active CGW request and keeps up to eight additional
-+requests waiting. The tenth simultaneous request receives HTTP `429`. This is
-+the shim's CGW chat queue, not a native `codex exec` queue. Herdr's normal
-+`combo-web-*` single-flight admission should keep this queue nearly empty;
-+direct clients, bypassed Herdr launches, or duplicate retries can still fill it.
-+If native `codex exec` output appears, the request used a different or stale
-+adapter path and did not come through this direct CGW transport.
++The default request-body budget is 1 MiB: it accommodates native sub-agent
++context envelopes while retaining a finite protection against oversized
++requests. Set `CGW_SHIM_MAX_BODY_BYTES` explicitly when a smaller deployment
++budget is required.
++The default CGW request budget is 600 seconds to accommodate slower
++authenticated browser-backed turns. Set `CGW_SHIM_TIMEOUT_MS` explicitly when
++the deployment has a tighter provider deadline. A timeout after dispatch is
++reported as non-replayable; do not retry until the original attempt is
++retired and its outcome is reconciled.
 +
 +## Checks
 +
@@ -322,7 +362,7 @@ index 0000000000000000000000000000000000000000..223d6f373380426baaac2be36fdc0951
 +the bearer key or request headers.
 diff --git a/tools/cgw-codex-shim/cgwResponses.js b/tools/cgw-codex-shim/cgwResponses.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..21869547363715aaffbedbe8cce46e809d699c2b
+index 00000000..21869547
 --- /dev/null
 +++ b/tools/cgw-codex-shim/cgwResponses.js
 @@ -0,0 +1,170 @@
@@ -498,7 +538,7 @@ index 0000000000000000000000000000000000000000..21869547363715aaffbedbe8cce46e80
 +}
 diff --git a/tools/cgw-codex-shim/compatibility.md b/tools/cgw-codex-shim/compatibility.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..2c7114660515c3cba49b3089176d8120e4ce70a6
+index 00000000..2c711466
 --- /dev/null
 +++ b/tools/cgw-codex-shim/compatibility.md
 @@ -0,0 +1,32 @@
@@ -536,13 +576,15 @@ index 0000000000000000000000000000000000000000..2c7114660515c3cba49b3089176d8120
 +not treated as a fallback.
 diff --git a/tools/cgw-codex-shim/config.js b/tools/cgw-codex-shim/config.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..a35fda25a3f0a0859dcecc3c807d308aa0b7ecd0
+index 00000000..e5fb452b
 --- /dev/null
 +++ b/tools/cgw-codex-shim/config.js
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,93 @@
 +import "./env.js";
 +
 +const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
++const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
++const DEFAULT_CGW_TIMEOUT_MS = 600000;
 +
 +function positiveInteger(value, name, { allowZero = false } = {}) {
 +  const number = Number(value);
@@ -618,10 +660,10 @@ index 0000000000000000000000000000000000000000..a35fda25a3f0a0859dcecc3c807d308a
 +    apiKey,
 +    modelAliases,
 +    limits: {
-+      maxBodyBytes: positiveInteger(env.CGW_SHIM_MAX_BODY_BYTES ?? "65536", "CGW_SHIM_MAX_BODY_BYTES"),
++      maxBodyBytes: positiveInteger(env.CGW_SHIM_MAX_BODY_BYTES ?? String(DEFAULT_MAX_BODY_BYTES), "CGW_SHIM_MAX_BODY_BYTES"),
 +      maxConcurrent: positiveInteger(env.CGW_SHIM_MAX_CONCURRENT ?? "1", "CGW_SHIM_MAX_CONCURRENT"),
 +      maxQueue: positiveInteger(env.CGW_SHIM_MAX_QUEUE ?? "8", "CGW_SHIM_MAX_QUEUE", { allowZero: true }),
-+      timeoutMs: positiveInteger(env.CGW_SHIM_TIMEOUT_MS ?? "120000", "CGW_SHIM_TIMEOUT_MS"),
++      timeoutMs: positiveInteger(env.CGW_SHIM_TIMEOUT_MS ?? String(DEFAULT_CGW_TIMEOUT_MS), "CGW_SHIM_TIMEOUT_MS"),
 +      maxOutputBytes: positiveInteger(env.CGW_SHIM_MAX_OUTPUT_BYTES ?? "2097152", "CGW_SHIM_MAX_OUTPUT_BYTES"),
 +      terminationGraceMs: positiveInteger(env.CGW_SHIM_TERMINATION_GRACE_MS ?? "1500", "CGW_SHIM_TERMINATION_GRACE_MS"),
 +    },
@@ -633,7 +675,7 @@ index 0000000000000000000000000000000000000000..a35fda25a3f0a0859dcecc3c807d308a
 +}
 diff --git a/tools/cgw-codex-shim/env.js b/tools/cgw-codex-shim/env.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..32ab5b7c14b5f44f845a8b016280ec38323492cf
+index 00000000..32ab5b7c
 --- /dev/null
 +++ b/tools/cgw-codex-shim/env.js
 @@ -0,0 +1,16 @@
@@ -655,7 +697,7 @@ index 0000000000000000000000000000000000000000..32ab5b7c14b5f44f845a8b016280ec38
 +loadEnvFileIntoProcess();
 diff --git a/tools/cgw-codex-shim/http.js b/tools/cgw-codex-shim/http.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..5027df668955e6e47b004aaf231494072693e661
+index 00000000..5027df66
 --- /dev/null
 +++ b/tools/cgw-codex-shim/http.js
 @@ -0,0 +1,50 @@
@@ -711,7 +753,7 @@ index 0000000000000000000000000000000000000000..5027df668955e6e47b004aaf23149407
 +}
 diff --git a/tools/cgw-codex-shim/package.json b/tools/cgw-codex-shim/package.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..d375cebba016b32041a5c70aabaa66d462b32efd
+index 00000000..d375cebb
 --- /dev/null
 +++ b/tools/cgw-codex-shim/package.json
 @@ -0,0 +1,5 @@
@@ -722,7 +764,7 @@ index 0000000000000000000000000000000000000000..d375cebba016b32041a5c70aabaa66d4
 +}
 diff --git a/tools/cgw-codex-shim/run.js b/tools/cgw-codex-shim/run.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ad2d12d3c7daa623cee4d86ea8245bf2b96dc91
+index 00000000..5ad2d12d
 --- /dev/null
 +++ b/tools/cgw-codex-shim/run.js
 @@ -0,0 +1,31 @@
@@ -759,10 +801,10 @@ index 0000000000000000000000000000000000000000..5ad2d12d3c7daa623cee4d86ea8245bf
 +});
 diff --git a/tools/cgw-codex-shim/server.js b/tools/cgw-codex-shim/server.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b97d58d2c7
+index 00000000..55081d06
 --- /dev/null
 +++ b/tools/cgw-codex-shim/server.js
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,207 @@
 +import http from "node:http";
 +import { randomUUID } from "node:crypto";
 +import { errorResponse, jsonResponse, parseBearerToken, validateChatRequest } from "./http.js";
@@ -775,13 +817,24 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +    this.queue = [];
 +  }
 +
-+  run(task) {
++  run(task, signal) {
 +    return new Promise((resolve, reject) => {
-+      const item = { task, resolve, reject };
++      const item = { task, resolve, reject, signal, onAbort: null };
 +      if (this.active < this.maxConcurrent) {
 +        this.start(item);
 +      } else if (this.queue.length < this.maxQueue) {
 +        this.queue.push(item);
++        if (signal) {
++          item.onAbort = () => {
++            const index = this.queue.indexOf(item);
++            if (index === -1) return;
++            this.queue.splice(index, 1);
++            signal.removeEventListener("abort", item.onAbort);
++            reject(signal.reason || new Error("request aborted while queued"));
++          };
++          signal.addEventListener("abort", item.onAbort, { once: true });
++          if (signal.aborted) item.onAbort();
++        }
 +      } else {
 +        const error = new Error("CGW execution queue is full");
 +        error.statusCode = 429;
@@ -792,6 +845,10 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +
 +  start(item) {
 +    this.active += 1;
++    if (item.onAbort) {
++      item.signal?.removeEventListener("abort", item.onAbort);
++      item.onAbort = null;
++    }
 +    Promise.resolve().then(item.task).then(item.resolve, item.reject).finally(() => {
 +      this.active -= 1;
 +      const next = this.queue.shift();
@@ -891,8 +948,11 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +    const abortController = new AbortController();
 +    activeControllers.add(abortController);
 +    const onAborted = () => abortController.abort(new Error("client disconnected"));
++    const onRequestClose = () => { if (!request.complete) onAborted(); };
++    const onResponseClose = () => { if (!response.writableEnded) onAborted(); };
 +    request.once("aborted", onAborted);
-+    request.once("close", () => { if (!request.complete) onAborted(); });
++    request.once("close", onRequestClose);
++    response.once("close", onResponseClose);
 +    const id = `chatcmpl-${randomUUID()}`;
 +    try {
 +      const result = await queue.run(() => executeTurn({
@@ -900,7 +960,7 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +        prompt: requestInfo.prompt,
 +        reasoningEffort: requestInfo.reasoningEffort,
 +        signal: abortController.signal,
-+      }));
++      }), abortController.signal);
 +      if (response.destroyed) return;
 +      if (body.stream === true) {
 +        writeSse(response, { id, model: body.model, text: result.text });
@@ -920,6 +980,8 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +    } finally {
 +      activeControllers.delete(abortController);
 +      request.off("aborted", onAborted);
++      request.off("close", onRequestClose);
++      response.off("close", onResponseClose);
 +    }
 +  };
 +
@@ -952,7 +1014,7 @@ index 0000000000000000000000000000000000000000..21bcf0979a65856f635d687f140ae2b9
 +}
 diff --git a/tools/cgw-codex-shim/smoke.js b/tools/cgw-codex-shim/smoke.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..727af433b5fad4ae37618b28185e962349a7510d
+index 00000000..727af433
 --- /dev/null
 +++ b/tools/cgw-codex-shim/smoke.js
 @@ -0,0 +1,66 @@
@@ -1024,7 +1086,7 @@ index 0000000000000000000000000000000000000000..727af433b5fad4ae37618b28185e9623
 +});
 diff --git a/tools/cgw-codex-shim/test/cgw-responses.test.js b/tools/cgw-codex-shim/test/cgw-responses.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b0578547f14bd19b953ca9d2d2d57b07e8d4c5e
+index 00000000..1b057854
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/cgw-responses.test.js
 @@ -0,0 +1,110 @@
@@ -1140,10 +1202,10 @@ index 0000000000000000000000000000000000000000..1b0578547f14bd19b953ca9d2d2d57b0
 +});
 diff --git a/tools/cgw-codex-shim/test/config.test.js b/tools/cgw-codex-shim/test/config.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..6d5c8d8a9193ed6abb1e9007251a695d3d7c9b0c
+index 00000000..a4525608
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/config.test.js
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,88 @@
 +import test from "node:test";
 +import assert from "node:assert/strict";
 +import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -1199,6 +1261,18 @@ index 0000000000000000000000000000000000000000..6d5c8d8a9193ed6abb1e9007251a695d
 +  assert.equal(config.cgw.bearerFile, "C:/cgw-bearer.env");
 +});
 +
++test("defaults to a native-context-safe request body budget", () => {
++  const config = loadConfig(baseEnv);
++
++  assert.equal(config.limits.maxBodyBytes, 1024 * 1024);
++});
++
++test("defaults to a bounded CGW latency budget", () => {
++  const config = loadConfig(baseEnv);
++
++  assert.equal(config.limits.timeoutMs, 600000);
++});
++
 +test("rejects non-loopback binds and missing dedicated keys", () => {
 +  assert.throws(() => loadConfig({ ...baseEnv, CGW_SHIM_HOST: "0.0.0.0" }), /loopback/);
 +  assert.throws(() => loadConfig({ ...baseEnv, CGW_SHIM_CGW_BASE_URL: "https://example.test/v1" }), /http loopback/);
@@ -1222,7 +1296,7 @@ index 0000000000000000000000000000000000000000..6d5c8d8a9193ed6abb1e9007251a695d
 +});
 diff --git a/tools/cgw-codex-shim/test/http-boundary.test.js b/tools/cgw-codex-shim/test/http-boundary.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1f4d79ef06f5ff22849734db520e699e15e93ff
+index 00000000..b1f4d79e
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/http-boundary.test.js
 @@ -0,0 +1,51 @@
@@ -1279,10 +1353,11 @@ index 0000000000000000000000000000000000000000..b1f4d79ef06f5ff22849734db520e699
 +});
 diff --git a/tools/cgw-codex-shim/test/server.test.js b/tools/cgw-codex-shim/test/server.test.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..041c0f89f1d2b21e82a7257cb12b84d4115867d0
+index 00000000..c6f4dcef
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/server.test.js
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,232 @@
++import http from "node:http";
 +import test from "node:test";
 +import assert from "node:assert/strict";
 +import { startServer } from "../server.js";
@@ -1338,6 +1413,22 @@ index 0000000000000000000000000000000000000000..041c0f89f1d2b21e82a7257cb12b84d4
 +    assert.equal(body.model, "gpt-test");
 +    assert.equal(body.choices[0].message.content, "hello back");
 +  });
++});
++
++test("accepts native sub-agent context above the legacy 64 KiB budget", async () => {
++  const prompt = "x".repeat(70 * 1024);
++  await withServer(async ({ prompt: receivedPrompt }) => {
++    assert.equal(receivedPrompt, prompt);
++    return { text: "ok", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: prompt }] }),
++    });
++
++    assert.equal(response.status, 200);
++  }, testConfig({ limits: { maxBodyBytes: 1024 * 1024, maxConcurrent: 1, maxQueue: 1, timeoutMs: 1000 } }));
 +});
 +
 +test("passes reasoning effort through to CGW execution", async () => {
@@ -1431,6 +1522,49 @@ index 0000000000000000000000000000000000000000..041c0f89f1d2b21e82a7257cb12b84d4
 +    const payload = await rejected.json();
 +    assert.equal(payload.error.message, "CGW execution queue is full");
 +    assert.doesNotMatch(payload.error.message, /native execution/i);
++  }, testConfig({ limits: { maxBodyBytes: 64 * 1024, maxConcurrent: 1, maxQueue: 1, timeoutMs: 1000 } }));
++});
++
++test("removes disconnected requests from the queue before dispatch", async () => {
++  let release;
++  const gate = new Promise((resolve) => { release = resolve; });
++  let calls = 0;
++  await withServer(async () => {
++    calls += 1;
++    if (calls === 1) await gate;
++    return { text: "ok", dispatchStarted: true };
++  }, async (baseUrl) => {
++    const request = (signal) => fetch(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++      body: JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }),
++      signal,
++    });
++
++    const first = request();
++    await new Promise((resolve) => setTimeout(resolve, 25));
++
++    const abandoned = http.request(`${baseUrl}/v1/chat/completions`, {
++      method: "POST",
++      headers: headers(),
++    });
++    const abandonedClosed = new Promise((resolve, reject) => {
++      abandoned.once("close", resolve);
++      abandoned.once("error", (error) => {
++        if (error.code !== "ECONNRESET") reject(error);
++      });
++    });
++    abandoned.end(JSON.stringify({ model: "gpt-test", messages: [{ role: "user", content: "hello" }] }));
++    await new Promise((resolve) => setTimeout(resolve, 25));
++    abandoned.destroy();
++    await abandonedClosed;
++
++    release();
++    assert.equal((await first).status, 200);
++
++    const third = request();
++    assert.equal((await third).status, 200);
++    assert.equal(calls, 2);
 +  }, testConfig({ limits: { maxBodyBytes: 64 * 1024, maxConcurrent: 1, maxQueue: 1, timeoutMs: 1000 } }));
 +});
 +

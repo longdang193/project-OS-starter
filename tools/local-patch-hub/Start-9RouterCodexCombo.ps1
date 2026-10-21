@@ -106,9 +106,6 @@ function Test-InstalledCgwReceipt {
 $targetPath = Get-ResolvedPath $TargetRoot
 $shimRunPath = Join-Path $targetPath "tools\cgw-codex-shim\run.js"
 $envPath = Join-Path $targetPath ".env"
-if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
-  throw "CGW Chat shim is missing: $shimRunPath"
-}
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing local runtime environment: $envPath. Copy .env.example, add CGW_SHIM_API_KEY and CGW_SHIM_MODEL_ALIASES_JSON, and keep .env uncommitted."
 }
@@ -160,6 +157,10 @@ if ($InstallGlobal) {
   if ($AllowDowngrade) { $applyArguments += "-AllowDowngrade" }
   & powershell.exe @applyArguments
   if ($LASTEXITCODE -ne 0) { throw "9router installation failed with exit code $LASTEXITCODE." }
+}
+
+if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
+  throw "CGW Chat shim is missing: $shimRunPath"
 }
 
 $routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source

@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import tomllib
 import uuid
 
 import yaml
@@ -710,6 +711,102 @@ def _check_platform(
     return issues
 
 
+_CODEX_AGENT_SECTION_RE = re.compile(r"^\[agents\.([A-Za-z0-9_-]+)\]\s*$")
+_CODEX_CONFIG_FILE_RE = re.compile(r'^\s*config_file\s*=\s*["\']([^"\']+)["\']\s*$')
+
+
+def _codex_agent_sections(config_text: str) -> dict[str, str]:
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in config_text.splitlines():
+        match = _CODEX_AGENT_SECTION_RE.match(line.strip())
+        if match:
+            current = match.group(1)
+            sections.setdefault(current, [])
+            continue
+        if line.strip().startswith("["):
+            current = None
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return {name: "\n".join(lines) for name, lines in sections.items()}
+
+
+def _codex_agent_profile_specs(generated_root: Path) -> list[tuple[str, str]]:
+    agent_root = generated_root / "agents"
+    specs: list[tuple[str, str]] = []
+    for source in sorted(agent_root.glob("*.toml")):
+        payload = tomllib.loads(source.read_text(encoding="utf-8"))
+        name = payload.get("name")
+        description = payload.get("description")
+        if name != source.stem or not isinstance(name, str) or not isinstance(description, str):
+            raise ValueError(f"Invalid generated Codex agent profile: {source.as_posix()}")
+        specs.append((name, description))
+    return specs
+
+
+def _plan_codex_agent_registrations(
+    generated_root: Path,
+    target_root: Path,
+) -> tuple[list[str], list[str], list[tuple[Path | None, Path, str | None]]]:
+    """Plan exact native profile registrations without changing existing bindings."""
+    config_path = target_root / "config.toml"
+    config_text = _read_text(config_path) if config_path.is_file() else ""
+    try:
+        tomllib.loads(config_text) if config_text else {}
+    except tomllib.TOMLDecodeError as exc:
+        return [], [f"Unable to parse Codex config before agent registration: {exc}"], []
+
+    sections = _codex_agent_sections(config_text)
+    additions: list[str] = []
+    issues: list[str] = []
+    for name, description in _codex_agent_profile_specs(generated_root):
+        expected_config_file = f"agents/{name}.toml"
+        body = sections.get(name)
+        if body is not None:
+            match = next(
+                (candidate for candidate in (_CODEX_CONFIG_FILE_RE.match(line) for line in body.splitlines()) if candidate),
+                None,
+            )
+            actual_config_file = match.group(1) if match else None
+            if actual_config_file != expected_config_file:
+                issues.append(
+                    f"Native Codex agent `{name}` is bound to {actual_config_file!r}; "
+                    f"expected {expected_config_file!r}. Refusing fallback or overwrite."
+                )
+            continue
+        additions.extend(
+            [
+                f"[agents.{name}]",
+                f"description = {json.dumps(description, ensure_ascii=False)}",
+                f"config_file = {json.dumps(expected_config_file)}",
+                "",
+            ]
+        )
+
+    if issues or not additions:
+        return [], issues, []
+    rendered = config_text
+    if rendered:
+        rendered += "\n\n"
+    rendered += "\n".join(additions).rstrip() + "\n"
+    return [f"{'update' if config_path.exists() else 'create'}: {config_path.as_posix()}"], [], [
+        (None, config_path, rendered)
+    ]
+
+
+def _check_codex_agent_registrations(generated_root: Path, target_root: Path) -> list[str]:
+    config_path = target_root / "config.toml"
+    config_text = _read_text(config_path) if config_path.is_file() else ""
+    sections = _codex_agent_sections(config_text)
+    changes, issues, _ = _plan_codex_agent_registrations(generated_root, target_root)
+    if changes:
+        for name, _ in _codex_agent_profile_specs(generated_root):
+            if name not in sections:
+                issues.append(f"Missing native Codex agent registration: {name} in {config_path.as_posix()}")
+    return issues
+
+
 def _plan_deploy(
     generated_root: Path,
     target_root: Path,
@@ -1134,6 +1231,8 @@ def run() -> int:
                     platform=platform,
                 )
             )
+            if platform == "codex":
+                issues.extend(_check_codex_agent_registrations(generated_root, PLATFORM_TARGETS[platform]))
     else:
         plans: list[
             tuple[
@@ -1193,6 +1292,14 @@ def run() -> int:
                     rewrite_mode=args.rewrite_mode,
                     platform=platform,
                 )
+                if platform == "codex":
+                    registration_changes, registration_issues, registration_pairs = _plan_codex_agent_registrations(
+                        generated_root,
+                        target_root,
+                    )
+                    changes.extend(registration_changes)
+                    plan_issues.extend(registration_issues)
+                    pairs.extend(registration_pairs)
             except (OSError, ValueError) as exc:
                 changes, pairs = [], []
                 plan_issues = [f"Unable to plan {platform}: {exc}"]
