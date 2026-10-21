@@ -131,3 +131,11 @@ def test_combo_readme_explains_one_time_startup_registration() -> None:
     assert "Install-9RouterCodexComboStartup.ps1" in readme
     assert "once" in readme.lower()
     assert "Windows logon" in readme
+
+def test_global_installer_short_circuits_an_exact_existing_receipt_before_stopping_processes() -> None:
+    script = INSTALLER.read_text(encoding="utf-8")
+
+    assert "9router-cgw-overlay.json" in script
+    assert "InstallReceiptJson" in script
+    assert "already matches" in script
+    assert script.index("already matches") < script.index("Get-9RouterProcesses")

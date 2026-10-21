@@ -189,6 +189,9 @@ searching compiled JavaScript for fragile source markers. If `9router.cmd` or
 `cli.js` is missing, rerun the same `Apply-9RouterCgwOverlay.ps1 -InstallGlobal`
 command; it can repair the incomplete installation without first running the
 upstream `npm install -g 9router` package.
+When the global package already matches the requested version and exact overlay
+receipt, `-InstallGlobal` verifies it and skips the rebuild, repack, and process
+replacement steps.
 
 When a future 9router release changes a patched file, add a new exact-base
 directory under `overlays/9router-cgw/` with a rebased patch and manifest. Keep
