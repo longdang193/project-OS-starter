@@ -285,6 +285,15 @@ def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     assert "check_for_update_on_startup=false" in arguments
 
 
+def test_codex_arguments_do_not_override_cgw_web_effort(tmp_path: Path) -> None:
+    fake_profile(tmp_path, "web-high", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "web-high")
+
+    arguments = LAUNCHER._codex_arguments(profile, tmp_path)
+
+    assert not any(argument.startswith("model_reasoning_effort=") for argument in arguments)
+
+
 def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -629,6 +638,7 @@ def test_cgw_timeout_policy_is_longer_than_provider_default_but_below_watchdog()
 
     assert policy == {
         "runtime": "cgw",
+        "startup_timeout_ms": "300000",
         "request_timeout_seconds": 600.0,
         "herdr_attempt_timeout_seconds": 900.0,
         "outer_watchdog_seconds": 1800.0,
@@ -647,6 +657,7 @@ def test_native_timeout_policy_remains_unchanged() -> None:
     )
 
     assert policy["runtime"] == "native"
+    assert policy["startup_timeout_ms"] == LAUNCHER._CODEX_START_TIMEOUT_MS
     assert policy["request_timeout_seconds"] is None
     assert policy["herdr_attempt_timeout_seconds"] == LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
 
@@ -1750,6 +1761,61 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
     assert command[6] == "same subject [Runtime Grant: delegation.child_agents = deny]"
     assert evidence["herdr"]["reuse"] is True
     assert evidence["herdr"]["context_marker"] == LAUNCHER._context_marker(context)
+    assert evidence["registry_launcher"]["timeout_policy"]["startup_timeout_ms"] == "300000"
+
+
+def test_resolve_launch_projects_cgw_startup_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    profile = LAUNCHER.AgentProfile(
+        Path("web-high.toml"),
+        "web-high",
+        "9router",
+        "combo-web-high",
+        None,
+        "test",
+        "do not modify files",
+    )
+    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_preflight_profile_runtime",
+        lambda selected: {"provider": selected.model_provider, "model": selected.model, "status": 200},
+    )
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime",
+        lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
+    )
+    monkeypatch.setattr(LAUNCHER, "_codex_runtime_mcp_servers", lambda *args, **kwargs: {})
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {
+            "pane": {"cwd": str(ROOT)},
+            "process_info": {"foreground_processes": []},
+            "reuse": False,
+        },
+    )
+
+    command, evidence = LAUNCHER.resolve_launch(
+        profile_name="web-high",
+        session="codex-probe",
+        pane="w1:p1",
+        cwd=ROOT,
+        expected_base="HEAD",
+        executor="codex",
+        task="start a CGW worker",
+    )
+
+    assert command[command.index("--timeout") + 1] == "300000"
+    assert evidence["registry_launcher"]["timeout_policy"]["startup_timeout_ms"] == "300000"
 
 
 def test_resolve_launch_projects_selected_codex_mcp_server(
@@ -2366,7 +2432,10 @@ def test_main_transport_timeout_marks_delivery_uncertain_without_termination(
     assert result["attempt_id"] == initial
     assert result["agent_name"] == "xhigh-main"
     assert terminated == []
-    assert timeouts == [LAUNCHER._CODEX_START_TIMEOUT, LAUNCHER._CODEX_ASSIGNMENT_TIMEOUT]
+    assert timeouts == [
+        (float(LAUNCHER._CODEX_START_TIMEOUT_MS) / 1000) + 5.0,
+        LAUNCHER._CODEX_ASSIGNMENT_TIMEOUT,
+    ]
 
 
 def test_main_reports_deepagents_pane_run_failure(

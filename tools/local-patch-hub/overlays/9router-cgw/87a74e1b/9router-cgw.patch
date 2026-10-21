@@ -256,10 +256,10 @@ index 00000000..e2acc200
 +});
 diff --git a/tools/cgw-codex-shim/README.md b/tools/cgw-codex-shim/README.md
 new file mode 100644
-index 00000000..582e6477a050be311c34811fc835ebf50ed5216d
+index 00000000..45b84bf53acbac82a1ae6fddec0779f12be21fe8
 --- /dev/null
 +++ b/tools/cgw-codex-shim/README.md
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,102 @@
 +# CGW Chat Shim
 +
 +This directory contains a loopback-only OpenAI-compatible adapter for the
@@ -271,8 +271,9 @@ index 00000000..582e6477a050be311c34811fc835ebf50ed5216d
 +- `GET /v1/models` exposes only aliases configured in
 +  `CGW_SHIM_MODEL_ALIASES_JSON`.
 +- `POST /v1/chat/completions` accepts exactly one non-empty `user` message.
-+- `reasoning_effort` accepts `low`, `medium`, or `high` and is sent to CGW as
-+  the per-request Responses `reasoning.effort` value.
++- `reasoning_effort` accepts `low`, `medium`, or `high`. The public `low` value
++  is translated to CGW's `instant` Responses effort; `medium` and `high` are
++  passed through unchanged.
 +- `stream: true` returns buffered compatibility SSE; it is not live token
 +  streaming.
 +- Client tool declarations are ignored because CGW Chat is text-only; tools are never
@@ -363,10 +364,10 @@ index 00000000..582e6477a050be311c34811fc835ebf50ed5216d
 +the bearer key or request headers.
 diff --git a/tools/cgw-codex-shim/cgwResponses.js b/tools/cgw-codex-shim/cgwResponses.js
 new file mode 100644
-index 00000000..21869547
+index 00000000..d3a0514fee9b9116a91c639fa64be60f62ff186c
 --- /dev/null
 +++ b/tools/cgw-codex-shim/cgwResponses.js
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,174 @@
 +import { readFileSync } from "node:fs";
 +import { randomUUID } from "node:crypto";
 +
@@ -458,7 +459,7 @@ index 00000000..21869547
 +    store: false,
 +    stream: false,
 +  };
-+  if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
++  if (reasoningEffort) body.reasoning = { effort: mapReasoningEffort(reasoningEffort) };
 +  return {
 +    url,
 +    init: {
@@ -480,6 +481,10 @@ index 00000000..21869547
 +    .filter((value) => typeof value === "string" && value.trim());
 +  const text = items.at(-1) || "";
 +  return text.trim() ? text : null;
++}
++
++export function mapReasoningEffort(reasoningEffort) {
++  return reasoningEffort === "low" ? "instant" : reasoningEffort;
 +}
 +
 +export async function runCgwTurn({ config, model, prompt, reasoningEffort, signal, bearer, fetchImpl = fetch }) {
@@ -539,7 +544,7 @@ index 00000000..21869547
 +}
 diff --git a/tools/cgw-codex-shim/compatibility.md b/tools/cgw-codex-shim/compatibility.md
 new file mode 100644
-index 00000000..2c711466
+index 00000000..737b3376ef86142461a07cb7e1f3bdd2446cdd3b
 --- /dev/null
 +++ b/tools/cgw-codex-shim/compatibility.md
 @@ -0,0 +1,32 @@
@@ -1087,13 +1092,13 @@ index 00000000..727af433
 +});
 diff --git a/tools/cgw-codex-shim/test/cgw-responses.test.js b/tools/cgw-codex-shim/test/cgw-responses.test.js
 new file mode 100644
-index 00000000..1b057854
+index 00000000..af7c1be1f85ccc17b52d58a7f4b76938854db314
 --- /dev/null
 +++ b/tools/cgw-codex-shim/test/cgw-responses.test.js
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,122 @@
 +import test from "node:test";
 +import assert from "node:assert/strict";
-+import { buildCgwResponseRequest, extractResponseText, readBearerToken, resolveBearer, runCgwTurn } from "../cgwResponses.js";
++import { buildCgwResponseRequest, extractResponseText, mapReasoningEffort, readBearerToken, resolveBearer, runCgwTurn } from "../cgwResponses.js";
 +import { mkdtemp, writeFile, rm } from "node:fs/promises";
 +import os from "node:os";
 +import path from "node:path";
@@ -1123,6 +1128,18 @@ index 00000000..1b057854
 +  assert.equal(body.store, false);
 +  assert.equal(body.stream, false);
 +  assert.deepEqual(body.reasoning, { effort: "high" });
++});
++
++test("maps public low effort to CGW instant effort", () => {
++  assert.equal(mapReasoningEffort("low"), "instant");
++  const request = buildCgwResponseRequest({
++    ...config.cgw,
++    bearer: "cgw-token",
++    model: "chatgpt-web/gpt-6-sol",
++    prompt: "Reply with CGW_OK only.",
++    reasoningEffort: "low",
++  });
++  assert.deepEqual(JSON.parse(request.init.body).reasoning, { effort: "instant" });
 +});
 +
 +test("extracts assistant text from Responses output", () => {

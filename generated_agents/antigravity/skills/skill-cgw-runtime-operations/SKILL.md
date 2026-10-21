@@ -190,13 +190,16 @@ Keep these failure classes separate:
 ### 6. Use a bounded CGW timeout policy
 
 CGW-backed web turns use the existing bounded timeout policy rather than the
-native profile budget: a 600-second CGW request budget, a 900-second Herdr
-attempt budget, and the existing 1800-second outer watchdog. The request
-deadline is selected before delivery and is recorded in launcher evidence.
+native profile budget: a 300-second Codex startup budget, a 600-second CGW
+request budget, a 900-second Herdr attempt budget, and the existing
+1800-second outer watchdog. The deadlines are selected before delivery and are
+recorded in launcher evidence. The startup budget is intentionally below the
+provider request budget because CGW-backed Codex initialization can take about
+two minutes before Herdr observes interactive readiness.
 The ordering is:
 
 ```text
-CGW request timeout < Herdr attempt deadline < Herdr outer watchdog
+Codex startup timeout < CGW request timeout < Herdr attempt deadline < Herdr outer watchdog
 ```
 
 A timeout does not authorize a late extension, replay, or profile fallback.
