@@ -1,0 +1,8 @@
+{
+  "id": "9router-cgw-chat-runtime",
+  "version": "1.0.0",
+  "baseCommit": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+  "targetVersion": "0.5.104",
+  "patch": "9router-cgw.patch",
+  "description": "Direct CGW Chat transport, real model inference probes, and per-request reasoning effort for 9router 0.5.104."
+}

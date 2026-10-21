@@ -81,39 +81,100 @@ function Start-ProcessHidden {
   Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory -WindowStyle Hidden | Out-Null
 }
 
+function Test-InstalledCgwReceipt {
+  param([Parameter(Mandatory = $true)][string]$PackageRoot)
+  $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
+  if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
+  try {
+    $receipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
+    return [int]$receipt.schemaVersion -eq 1 -and
+      [string]$receipt.overlayId -eq "9router-cgw-chat-runtime" -and
+      [string]$receipt.overlayVersion -eq "1.0.0" -and
+      [string]$receipt.targetVersion -eq "0.5.104" -and
+      [string]$receipt.packageVersion -eq "0.5.104" -and
+      [string]$receipt.sourceHead -match "^[0-9a-f]{40}$"
+  } catch {
+    return $false
+  }
+}
+
 $targetPath = Get-ResolvedPath $TargetRoot
 $shimRunPath = Join-Path $targetPath "tools\cgw-codex-shim\run.js"
 $envPath = Join-Path $targetPath ".env"
 if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
-  throw "CGW Codex shim is missing: $shimRunPath"
+  throw "CGW Chat shim is missing: $shimRunPath"
 }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing local runtime environment: $envPath. Copy .env.example, add CGW_SHIM_API_KEY and CGW_SHIM_MODEL_ALIASES_JSON, and keep .env uncommitted."
 }
 
 $shimApiKey = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_API_KEY"
+$modelAliases = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_MODEL_ALIASES_JSON"
+if ([string]::IsNullOrWhiteSpace($modelAliases)) { throw "Missing CGW_SHIM_MODEL_ALIASES_JSON in $envPath." }
+try {
+  $parsedAliases = $modelAliases | ConvertFrom-Json
+  foreach ($property in $parsedAliases.PSObject.Properties) {
+    if ([string]$property.Value -notmatch "^chatgpt-web/") {
+      throw "CGW alias $($property.Name) targets $($property.Value), which would use the native Codex passthrough and may consume Codex quota. Use a chatgpt-web/* target."
+    }
+  }
+} catch {
+  throw "Invalid CGW_SHIM_MODEL_ALIASES_JSON in ${envPath}: $($_.Exception.Message)"
+}
+$cgwBearer = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_CGW_BEARER"
+$cgwBearerFile = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_CGW_BEARER_FILE"
 if ([string]::IsNullOrWhiteSpace($shimApiKey)) {
   throw "Missing CGW_SHIM_API_KEY in $envPath."
 }
+if ([string]::IsNullOrWhiteSpace($cgwBearer) -and [string]::IsNullOrWhiteSpace($cgwBearerFile)) {
+  throw "Missing CGW bearer source in $envPath. Set CGW_SHIM_CGW_BEARER or CGW_SHIM_CGW_BEARER_FILE."
+}
+if (-not [string]::IsNullOrWhiteSpace($cgwBearerFile)) {
+  $resolvedBearerFile = $cgwBearerFile
+  if (-not [IO.Path]::IsPathRooted($resolvedBearerFile)) { $resolvedBearerFile = Join-Path $targetPath $resolvedBearerFile }
+  if (-not (Test-Path -LiteralPath $resolvedBearerFile -PathType Leaf)) { throw "CGW bearer file is missing: $resolvedBearerFile" }
+}
 
 $node = (Get-Command node -ErrorAction Stop).Source
+$npm = (Get-Command npm -ErrorAction Stop).Source
+$globalRoot = (& $npm "root" "-g" | Out-String).Trim()
+if ($LASTEXITCODE -ne 0) { throw "Cannot resolve npm global root." }
 $routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source
 if ([string]::IsNullOrWhiteSpace($routerCommand)) {
-  $npm = (Get-Command npm -ErrorAction Stop).Source
-  $globalRoot = (& $npm "root" "-g" | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw "Cannot resolve npm global root." }
   $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
-}
-if (-not (Test-Path -LiteralPath $routerCommand -PathType Leaf)) {
-  throw "Global 9router command is missing: $routerCommand. Run with -InstallGlobal first."
 }
 
 if ($InstallGlobal) {
-  $applyScript = Join-Path $PSScriptRoot "Apply-9RouterResponsesOverlay.ps1"
+  $targetPackagePath = Join-Path $targetPath "cli\package.json"
+  if (-not (Test-Path -LiteralPath $targetPackagePath -PathType Leaf)) {
+    throw "TargetRoot is missing cli\package.json: $targetPath"
+  }
+  $targetPackage = Get-Content -Raw -LiteralPath $targetPackagePath | ConvertFrom-Json
+  if ([Version]$targetPackage.version -ne [Version]"0.5.104") {
+    throw "Refusing to install an unpatched 9router runtime from version $($targetPackage.version); the CGW combo is pinned to 0.5.104."
+  }
+  $applyScript = Join-Path $PSScriptRoot "Apply-9RouterCgwOverlay.ps1"
   $applyArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $applyScript, "-TargetRoot", $targetPath, "-InstallGlobal")
   if ($AllowDowngrade) { $applyArguments += "-AllowDowngrade" }
   & powershell.exe @applyArguments
   if ($LASTEXITCODE -ne 0) { throw "9router installation failed with exit code $LASTEXITCODE." }
+}
+
+$routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source
+if ([string]::IsNullOrWhiteSpace($routerCommand)) {
+  $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
+}
+if (-not (Test-Path -LiteralPath $routerCommand -PathType Leaf)) {
+  throw "Global 9router command is missing: $routerCommand. Run with -InstallGlobal to repair it."
+}
+$installedPackageRoot = Join-Path $globalRoot "9router"
+$installedPackageJson = Join-Path $installedPackageRoot "package.json"
+if (-not (Test-Path -LiteralPath $installedPackageJson -PathType Leaf)) {
+  throw "Global 9router package is missing: $installedPackageRoot"
+}
+$installedPackage = Get-Content -Raw -LiteralPath $installedPackageJson | ConvertFrom-Json
+if ([Version]$installedPackage.version -ne [Version]"0.5.104" -or -not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot)) {
+  throw "Refusing to start an unpatched 9router runtime. Apply Apply-9RouterCgwOverlay.ps1 with -InstallGlobal first."
 }
 
 $routerOwner = Get-ListeningOwner 20128
@@ -144,5 +205,5 @@ if ($InstallStartup) {
 }
 
 Write-Output "9router is ready at loopback port 20128."
-Write-Output "CGW Codex shim is ready at loopback port 20129."
+Write-Output "CGW Chat shim is ready at loopback port 20129."
 Write-Output "The shim loads $envPath; credentials and API keys are not printed."

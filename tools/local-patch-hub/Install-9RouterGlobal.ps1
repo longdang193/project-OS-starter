@@ -1,7 +1,8 @@
 function Install-9RouterGlobal {
   param(
     [Parameter(Mandatory = $true)][string]$TargetPath,
-    [switch]$AllowDowngrade
+    [switch]$AllowDowngrade,
+    [string]$InstallReceiptJson
   )
 
   $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
@@ -10,6 +11,17 @@ function Install-9RouterGlobal {
   $globalBinRoot = Split-Path $globalRoot -Parent
   $targetPackage = Get-Content -Raw -LiteralPath (Join-Path $TargetPath "cli\package.json") | ConvertFrom-Json
   $targetVersion = [Version]$targetPackage.version
+  $installReceipt = $null
+  if (-not [string]::IsNullOrWhiteSpace($InstallReceiptJson)) {
+    try {
+      $installReceipt = $InstallReceiptJson | ConvertFrom-Json
+    } catch {
+      throw "Global 9router install receipt is invalid JSON: $($_.Exception.Message)"
+    }
+    if ([string]$installReceipt.packageVersion -ne [string]$targetPackage.version) {
+      throw "Global 9router install receipt targets version $($installReceipt.packageVersion), expected $($targetPackage.version)."
+    }
+  }
   $installedPackagePath = Join-Path $globalRoot "9router\package.json"
   if ((Test-Path -LiteralPath $installedPackagePath -PathType Leaf) -and -not $AllowDowngrade) {
     $installedPackage = Get-Content -Raw -LiteralPath $installedPackagePath | ConvertFrom-Json
@@ -93,6 +105,14 @@ function Install-9RouterGlobal {
   }
   $packageStage = Join-Path ([IO.Path]::GetTempPath()) ("9router-package-" + [Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $packageStage | Out-Null
+  $receiptStage = Join-Path $packageStage "9router-cgw-overlay.json"
+  if ($null -ne $installReceipt) {
+    [IO.File]::WriteAllText(
+      $receiptStage,
+      ($installReceipt | ConvertTo-Json -Depth 10 -Compress) + [Environment]::NewLine,
+      [Text.UTF8Encoding]::new($false)
+    )
+  }
   $rollbackRoot = Join-Path ([IO.Path]::GetTempPath()) ("9router-rollback-" + [Guid]::NewGuid().ToString("N"))
   $packageRoot = Join-Path $globalRoot "9router"
   $rollbackPackageRoot = Join-Path $rollbackRoot "package"
@@ -158,6 +178,12 @@ function Install-9RouterGlobal {
       $versionExitCode = $LASTEXITCODE
       if ($versionExitCode -ne 0 -or $versionOutput -ne [string]$targetPackage.version) {
         throw "Global 9router install is unusable: expected version $($targetPackage.version), got '$versionOutput'."
+      }
+      if ($null -ne $installReceipt) {
+        if (-not (Test-Path -LiteralPath $receiptStage -PathType Leaf)) {
+          throw "Global 9router install receipt staging failed: missing $receiptStage"
+        }
+        Move-Item -LiteralPath $receiptStage -Destination (Join-Path $packageRoot "9router-cgw-overlay.json") -Force
       }
     } catch {
       $installError = $_

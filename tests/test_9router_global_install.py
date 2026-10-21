@@ -23,6 +23,15 @@ def test_global_installer_rolls_back_when_replacement_or_verification_fails() ->
     assert "versionOutput" in script
 
 
+def test_global_installer_writes_requested_receipt_atomically_after_verification() -> None:
+    script = INSTALLER.read_text(encoding="utf-8")
+
+    assert "$InstallReceiptJson" in script
+    assert "9router-cgw-overlay.json" in script
+    assert "Move-Item -LiteralPath $receiptStage" in script
+    assert "Restore-9RouterGlobal" in script
+
+
 def test_combo_launcher_accepts_existing_shim_with_windows_path_separators() -> None:
     script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
         encoding="utf-8"
@@ -41,6 +50,34 @@ def test_combo_launcher_authenticates_existing_shim_with_target_env_key() -> Non
     assert "Authorization" in script
     assert "rejected the target .env" in script
     assert "StatusCode -in @(200, 401)" in script
+
+
+def test_combo_launcher_applies_the_version_pinned_cgw_overlay_before_install() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Apply-9RouterCgwOverlay.ps1" in script
+    assert "0.5.104" in script
+    assert "Refusing to install an unpatched 9router runtime" in script
+
+
+def test_combo_launcher_requires_the_durable_cgw_install_receipt() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "9router-cgw-overlay.json" in script
+    assert "overlayId" in script
+    assert "Test-InstalledCgwRuntime" not in script
+
+
+def test_combo_launcher_can_repair_a_missing_global_command() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert script.index("if ($InstallGlobal)") < script.index("Global 9router command is missing")
 
 
 def test_combo_readme_does_not_recommend_downgrading_the_global_router() -> None:

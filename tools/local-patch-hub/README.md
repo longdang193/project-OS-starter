@@ -132,17 +132,47 @@ intentional older-version installs. When upstream changes a patched file, add a
 new exact-base directory under `overlays/9router-responses/` and rebase the patch
 there. Keep old overlays for existing checkouts.
 
-## 9router + CGW Codex combo runtime
+## 9router + CGW combo runtime
 
-The merged 9router checkout at `0f6d885d` contains the CGW Codex combo shim and
-per-request `reasoning_effort` support. The hub does not duplicate those source
-changes in an overlay; it owns the repeatable install and startup contract.
+The CGW combo requires the exact `0.5.104` runtime overlay below. The overlay
+adds the CGW Chat shim, real inference-based model tests, and per-request
+`reasoning_effort` support. The shim translates the public Chat Completions
+request into a direct authenticated CGW Responses request; it does not launch
+`codex exec` and must not route `cgw/*` through the 9router Codex provider.
+
+Apply and install the pinned runtime overlay from a clean `v0.5.104` checkout:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCgwOverlay.ps1 `
+  -TargetRoot C:\path\to\9router-v0.5.104 `
+  -InstallGlobal
+```
+
+The overlay refuses unknown commits and versions, refuses downgrade unless
+`-AllowDowngrade` is explicit, and stops before changing files on a conflict.
+After the package, entry point, standalone app, command shim, and version are
+verified, the installer atomically writes `9router-cgw-overlay.json` into the
+global package. `Start-9RouterCodexCombo.ps1` requires that receipt instead of
+searching compiled JavaScript for fragile source markers. If `9router.cmd` or
+`cli.js` is missing, rerun the same `Apply-9RouterCgwOverlay.ps1 -InstallGlobal`
+command; it can repair the incomplete installation without first running the
+upstream `npm install -g 9router` package.
 
 Keep the local environment in the target checkout at
 `C:\path\to\9router\.env`. The shim loads that file automatically; never
-commit it or print its values. At minimum, add `CGW_SHIM_API_KEY` and
-`CGW_SHIM_MODEL_ALIASES_JSON`; the remaining defaults are documented in
-`tools/cgw-codex-shim/README.md`.
+commit it or print its values. Configure the dedicated shim key, stable model
+aliases, the CGW loopback base URL, and one local-only CGW bearer source:
+
+```dotenv
+CGW_SHIM_API_KEY=use-a-dedicated-local-key
+CGW_SHIM_MODEL_ALIASES_JSON={"gpt-6.1-sol":"chatgpt-web/gpt-6-sol","gpt-5.6-sol":"chatgpt-web/gpt-5.6-sol"}
+CGW_SHIM_CGW_BASE_URL=http://127.0.0.1:17841/v1
+CGW_SHIM_CGW_BEARER_FILE=C:\\Users\\me\\.codex\\cgw-bearer.env
+```
+
+CGW aliases must target `chatgpt-web/*`; raw `gpt-*` targets enter the native Codex passthrough and can consume Codex quota. A regular `sk-*` API key is not a CGW bearer. The launcher refuses to start a
+shim with no bearer source, so an incorrectly configured installation cannot
+silently consume Codex quota through a native fallback.
 
 Start both loopback services against the already-installed global 9router:
 
@@ -153,8 +183,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-
 
 To avoid rerunning the launcher after every Windows restart, register a
 per-user logon task once. This starts the same launcher 30 seconds after each
-Windows logon, keeps the existing global 9router version, and does not store
-`.env` values or API keys in Task Scheduler:
+Windows logon and does not store `.env` values or API keys in Task Scheduler:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
@@ -162,8 +191,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-
   -InstallStartup
 ```
 
-The command starts the runtime immediately and registers the task for future
-logons. To remove the automatic startup task later:
+The launcher verifies 9router health and the shim listener. Model tests still
+send a real `POST http://127.0.0.1:20129/v1/chat/completions` prompt; they do
+not use a catalog-only shortcut. The shim then sends `POST
+http://127.0.0.1:17841/v1/responses` with the requested model and optional
+reasoning effort.
+
+Use the existing startup uninstall command to remove the automatic task:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Install-9RouterCodexComboStartup.ps1 `
@@ -171,25 +205,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Instal
 ```
 
 Keep the global runtime on the current release (`0.5.104` at this gate) before
-starting the combo. The launcher installs the version from `TargetRoot` when
-`-InstallGlobal` is supplied; Do not use `-AllowDowngrade` for the combo, or an
-older source checkout can replace the current global runtime and leave the
-shim on an unsupported base.
-
-The launcher verifies `GET /api/health` on 9router at `127.0.0.1:20128` and
-the shim listener at `127.0.0.1:20129`. It refuses missing `.env`, unrelated
-port owners, and a missing global CLI. Requests to the shim use
-`POST http://127.0.0.1:20129/v1/chat/completions`; `reasoning_effort` may be
-`low`, `medium`, or `high` and is applied per request.
-
-Use stable public aliases that map to explicit Codex provider targets. The
-`codex/` prefix is required so 9router selects its Codex OAuth connection rather
-than inferring the OpenAI API provider from a bare `gpt-*` model name:
-
-```dotenv
-CGW_SHIM_MODEL_ALIASES_JSON={"gpt-6.1-sol":"codex/gpt-6.1-sol","gpt-5.6-sol":"codex/gpt-5.6-sol"}
-```
-
+starting the combo. The overlay installer owns replacement and rollback; use
+`-InstallGlobal` to repair or refresh it. Do not use `-AllowDowngrade` for the
+combo.
 Apply the attribution persistence overlay separately:
 
 ```powershell
