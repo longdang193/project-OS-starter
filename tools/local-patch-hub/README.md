@@ -134,7 +134,7 @@ there. Keep old overlays for existing checkouts.
 
 ## 9router + CGW combo runtime
 
-The CGW combo requires the exact `0.5.104` runtime overlay below. The overlay
+At this gate, the CGW combo uses the registered `0.5.104` runtime overlay below. The overlay
 adds the CGW Chat shim, real inference-based model tests, and per-request
 `reasoning_effort` support. The shim translates the public Chat Completions
 request into a direct authenticated CGW Responses request; it does not launch
@@ -148,15 +148,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-
   -InstallGlobal
 ```
 
-The overlay refuses unknown commits and versions, refuses downgrade unless
-`-AllowDowngrade` is explicit, and stops before changing files on a conflict.
-After the package, entry point, standalone app, command shim, and version are
-verified, the installer atomically writes `9router-cgw-overlay.json` into the
-global package. `Start-9RouterCodexCombo.ps1` requires that receipt instead of
+The overlay selector reads versioned manifests under `overlays/9router-cgw/`,
+matches the target Git `HEAD` and package version, refuses unknown commits and
+versions, refuses downgrade unless `-AllowDowngrade` is explicit, and stops
+before changing files on a conflict. `-VerifyOnly` may report that a patch can
+be rebased onto an unknown future commit, but installation still requires a new
+exact-base manifest. After the package, entry point, standalone app, command
+shim, and version are verified, the installer atomically writes
+`9router-cgw-overlay.json` into the global package. `Start-9RouterCodexCombo.ps1`
+validates that receipt against the installed package version instead of
 searching compiled JavaScript for fragile source markers. If `9router.cmd` or
 `cli.js` is missing, rerun the same `Apply-9RouterCgwOverlay.ps1 -InstallGlobal`
 command; it can repair the incomplete installation without first running the
 upstream `npm install -g 9router` package.
+
+When a future 9router release changes a patched file, add a new exact-base
+directory under `overlays/9router-cgw/` with a rebased patch and manifest. Keep
+older overlay directories for existing checkouts; do not weaken the selector to
+apply a stale patch automatically.
 
 Keep the local environment in the target checkout at
 `C:\path\to\9router\.env`. The shim loads that file automatically; never

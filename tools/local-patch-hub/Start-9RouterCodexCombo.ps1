@@ -82,16 +82,21 @@ function Start-ProcessHidden {
 }
 
 function Test-InstalledCgwReceipt {
-  param([Parameter(Mandatory = $true)][string]$PackageRoot)
+  param(
+    [Parameter(Mandatory = $true)][string]$PackageRoot,
+    [Parameter(Mandatory = $true)][string]$PackageVersion
+  )
   $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
   if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
   try {
     $receipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
+    $targetVersion = [Version]$receipt.targetVersion
+    $receiptPackageVersion = [Version]$receipt.packageVersion
     return [int]$receipt.schemaVersion -eq 1 -and
       [string]$receipt.overlayId -eq "9router-cgw-chat-runtime" -and
-      [string]$receipt.overlayVersion -eq "1.0.0" -and
-      [string]$receipt.targetVersion -eq "0.5.104" -and
-      [string]$receipt.packageVersion -eq "0.5.104" -and
+      -not [string]::IsNullOrWhiteSpace([string]$receipt.overlayVersion) -and
+      $targetVersion -eq $receiptPackageVersion -and
+      $receiptPackageVersion -eq [Version]$PackageVersion -and
       [string]$receipt.sourceHead -match "^[0-9a-f]{40}$"
   } catch {
     return $false
@@ -150,9 +155,6 @@ if ($InstallGlobal) {
     throw "TargetRoot is missing cli\package.json: $targetPath"
   }
   $targetPackage = Get-Content -Raw -LiteralPath $targetPackagePath | ConvertFrom-Json
-  if ([Version]$targetPackage.version -ne [Version]"0.5.104") {
-    throw "Refusing to install an unpatched 9router runtime from version $($targetPackage.version); the CGW combo is pinned to 0.5.104."
-  }
   $applyScript = Join-Path $PSScriptRoot "Apply-9RouterCgwOverlay.ps1"
   $applyArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $applyScript, "-TargetRoot", $targetPath, "-InstallGlobal")
   if ($AllowDowngrade) { $applyArguments += "-AllowDowngrade" }
@@ -173,7 +175,7 @@ if (-not (Test-Path -LiteralPath $installedPackageJson -PathType Leaf)) {
   throw "Global 9router package is missing: $installedPackageRoot"
 }
 $installedPackage = Get-Content -Raw -LiteralPath $installedPackageJson | ConvertFrom-Json
-if ([Version]$installedPackage.version -ne [Version]"0.5.104" -or -not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot)) {
+if (-not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot -PackageVersion ([string]$installedPackage.version))) {
   throw "Refusing to start an unpatched 9router runtime. Apply Apply-9RouterCgwOverlay.ps1 with -InstallGlobal first."
 }
 
