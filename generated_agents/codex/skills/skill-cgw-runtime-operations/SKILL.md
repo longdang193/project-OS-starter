@@ -62,15 +62,45 @@ The commonly used local boundaries are:
 
 These ports are evidence hints, not a new configuration system. If the configured values differ, use the configured values and record them in the probe result.
 
-### 1a. Materialize a local review packet
+### 1a. Stage review input in GitHub first
 
-CGW receives the delivered prompt content; it cannot resolve a local Windows
-path, open a repository file, or use the controller filesystem tools. A plan
-review must therefore be prepared locally by the existing Herdr/controller
-path before delivery. A path-only instruction such as
-`C:\repo\docs\plan.md` is not review input.
+For recurring plan, code, or file reviews, prefer a GitHub-backed source over
+copying local files into the prompt. Commit and push the selected plan or code
+changes to the intended branch, then give the reviewer the repository and an
+exact file URL. Pin the URL to a commit when reproducibility matters; use the
+branch URL only when reviewing the branch's current revision.
 
-The bounded packet must contain:
+The GitHub review request must identify:
+
+- the repository and exact branch or commit;
+- the file path or GitHub file URL;
+- the read-only scope, stable context identifier, requested profile, and
+  requested review question.
+
+Example:
+
+```text
+@GitHub Review this exact file revision:
+https://github.com/<owner>/<repo>/blob/<commit-or-branch>/<path>
+
+Use the requested CGW profile. Return findings ordered by severity and do not
+modify files.
+```
+
+Do not send a local Windows path as the only review input. The GitHub-connected
+reviewer must confirm that it read the requested revision by citing a known
+heading, hash, or other file marker. A local fetch or URL presence alone is not
+review evidence.
+
+### 1b. Use a local review packet only as a fallback
+
+Use the existing Herdr/controller packet path only when the changes are not
+pushable, the repository is private and inaccessible to the reviewer, or the
+review explicitly requires uncommitted local state. CGW receives delivered
+prompt content; it cannot resolve a local Windows path or use controller
+filesystem tools by itself.
+
+The bounded fallback packet must contain:
 
 - the plan text or the explicitly selected plan sections;
 - only the named or relevant source and test excerpts needed for the review;
@@ -84,11 +114,12 @@ excerpts first, report any omitted sections, and stop on `413 Payload Too
 Large` rather than blindly retrying or falling back. Do not include credentials,
 environment values, or unrelated repository contents. If the controller cannot
 read and attach the requested content, report `incomplete` instead of claiming
-that CGW reviewed the local file.
+that CGW reviewed the local file. A GitHub URL is not a fallback for a failed
+private-repository authorization check.
 
 Use the existing Herdr/controller delivery path to build this packet. Do not
 add a filesystem service, packet queue, scheduler, or reconciliation framework;
-the packet is request-scoped evidence, not a second runtime owner.
+the fallback packet is request-scoped evidence, not a second runtime owner.
 
 ### 2. Check readiness at the real boundary
 
