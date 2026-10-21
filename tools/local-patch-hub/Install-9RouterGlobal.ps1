@@ -23,6 +23,54 @@ function Install-9RouterGlobal {
     }
   }
   $installedPackagePath = Join-Path $globalRoot "9router\package.json"
+  $packageRoot = Join-Path $globalRoot "9router"
+  $cmdShim = Join-Path $globalBinRoot "9router.cmd"
+
+  function Test-ExistingGlobalInstall {
+    param(
+      [Parameter(Mandatory = $true)][string]$PackageRoot,
+      [Parameter(Mandatory = $true)][string]$CommandShim,
+      [Parameter(Mandatory = $true)][object]$ExpectedReceipt,
+      [Parameter(Mandatory = $true)][string]$ExpectedVersion
+    )
+
+    if ($null -eq $ExpectedReceipt -or
+        -not (Test-Path -LiteralPath (Join-Path $PackageRoot "package.json") -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $CommandShim -PathType Leaf)) {
+      return $false
+    }
+
+    try {
+      $packageItem = Get-Item -LiteralPath $PackageRoot -Force
+      if ($packageItem.LinkType) { return $false }
+      $installedPackage = Get-Content -Raw -LiteralPath (Join-Path $PackageRoot "package.json") | ConvertFrom-Json
+      if ([string]$installedPackage.version -ne $ExpectedVersion) { return $false }
+      if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot "cli.js") -PathType Leaf)) { return $false }
+      $installedAppPath = Join-Path $PackageRoot "app"
+      if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and
+          -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) {
+        return $false
+      }
+
+      $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
+      if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
+      $installedReceipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
+      foreach ($field in @("schemaVersion", "overlayId", "overlayVersion", "baseCommit", "targetVersion", "packageVersion", "sourceHead")) {
+        if ([string]$installedReceipt.$field -ne [string]$ExpectedReceipt.$field) { return $false }
+      }
+
+      $versionOutput = (& $CommandShim "--version" 2>&1 | Out-String).Trim()
+      return $LASTEXITCODE -eq 0 -and $versionOutput -eq $ExpectedVersion
+    } catch {
+      return $false
+    }
+  }
+
+  if (Test-ExistingGlobalInstall -PackageRoot $packageRoot -CommandShim $cmdShim -ExpectedReceipt $installReceipt -ExpectedVersion ([string]$targetPackage.version)) {
+    Write-Output "Global 9router package already matches version $($targetPackage.version) and the requested overlay receipt; skipping rebuild and replacement."
+    return
+  }
+
   if ((Test-Path -LiteralPath $installedPackagePath -PathType Leaf) -and -not $AllowDowngrade) {
     $installedPackage = Get-Content -Raw -LiteralPath $installedPackagePath | ConvertFrom-Json
     $installedVersion = [Version]$installedPackage.version
