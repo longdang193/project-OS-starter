@@ -731,6 +731,15 @@ def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
 
     def fake_run(command, **kwargs):
         commands.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","completion_seq":12}}}',
+                "",
+            )
+        if command[3:5] == ["agent", "read"]:
+            return subprocess.CompletedProcess(command, 0, '{"result":"CGW_MULTI_MESSAGE_OK"}', "")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(LAUNCHER, "_run", fake_run)
@@ -1169,6 +1178,114 @@ def test_codex_prompt_result_marks_success_acknowledged() -> None:
         "failure_kind": None,
         "reconciliation_required": False,
     }
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "\u25a0 unexpected status 502 Bad Gateway: CGW returned no assistant text",
+        "OpenAIAPIError: An internal error occurred",
+    ],
+)
+def test_shared_web_completion_error_is_unverified_and_non_retryable(content: str) -> None:
+    result = LAUNCHER._classify_codex_completion_snapshot({
+        "state": "done",
+        "content": content,
+        "observation_error": None,
+    })
+
+    assert result == {
+        "status": "unverified",
+        "failure_kind": "task_result_unverified",
+        "task_result": {"state": "unverified"},
+        "reconciliation_required": True,
+        "launcher_exit_code": 2,
+    }
+
+
+def test_idle_codex_completion_requires_advanced_completion_sequence() -> None:
+    snapshot = {
+        "state": "idle",
+        "completion_seq": 12,
+        "content": "CGW_MULTI_MESSAGE_OK",
+        "observation_error": None,
+    }
+
+    assert LAUNCHER._classify_codex_completion_snapshot(
+        snapshot,
+        pre_submit_completion_seq=11,
+    )["status"] == "completed"
+    assert LAUNCHER._classify_codex_completion_snapshot(
+        snapshot,
+        pre_submit_completion_seq=12,
+    )["status"] == "unverified"
+
+
+def test_shared_web_completion_error_is_reported_by_main_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "model_provider": "9router",
+            "model": "combo-web-high",
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "web-high-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+            "pre_submit_completion_seq": 11,
+        },
+    }
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+
+    @contextmanager
+    def fake_runtime_lock(timeout_seconds=0.0):
+        yield
+
+    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[3:5] == ["agent", "get"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":{"agent":{"agent_status":"idle","completion_seq":12,"pane_id":"w1:p5"}}}',
+                "",
+            )
+        if command[3:5] == ["agent", "read"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"result":"\\u25a0 unexpected status 502 Bad Gateway: CGW returned no assistant text"}',
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "web-high", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+        ]
+    ) == 2
+
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["status"] == "unverified"
+    assert result["failure_kind"] == "task_result_unverified"
+    assert result["reconciliation_required"] is True
+    assert result["exit_code"] == 2
+    assert sum(command[3:5] == ["agent", "prompt"] for command in commands) == 1
 
 
 def test_powershell_literal_escapes_apostrophes() -> None:

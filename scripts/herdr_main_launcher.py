@@ -1769,6 +1769,49 @@ def _codex_completion_snapshot(
     }
 
 
+def _classify_codex_completion_snapshot(
+    snapshot: Mapping[str, Any],
+    *,
+    pre_submit_completion_seq: int | None = None,
+) -> dict[str, Any]:
+    content = snapshot.get("content")
+    content_text = content if isinstance(content, str) else ""
+    observation_error = snapshot.get("observation_error")
+    completion_seq = snapshot.get("completion_seq")
+    completion_advanced = (
+        isinstance(completion_seq, int)
+        and isinstance(pre_submit_completion_seq, int)
+        and (
+            completion_seq > pre_submit_completion_seq
+        )
+    )
+    if (
+        snapshot.get("state") not in {"done", "idle"}
+        or (snapshot.get("state") == "idle" and not completion_advanced)
+        or observation_error
+        or not content_text.strip()
+        or content_text.lstrip().startswith("OpenAIAPIError")
+        or re.search(
+            r"(?im)^\s*(?:\u25a0\s*)?(?:unexpected status|traceback \(most recent call last\):)",
+            content_text,
+        )
+    ):
+        return {
+            "status": "unverified",
+            "failure_kind": "task_result_unverified",
+            "task_result": {"state": "unverified"},
+            "reconciliation_required": True,
+            "launcher_exit_code": 2,
+        }
+    return {
+        "status": "completed",
+        "failure_kind": None,
+        "task_result": {"state": "reported_completed", "source": "codex_pane"},
+        "reconciliation_required": False,
+        "launcher_exit_code": 0,
+    }
+
+
 def _reconcile_failed_codex_start(
     herdr: str,
     session: str,
@@ -4065,6 +4108,26 @@ def _main_body(args: argparse.Namespace) -> int:
                     else 0.0
                 ),
             )
+            completion_snapshot = None
+            completion_classification = None
+            if shared_web_runtime and prompt_result is not None and prompt_result["submission"] == "acknowledged":
+                observation_started = time.monotonic()
+                completion_snapshot = _codex_completion_snapshot(
+                    herdr,
+                    resolved_session,
+                    agent_name,
+                    env=environment,
+                    pane=resolved_pane,
+                    timeout_seconds=min(
+                        _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS,
+                        max(0.01, _remaining_deepagents_timeout(attempt_deadline)),
+                    ),
+                )
+                completion_classification = _classify_codex_completion_snapshot(
+                    completion_snapshot,
+                    pre_submit_completion_seq=evidence["herdr"].get("pre_submit_completion_seq"),
+                )
+                record_phase("observation", observation_started, attempt_id=attempt_id)
             if transport_timeout is not None:
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
@@ -4095,6 +4158,37 @@ def _main_body(args: argparse.Namespace) -> int:
                 print(assignment_result.stdout, end="")
             if assignment_result.stderr:
                 print(assignment_result.stderr, file=sys.stderr, end="")
+            if completion_snapshot is not None and completion_classification is not None:
+                if completion_classification["status"] == "unverified":
+                    record_phase("delivery", attempt_started, attempt_id=attempt_id)
+                    print(json.dumps(emit_assignment({
+                        "assignment": {
+                            "agent_name": agent_name,
+                            "attempt_id": attempt_id,
+                            "completion": completion_snapshot,
+                            "completion_observed": completion_snapshot.get("state") == "done",
+                            "delivery_state": "delivered",
+                            "delivery_certainty": "confirmed",
+                            "delivery_task_sha256": delivery_task_sha256,
+                            "execution": {
+                                "state": "completed" if completion_snapshot.get("state") == "done" else "unknown",
+                                "worker_exit_code": None,
+                            },
+                            "failure_kind": completion_classification["failure_kind"],
+                            "grant_digest": grant_digest,
+                            "observation": completion_snapshot,
+                            "phase": "prompt",
+                            "prompt_accepted": True,
+                            "reconciliation_required": True,
+                            "session": resolved_session,
+                            "status": "unverified",
+                            "submission": "acknowledged",
+                            "task_result": completion_classification["task_result"],
+                            "task_sha256": assignment_task_sha256,
+                            "exit_code": completion_classification["launcher_exit_code"],
+                        }
+                    }), sort_keys=True))
+                    return int(completion_classification["launcher_exit_code"])
             if prompt_result["submission"] == "unknown":
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
