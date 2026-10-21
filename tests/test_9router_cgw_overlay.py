@@ -42,7 +42,7 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     readme = (PATCH_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert '"id": "9router-cgw-chat-runtime"' in manifest
-    assert '"version": "1.1.2"' in manifest
+    assert '"version": "1.1.3"' in manifest
     assert '"baseCommit": "87a74e1bda3677193c6f71a7e2100c90311f0689"' in manifest
     assert '"targetVersion": "0.5.104"' in manifest
     assert "src/app/api/models/test/ping.js" in patch
@@ -81,6 +81,18 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     assert "/health` alone proves liveness" in readme
     assert "stops both account and combo fallback" in readme
     _assert_unified_patch_hunks_match_their_headers(patch)
+
+
+def test_cgw_overlay_manifest_bumps_receipt_identity_for_payload_changes() -> None:
+    manifest = (OVERLAY_ROOT / "manifest.json").read_text(encoding="utf-8")
+    patch = (OVERLAY_ROOT / "9router-cgw.patch").read_text(encoding="utf-8")
+    launcher = (PATCH_ROOT / "Start-9RouterCodexCombo.ps1").read_text(encoding="utf-8")
+
+    assert '"version": "1.1.3"' in manifest
+    assert '"version": "1.1.2"' not in manifest
+    assert "open-sse/executors/base.js" in patch
+    assert "stops executor retries after CGW dispatch" in patch
+    assert "receipt.overlayVersion -eq $ExpectedOverlayVersion" in launcher
 
 
 def test_combo_launcher_rejects_stale_cgw_receipts() -> None:
