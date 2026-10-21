@@ -107,7 +107,26 @@ Keep these failure classes separate:
 
 9Router must not turn local queue saturation into an account fallback or a retry storm. Herdr remains the primary scheduler; the shim queue is only a defensive boundary for bypasses and duplicate retries.
 
-### 6. Verify installation and future releases
+### 6. Use a bounded CGW timeout policy
+
+CGW-backed web turns use the existing bounded timeout policy rather than the
+native profile budget: a 600-second CGW request budget, a 900-second Herdr
+attempt budget, and the existing 1800-second outer watchdog. The request
+deadline is selected before delivery and is recorded in launcher evidence.
+The ordering is:
+
+```text
+CGW request timeout < Herdr attempt deadline < Herdr outer watchdog
+```
+
+A timeout does not authorize a late extension, replay, or profile fallback.
+After dispatch, treat the result as uncertain until the original attempt is
+retired and its lifecycle evidence is reconciled. This prevents duplicate CGW
+work and queue saturation. If a provider or client boundary still expires
+before the selected CGW budget, trace that boundary before changing the
+policy; do not add another independent timeout or retry manager.
+
+### 7. Verify installation and future releases
 
 Install and update through the persistent patch-hub overlay only. Verify the durable receipt against the installed 9Router package version, exact Git base, overlay digest, and runtime entrypoint.
 

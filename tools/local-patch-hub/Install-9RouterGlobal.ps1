@@ -72,6 +72,27 @@ function Install-9RouterGlobal {
     }
   }
 
+  function Ensure-NpmDependencies {
+    param(
+      [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+      [Parameter(Mandatory = $true)][string]$MarkerPath
+    )
+
+    if (Test-Path -LiteralPath $MarkerPath -PathType Leaf) { return }
+
+    $dependencyLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-deps-" + [Guid]::NewGuid().ToString("N") + ".log")
+    $dependencyErrorLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-deps-" + [Guid]::NewGuid().ToString("N") + ".err.log")
+    $dependencyProcess = Start-Process -FilePath $npm -ArgumentList @("install", "--no-audit", "--no-fund", "--ignore-scripts") -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $dependencyLog -RedirectStandardError $dependencyErrorLog
+    $dependencyExitCode = $dependencyProcess.ExitCode
+    if ($dependencyExitCode -ne 0) {
+      $dependencyDetails = @()
+      if (Test-Path -LiteralPath $dependencyErrorLog -PathType Leaf) { $dependencyDetails += @(Get-Content -LiteralPath $dependencyErrorLog -Tail 20) }
+      if (Test-Path -LiteralPath $dependencyLog -PathType Leaf) { $dependencyDetails += @(Get-Content -LiteralPath $dependencyLog -Tail 20) }
+      throw "$npm install failed in $WorkingDirectory with exit code $dependencyExitCode. $($dependencyDetails -join ' ')"
+    }
+    Remove-Item -LiteralPath $dependencyLog, $dependencyErrorLog -Force -ErrorAction SilentlyContinue
+  }
+
   foreach ($process in @(Get-9RouterProcesses)) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
   }
@@ -85,6 +106,9 @@ function Install-9RouterGlobal {
     $remainingIds = @($remainingProcesses | ForEach-Object { $_.ProcessId }) -join ", "
     throw "Cannot replace global 9router while processes remain: $remainingIds"
   }
+
+  Ensure-NpmDependencies -WorkingDirectory $TargetPath -MarkerPath (Join-Path $TargetPath "node_modules\next\package.json")
+  Ensure-NpmDependencies -WorkingDirectory (Join-Path $TargetPath "cli") -MarkerPath (Join-Path $TargetPath "cli\node_modules\esbuild\package.json")
 
   $cliPath = Join-Path $TargetPath "cli"
   $buildLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-build-" + [Guid]::NewGuid().ToString("N") + ".log")

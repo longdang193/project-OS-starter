@@ -275,6 +275,95 @@ tags: []
     assert frontmatter["required_reads"] == [required_read_path]
 
 
+def _write_generated_agent_profile(root: Path, name: str, model: str) -> None:
+    agent = root / "agents" / f"{name}.toml"
+    agent.parent.mkdir(parents=True, exist_ok=True)
+    agent.write_text(
+        f'name = "{name}"\n'
+        'model_provider = "9router"\n'
+        f'model = "{model}"\n'
+        f'description = "{name} description"\n'
+        'developer_instructions = "Use the exact profile."\n',
+        encoding="utf-8",
+    )
+
+
+def test_plan_codex_agent_registrations_adds_exact_profiles_without_fallback(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    _write_generated_agent_profile(generated_root, "web-high", "combo-web-high")
+    _write_generated_agent_profile(generated_root, "web-medium", "combo-web-medium")
+    target_root.mkdir(parents=True)
+    config = target_root / "config.toml"
+    config.write_text(
+        '[agents]\nenabled = true\n\n[agents.high]\nconfig_file = "agents/high.toml"\n',
+        encoding="utf-8",
+    )
+
+    changes, issues, pairs = DEPLOY._plan_codex_agent_registrations(generated_root, target_root)
+
+    assert issues == []
+    assert changes == [f"update: {config.as_posix()}"]
+    assert len(pairs) == 1
+    rendered = pairs[0][2]
+    assert rendered is not None
+    assert '[agents.web-high]' in rendered
+    assert 'config_file = "agents/web-high.toml"' in rendered
+    assert '[agents.web-medium]' in rendered
+    assert 'config_file = "agents/web-medium.toml"' in rendered
+    assert '[agents.high]' in rendered
+    assert 'config_file = "agents/high.toml"' in rendered
+    assert "combo-high" not in rendered
+
+
+def test_plan_codex_agent_registrations_is_idempotent(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    _write_generated_agent_profile(generated_root, "web-high", "combo-web-high")
+    target_root.mkdir(parents=True)
+    config = target_root / "config.toml"
+    config.write_text(
+        '[agents.web-high]\n'
+        'description = "web-high description"\n'
+        'config_file = "agents/web-high.toml"\n',
+        encoding="utf-8",
+    )
+
+    assert DEPLOY._plan_codex_agent_registrations(generated_root, target_root) == ([], [], [])
+
+
+def test_plan_codex_agent_registrations_fails_closed_on_wrong_existing_binding(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    _write_generated_agent_profile(generated_root, "web-high", "combo-web-high")
+    target_root.mkdir(parents=True)
+    config = target_root / "config.toml"
+    config.write_text(
+        '[agents.web-high]\nconfig_file = "agents/high.toml"\n',
+        encoding="utf-8",
+    )
+
+    changes, issues, pairs = DEPLOY._plan_codex_agent_registrations(generated_root, target_root)
+
+    assert changes == []
+    assert pairs == []
+    assert any("web-high" in issue and "agents/high.toml" in issue for issue in issues)
+
+
+def test_check_codex_agent_registrations_reports_missing_profile_without_mutation(tmp_path: Path) -> None:
+    generated_root = tmp_path / "generated"
+    target_root = tmp_path / "runtime"
+    _write_generated_agent_profile(generated_root, "web-medium", "combo-web-medium")
+    target_root.mkdir(parents=True)
+    config = target_root / "config.toml"
+    config.write_text('[agents]\nenabled = true\n', encoding="utf-8")
+
+    issues = DEPLOY._check_codex_agent_registrations(generated_root, target_root)
+
+    assert any("web-medium" in issue for issue in issues)
+    assert config.read_text(encoding="utf-8") == '[agents]\nenabled = true\n'
+
+
 def test_antigravity_target_deploys_into_nested_gemini_home() -> None:
     assert DEPLOY.PLATFORM_TARGETS["antigravity"] == Path.home() / ".gemini" / "antigravity"
 

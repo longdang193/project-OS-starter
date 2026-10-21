@@ -167,6 +167,18 @@ directory under `overlays/9router-cgw/` with a rebased patch and manifest. Keep
 older overlay directories for existing checkouts; do not weaken the selector to
 apply a stale patch automatically.
 
+The global installer bootstraps the source checkout's root dependencies and the
+CLI build dependencies only when their required markers are missing. This keeps
+clean exact-base checkouts installable without repeating `npm install` on every
+refresh while retaining the bounded build and verification steps.
+
+CGW-backed turns use a bounded timeout policy across the runtime layers:
+`CGW_SHIM_TIMEOUT_MS=600000` provides a 600-second provider-facing request
+budget, Herdr allows a 900-second CGW attempt budget, and the existing
+1800-second outer watchdog remains the final bound. A timeout after dispatch is
+uncertain and must be reconciled and retired before retry; do not extend it
+late, replay it, or fall back to another provider automatically.
+
 Keep the local environment in the target checkout at
 `C:\path\to\9router\.env`. The shim loads that file automatically; never
 commit it or print its values. Configure the dedicated shim key, stable model

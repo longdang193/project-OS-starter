@@ -25,6 +25,9 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     assert "CGW response body too large" in patch
     assert "CGW model mismatch" in patch
     assert "CGW execution queue is full" in patch
+    assert "DEFAULT_MAX_BODY_BYTES = 1024 * 1024" in patch
+    assert "native-context-safe request body budget" in patch
+    assert "accepts native sub-agent context above the legacy 64 KiB budget" in patch
     assert "open-sse/services/accountFallback.js" in patch
     assert "tests/unit/account-fallback-cgw-queue.test.js" in patch
     assert "--3way" in script

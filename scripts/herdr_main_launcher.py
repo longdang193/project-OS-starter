@@ -100,6 +100,8 @@ _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS = 30.0
 _CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
+_CGW_REQUEST_TIMEOUT_SECONDS = 600.0
+_CGW_ATTEMPT_TIMEOUT_SECONDS = 900.0
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 120.0
 # ponytail: fixed 30s receipt grace; increase only with measured receipt latency.
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
@@ -726,6 +728,32 @@ def _uses_shared_web_runtime(registry_evidence: Mapping[str, Any]) -> bool:
         registry_evidence.get("model_provider") == "9router"
         and str(registry_evidence.get("model", "")).startswith("combo-web-")
     )
+
+
+def _timeout_policy(registry_evidence: Mapping[str, Any]) -> dict[str, Any]:
+    if _uses_shared_web_runtime(registry_evidence):
+        return {
+            "runtime": "cgw",
+            "request_timeout_seconds": _CGW_REQUEST_TIMEOUT_SECONDS,
+            "herdr_attempt_timeout_seconds": _CGW_ATTEMPT_TIMEOUT_SECONDS,
+            "outer_watchdog_seconds": _DEEPAGENTS_RUN_TIMEOUT,
+            "timeout_action": "reconcile_retirement_before_retry",
+        }
+    return {
+        "runtime": "native",
+        "request_timeout_seconds": None,
+        "herdr_attempt_timeout_seconds": _DEEPAGENTS_RUN_TIMEOUT,
+        "outer_watchdog_seconds": _DEEPAGENTS_RUN_TIMEOUT,
+        "timeout_action": "existing_runtime_policy",
+    }
+
+
+def _profile_timeout_policy(cwd: Path, profile_name: str) -> dict[str, Any]:
+    try:
+        profile = _profile(cwd.resolve() / "agents", profile_name)
+    except LaunchBlocked:
+        return _timeout_policy({})
+    return _timeout_policy({"model_provider": profile.model_provider, "model": profile.model})
 
 
 def _run_with_pane_ownership(
@@ -3039,6 +3067,9 @@ def resolve_launch(
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
     runtime_preflight = _preflight_profile_runtime(selected)
+    timeout_policy = _timeout_policy(
+        {"model_provider": selected.model_provider, "model": selected.model}
+    )
     context_identity = _stable_context_identity(
         secretary_task_id=secretary_task_id,
         plan_identity=plan_identity,
@@ -3202,6 +3233,7 @@ def resolve_launch(
             "grant_digest": expected_grant_digest,
             "runtime_grant": runtime_grant,
             "runtime_preflight": runtime_preflight,
+            "timeout_policy": timeout_policy,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
             "mcp_selection_requested": list(mcp_select or []),
@@ -3321,7 +3353,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _main_body(args: argparse.Namespace) -> int:
     invocation_started = time.monotonic()
-    attempt_deadline = invocation_started + _DEEPAGENTS_RUN_TIMEOUT
+    timeout_policy = _profile_timeout_policy(args.cwd, args.profile)
+    attempt_deadline = invocation_started + float(timeout_policy["herdr_attempt_timeout_seconds"])
     dispatch_id = uuid.uuid4().hex
     preparation_performance = _new_performance_evidence()
     attempt_context: dict[str, Any] = {
@@ -3995,6 +4028,9 @@ def _main_body(args: argparse.Namespace) -> int:
                 delivery_task,
             )
             shared_web_runtime = _uses_shared_web_runtime(registry_launcher)
+            timeout_policy = registry_launcher.get("timeout_policy")
+            if not isinstance(timeout_policy, dict):
+                timeout_policy = _timeout_policy(registry_launcher)
             assignment_result, prompt_result, transport_timeout = _submit_codex_prompt(
                 assignment,
                 herdr=herdr,
@@ -4003,7 +4039,13 @@ def _main_body(args: argparse.Namespace) -> int:
                 env=environment,
                 shared_web_runtime=shared_web_runtime,
                 timeout_seconds=(
-                    max(0.01, _remaining_deepagents_timeout(attempt_deadline))
+                    max(
+                        0.01,
+                        min(
+                            _remaining_deepagents_timeout(attempt_deadline),
+                            float(timeout_policy["herdr_attempt_timeout_seconds"]),
+                        ),
+                    )
                     if shared_web_runtime
                     else 0.0
                 ),

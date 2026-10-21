@@ -23,6 +23,16 @@ def test_global_installer_rolls_back_when_replacement_or_verification_fails() ->
     assert "versionOutput" in script
 
 
+def test_global_installer_bootstraps_build_dependencies_only_when_missing() -> None:
+    script = INSTALLER.read_text(encoding="utf-8")
+
+    assert 'node_modules\\next\\package.json' in script
+    assert 'cli\\node_modules\\esbuild\\package.json' in script
+    assert '"install", "--no-audit", "--no-fund", "--ignore-scripts"' in script
+    assert "Ensure-NpmDependencies" in script
+    assert script.index("Ensure-NpmDependencies -WorkingDirectory $TargetPath") < script.index('$cliPath = Join-Path $TargetPath "cli"')
+
+
 def test_global_installer_writes_requested_receipt_atomically_after_verification() -> None:
     script = INSTALLER.read_text(encoding="utf-8")
 
@@ -60,6 +70,14 @@ def test_combo_launcher_applies_the_manifest_selected_cgw_overlay_before_install
     assert "Apply-9RouterCgwOverlay.ps1" in script
     assert "Refusing to start an unpatched 9router runtime" in script
     assert "targetPackage.version" not in script
+
+
+def test_combo_launcher_applies_overlay_before_require_shim_entrypoint() -> None:
+    script = (ROOT / "tools" / "local-patch-hub" / "Start-9RouterCodexCombo.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert script.index("if ($InstallGlobal)") < script.index("CGW Chat shim is missing")
 
 
 def test_combo_launcher_requires_the_durable_cgw_install_receipt() -> None:
