@@ -68,7 +68,7 @@ def test_combo_launcher_applies_the_manifest_selected_cgw_overlay_before_install
     )
 
     assert "Apply-9RouterCgwOverlay.ps1" in script
-    assert "Refusing to start an unpatched 9router runtime" in script
+    assert "Refusing to start a stale 9router CGW runtime receipt" in script
     assert "targetPackage.version" not in script
 
 

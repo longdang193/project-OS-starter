@@ -221,7 +221,7 @@ new file mode 100644
 index 00000000..e2acc200
 --- /dev/null
 +++ b/tests/unit/account-fallback-cgw-queue.test.js
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,51 @@
 +import { describe, it, expect } from "vitest";
 +import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 +import { handleComboChat } from "../../open-sse/services/combo.js";
@@ -251,6 +251,25 @@ index 00000000..e2acc200
 +    });
 +
 +    expect(result.status).toBe(429);
++    expect(calls).toBe(1);
++  });
++
++  it("stops combo fallback after CGW dispatch", async () => {
++    let calls = 0;
++    const result = await handleComboChat({
++      body: { model: "combo-web-high" },
++      models: ["cgw/gpt-6.1-sol", "cgw/gpt-5.6-sol"],
++      handleSingleModel: async () => {
++        calls += 1;
++        return new Response(JSON.stringify({ error: { message: "CGW upstream failed" } }), {
++          status: 502,
++          headers: { "x-9router-no-replay": "1" },
++        });
++      },
++      log: { info() {}, warn() {} },
++    });
++
++    expect(result.status).toBe(502);
 +    expect(calls).toBe(1);
 +  });
 +});
@@ -1688,3 +1707,45 @@ index 00000000..668d5fad
 +  await runtime.close();
 +  assert.equal((await responsePromise).status, 502);
 +});
+diff --git a/open-sse/utils/upstreamHeaders.js b/open-sse/utils/upstreamHeaders.js
+index 49ec3188..e6c5c07b 100644
+--- a/open-sse/utils/upstreamHeaders.js
++++ b/open-sse/utils/upstreamHeaders.js
+@@ -1,4 +1,4 @@
+-const FORWARDED = new Set(["retry-after", "x-should-retry"]);
++const FORWARDED = new Set(["retry-after", "x-should-retry", "x-9router-no-replay"]);
+ const FORWARDED_PREFIX = "anthropic-ratelimit-";
+ 
+ export function upstreamResponseHeaders(headers) {
+diff --git a/open-sse/services/combo.js b/open-sse/services/combo.js
+index d8391e7a..90e26570 100644
+--- a/open-sse/services/combo.js
++++ b/open-sse/services/combo.js
+@@ -368,6 +368,11 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
+         return result;
+       }
+ 
++      if (result?.headers?.get?.("x-9router-no-replay") === "1") {
++        log.warn("COMBO", `Model ${modelStr} failed after dispatch; replay disabled`, { status: result.status });
++        return result;
++      }
++
+       // Extract error info from response
+       let errorText = result.statusText || "";
+       let retryAfter = null;
+diff --git a/src/sse/handlers/chat.js b/src/sse/handlers/chat.js
+index 93b20e6f..a90f296d 100644
+--- a/src/sse/handlers/chat.js
++++ b/src/sse/handlers/chat.js
+@@ -324,6 +324,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
+ 
+     if (result.success) return result.response;
+ 
++    if (result.response?.headers?.get?.("x-9router-no-replay") === "1") {
++      log.warn("FALLBACK", `Provider ${provider}/${model} failed after dispatch; replay disabled`);
++      return result.response;
++    }
++
+     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
+     let quotaResetMs = null;
+     let resetsAtMs = result.resetsAtMs;

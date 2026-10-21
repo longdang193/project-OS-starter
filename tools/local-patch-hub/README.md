@@ -20,6 +20,14 @@ only for uncommitted work, inaccessible private repositories, or reviews that
 explicitly require local state; do not add a filesystem service or a second
 packet scheduler.
 
+Keep the Herdr request compact: exact GitHub URL or revision, read-only scope,
+stable context identifier, requested profile, and one review question. Do not
+forward the current chat transcript, Codex instructions, tool schemas,
+environment blocks, attachments, or `codex_context_json`. Those outer transport
+envelopes are not review input and can trigger `413 Payload Too Large`. The
+launcher rejects a detected envelope before delivery; rebuild the short GitHub
+request rather than truncating or retrying it.
+
 ## OpenDesign MCP recovery
 
 Start OpenDesign through the patched launcher after installation or update:
@@ -198,6 +206,11 @@ budget, Herdr allows a 900-second CGW attempt budget, and the existing
 1800-second outer watchdog remains the final bound. A timeout after dispatch is
 uncertain and must be reconciled and retired before retry; do not extend it
 late, replay it, or fall back to another provider automatically.
+
+The shim marks failures that occur after CGW dispatch with
+`x-9router-no-replay: 1`. The exact-base overlay forwards that marker through
+9router and stops both account and combo fallback, so one provider failure does
+not launch another full CGW turn or create a retry storm.
 
 Keep the local environment in the target checkout at
 `C:\path\to\9router\.env`. The shim loads that file automatically; never

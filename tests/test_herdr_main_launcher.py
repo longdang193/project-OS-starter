@@ -2026,6 +2026,15 @@ def test_task_validation_preserves_multiline_contract() -> None:
     assert LAUNCHER._validate_task(task) == task
 
 
+@pytest.mark.parametrize(
+    "marker",
+    LAUNCHER._CODEX_TRANSPORT_ENVELOPE_MARKERS,
+)
+def test_task_validation_rejects_outer_codex_transport_envelopes(marker: str) -> None:
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="transport envelope"):
+        LAUNCHER._validate_task(f"{marker}\nReview this GitHub revision.")
+
+
 @pytest.mark.parametrize("task", ["line1\rline2", "line1\r\nline2"])
 def test_task_validation_rejects_carriage_returns(task: str) -> None:
     with pytest.raises(LAUNCHER.LaunchBlocked, match="carriage returns"):

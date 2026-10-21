@@ -13,6 +13,7 @@ _PATCH_MODULE_SPEC.loader.exec_module(_PATCH_MODULE)
 patch_headless_mcp_guard = _PATCH_MODULE.patch_headless_mcp_guard
 patch_mcp_tools = _PATCH_MODULE.patch_mcp_tools
 patch_model_retry_budget = _PATCH_MODULE.patch_model_retry_budget
+patch_model_retry_no_replay = _PATCH_MODULE.patch_model_retry_no_replay
 patch_stdio_lookup = _PATCH_MODULE.patch_stdio_lookup
 patch_windows_lookup = _PATCH_MODULE.patch_windows_lookup
 patcher_main = _PATCH_MODULE.main
@@ -161,6 +162,22 @@ def test_patch_model_retry_budget_caps_auxiliary_defaults(tmp_path: Path) -> Non
     assert patch_model_retry_budget(target) is False
 
 
+def test_patch_model_retry_no_replay_marker_stops_post_dispatch_retries(tmp_path: Path) -> None:
+    target = tmp_path / "model_retry.py"
+    target.write_text(
+        "def _direct_model_error_retryability(exc: BaseException, *, raised: bool) -> bool | None:\n"
+        "    if isinstance(exc, ModelError):\n"
+        "        return exc.is_retryable\n",
+        encoding="utf-8",
+    )
+
+    assert patch_model_retry_no_replay(target) is True
+    patched = target.read_text(encoding="utf-8")
+    assert "def _has_no_replay_marker(exc: BaseException) -> bool:" in patched
+    assert "if _has_no_replay_marker(exc):\n        return False" in patched
+    assert patch_model_retry_no_replay(target) is False
+
+
 def test_patcher_skips_deleted_windows_runtime_for_fastmcp(tmp_path: Path) -> None:
     package_root = tmp_path / "site-packages"
     deepagents_root = package_root / "deepagents_code"
@@ -197,6 +214,9 @@ def test_patcher_skips_deleted_windows_runtime_for_fastmcp(tmp_path: Path) -> No
         "# `Retry-After` hints of `_MAX_RETRY_AFTER_SECONDS` each would stall a turn for\n"
         "# five minutes behind a spinner. One full honoured hint still fits.\n"
         "_MAX_INTERACTIVE_TOTAL_DELAY_SECONDS = 60.0\n"
+        "def _direct_model_error_retryability(exc: BaseException, *, raised: bool) -> bool | None:\n"
+        "    if isinstance(exc, ModelError):\n"
+        "        return exc.is_retryable\n"
         "def retry_model_call(*, max_total_delay: float | None = None): pass\n"
         "def aretry_model_call(*, max_total_delay: float | None = None): pass\n",
         encoding="utf-8",
@@ -221,6 +241,9 @@ def test_patcher_rejects_unknown_windows_runtime(tmp_path: Path) -> None:
     )
     (deepagents_root / "model_retry.py").write_text(
         _PATCH_MODULE._MODEL_RETRY_BUDGET
+        + "def _direct_model_error_retryability(exc: BaseException, *, raised: bool) -> bool | None:\n"
+        + "    if isinstance(exc, ModelError):\n"
+        + "        return exc.is_retryable\n"
         + "def retry_model_call(*, max_total_delay: float | None = None): pass\n"
         + "def aretry_model_call(*, max_total_delay: float | None = None): pass\n",
         encoding="utf-8",

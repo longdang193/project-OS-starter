@@ -84,7 +84,8 @@ function Start-ProcessHidden {
 function Test-InstalledCgwReceipt {
   param(
     [Parameter(Mandatory = $true)][string]$PackageRoot,
-    [Parameter(Mandatory = $true)][string]$PackageVersion
+    [Parameter(Mandatory = $true)][string]$PackageVersion,
+    [Parameter(Mandatory = $true)][string]$ExpectedOverlayVersion
   )
   $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
   if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
@@ -95,12 +96,40 @@ function Test-InstalledCgwReceipt {
     return [int]$receipt.schemaVersion -eq 1 -and
       [string]$receipt.overlayId -eq "9router-cgw-chat-runtime" -and
       -not [string]::IsNullOrWhiteSpace([string]$receipt.overlayVersion) -and
+      [string]$receipt.overlayVersion -eq $ExpectedOverlayVersion -and
       $targetVersion -eq $receiptPackageVersion -and
       $receiptPackageVersion -eq [Version]$PackageVersion -and
       [string]$receipt.sourceHead -match "^[0-9a-f]{40}$"
   } catch {
     return $false
   }
+}
+
+function Get-ExpectedCgwOverlayVersion {
+  param(
+    [Parameter(Mandatory = $true)][string]$PackageVersion
+  )
+  $overlayRoot = Join-Path $PSScriptRoot "overlays\9router-cgw"
+  if (-not (Test-Path -LiteralPath $overlayRoot -PathType Container)) {
+    throw "CGW overlay registry is missing: $overlayRoot"
+  }
+  $versions = @(
+    Get-ChildItem -LiteralPath $overlayRoot -Directory | ForEach-Object {
+      $manifestPath = Join-Path $_.FullName "manifest.json"
+      if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return }
+      $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+      if ([Version]$manifest.targetVersion -eq [Version]$PackageVersion) {
+        if ([string]::IsNullOrWhiteSpace([string]$manifest.version)) {
+          throw "CGW overlay manifest has no version: $manifestPath"
+        }
+        [string]$manifest.version
+      }
+    } | Sort-Object -Unique
+  )
+  if ($versions.Count -ne 1) {
+    throw "Expected exactly one CGW overlay version for 9router $PackageVersion; found $($versions.Count)."
+  }
+  return [string]$versions[0]
 }
 
 $targetPath = Get-ResolvedPath $TargetRoot
@@ -176,8 +205,9 @@ if (-not (Test-Path -LiteralPath $installedPackageJson -PathType Leaf)) {
   throw "Global 9router package is missing: $installedPackageRoot"
 }
 $installedPackage = Get-Content -Raw -LiteralPath $installedPackageJson | ConvertFrom-Json
-if (-not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot -PackageVersion ([string]$installedPackage.version))) {
-  throw "Refusing to start an unpatched 9router runtime. Apply Apply-9RouterCgwOverlay.ps1 with -InstallGlobal first."
+$expectedOverlayVersion = Get-ExpectedCgwOverlayVersion -PackageVersion ([string]$installedPackage.version)
+if (-not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot -PackageVersion ([string]$installedPackage.version) -ExpectedOverlayVersion $expectedOverlayVersion)) {
+  throw "Refusing to start a stale 9router CGW runtime receipt. Apply Apply-9RouterCgwOverlay.ps1 with -InstallGlobal first."
 }
 
 $routerOwner = Get-ListeningOwner 20128

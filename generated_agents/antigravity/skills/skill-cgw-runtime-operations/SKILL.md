@@ -94,6 +94,15 @@ Use the requested CGW profile. Return findings ordered by severity and do not
 modify files.
 ```
 
+Keep the Herdr task itself compact. It should contain only the exact GitHub
+URL or revision, read-only scope, stable context identifier, requested profile,
+and one review question. Do not paste the current chat transcript, Codex system
+or developer instructions, tool schemas, environment blocks, attachments, or a
+transport wrapper such as `codex_context_json`. Those are outer execution
+envelopes, not review input; forwarding them inflates the request and can cause
+`413 Payload Too Large` before GitHub is read. If such an envelope is detected,
+stop and rebuild the request instead of truncating or retrying it.
+
 Do not send a local Windows path as the only review input. The GitHub-connected
 reviewer must confirm that it read the requested revision by citing a known
 heading, hash, or other file marker. A local fetch or URL presence alone is not
