@@ -1,8 +1,8 @@
 {
   "id": "9router-cgw-chat-runtime",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "baseCommit": "87a74e1bda3677193c6f71a7e2100c90311f0689",
   "targetVersion": "0.5.104",
   "patch": "9router-cgw.patch",
-  "description": "Direct CGW Chat transport, real model inference probes, per-request reasoning effort, queue-safe fallback handling, and tool-tolerant text-only reviews for 9router 0.5.104."
+  "description": "Direct CGW Chat transport, real model inference probes, per-request reasoning effort, queue-safe fallback handling, and multi-message text-only reviews for 9router 0.5.104."
 }
