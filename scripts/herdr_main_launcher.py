@@ -1454,32 +1454,41 @@ def _wait_for_shared_web_runtime_turn(
     env: dict[str, str],
     timeout_seconds: float,
 ) -> subprocess.CompletedProcess[str]:
-    timeout_ms = max(1, int(timeout_seconds * 1000))
-    try:
-        result = _run(
-            [
-                herdr,
-                "--session",
-                session,
-                "agent",
-                "wait",
-                agent_name,
-                "--until",
-                "idle",
-                "--timeout",
-                str(timeout_ms),
-            ],
-            env=env,
-            timeout=max(_HERDR_COMMAND_TIMEOUT, timeout_seconds),
-        )
-    except CommandTransportTimeout as exc:
-        raise LaunchBlocked(
-            "shared CGW web runtime wait transport timed out; runtime release is uncertain"
-        ) from exc
-    if result.returncode:
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}"
-        raise LaunchBlocked(f"shared CGW web runtime wait failed: {detail}")
-    return result
+    started = time.monotonic()
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for target_state in ("working", "idle"):
+        remaining_seconds = max(0.01, timeout_seconds - (time.monotonic() - started))
+        timeout_ms = max(1, int(remaining_seconds * 1000))
+        try:
+            last_result = _run(
+                [
+                    herdr,
+                    "--session",
+                    session,
+                    "agent",
+                    "wait",
+                    agent_name,
+                    "--until",
+                    target_state,
+                    "--timeout",
+                    str(timeout_ms),
+                ],
+                env=env,
+                timeout=max(_HERDR_COMMAND_TIMEOUT, remaining_seconds),
+            )
+        except CommandTransportTimeout as exc:
+            raise LaunchBlocked(
+                "shared CGW web runtime wait transport timed out; runtime release is uncertain"
+            ) from exc
+        if last_result.returncode:
+            detail = (
+                last_result.stderr.strip()
+                or last_result.stdout.strip()
+                or f"exit code {last_result.returncode}"
+            )
+            raise LaunchBlocked(f"shared CGW web runtime wait failed: {detail}")
+    assert last_result is not None
+    return last_result
 
 
 def _submit_codex_prompt(
@@ -1579,6 +1588,11 @@ def _confirm_codex_start(
     result = {
         "agent_status": agent_status,
         "completion_seq": completion_seq,
+        "state_change_seq": (
+            agent.get("state_change_seq")
+            if isinstance(agent.get("state_change_seq"), int)
+            else None
+        ),
         "process_ids": sorted(owned_process_ids),
         "process_identities": sorted(process_identities),
     }
@@ -1773,6 +1787,7 @@ def _classify_codex_completion_snapshot(
     snapshot: Mapping[str, Any],
     *,
     pre_submit_completion_seq: int | None = None,
+    pre_submit_state_change_seq: int | None = None,
 ) -> dict[str, Any]:
     content = snapshot.get("content")
     content_text = content if isinstance(content, str) else ""
@@ -1785,9 +1800,16 @@ def _classify_codex_completion_snapshot(
             completion_seq > pre_submit_completion_seq
         )
     )
+    state_change_seq = snapshot.get("state_change_seq")
+    state_change_advanced = (
+        isinstance(state_change_seq, int)
+        and isinstance(pre_submit_state_change_seq, int)
+        and state_change_seq > pre_submit_state_change_seq
+    )
+    fresh_completion_proven = completion_advanced or state_change_advanced
     if (
         snapshot.get("state") not in {"done", "idle"}
-        or (snapshot.get("state") == "idle" and not completion_advanced)
+        or (snapshot.get("state") == "idle" and not fresh_completion_proven)
         or observation_error
         or not content_text.strip()
         or content_text.lstrip().startswith("OpenAIAPIError")
@@ -4043,7 +4065,9 @@ def _main_body(args: argparse.Namespace) -> int:
                 )
                 evidence["herdr"].update(start_identity)
                 evidence["herdr"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
+                evidence["herdr"]["pre_submit_state_change_seq"] = start_identity.get("state_change_seq")
                 evidence["observation"]["pre_submit_completion_seq"] = start_identity.get("completion_seq")
+                evidence["observation"]["pre_submit_state_change_seq"] = start_identity.get("state_change_seq")
                 evidence["herdr"]["ownership"] = {
                     "repository_identity": args.repository_identity,
                     "plan_identity": args.plan_identity,
@@ -4061,7 +4085,16 @@ def _main_body(args: argparse.Namespace) -> int:
                     else None
                 )
                 evidence["herdr"]["pre_submit_completion_seq"] = completion_seq
+                evidence["herdr"]["pre_submit_state_change_seq"] = (
+                    existing_agent.get("state_change_seq")
+                    if isinstance(existing_agent, dict)
+                    and isinstance(existing_agent.get("state_change_seq"), int)
+                    else None
+                )
                 evidence["observation"]["pre_submit_completion_seq"] = completion_seq
+                evidence["observation"]["pre_submit_state_change_seq"] = evidence["herdr"].get(
+                    "pre_submit_state_change_seq"
+                )
             runtime_grant = (
                 registry_launcher.get("runtime_grant")
                 if isinstance(registry_launcher, dict)
@@ -4126,6 +4159,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 completion_classification = _classify_codex_completion_snapshot(
                     completion_snapshot,
                     pre_submit_completion_seq=evidence["herdr"].get("pre_submit_completion_seq"),
+                    pre_submit_state_change_seq=evidence["herdr"].get("pre_submit_state_change_seq"),
                 )
                 record_phase("observation", observation_started, attempt_id=attempt_id)
             if transport_timeout is not None:
@@ -4189,6 +4223,35 @@ def _main_body(args: argparse.Namespace) -> int:
                         }
                     }), sort_keys=True))
                     return int(completion_classification["launcher_exit_code"])
+                record_phase("delivery", attempt_started, attempt_id=attempt_id)
+                print(json.dumps(emit_assignment({
+                    "assignment": {
+                        "agent_name": agent_name,
+                        "attempt_id": attempt_id,
+                        "completion": completion_snapshot,
+                        "completion_observed": completion_snapshot.get("state") in {"done", "idle"},
+                        "delivery_state": "delivered",
+                        "delivery_certainty": "confirmed",
+                        "delivery_task_sha256": delivery_task_sha256,
+                        "execution": {
+                            "state": "completed",
+                            "worker_exit_code": None,
+                        },
+                        "failure_kind": None,
+                        "grant_digest": grant_digest,
+                        "observation": completion_snapshot,
+                        "phase": "prompt",
+                        "prompt_accepted": True,
+                        "reconciliation_required": False,
+                        "session": resolved_session,
+                        "status": "completed",
+                        "submission": "acknowledged",
+                        "task_result": completion_classification["task_result"],
+                        "task_sha256": assignment_task_sha256,
+                        "exit_code": completion_classification["launcher_exit_code"],
+                    }
+                }), sort_keys=True))
+                return int(completion_classification["launcher_exit_code"])
             if prompt_result["submission"] == "unknown":
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
