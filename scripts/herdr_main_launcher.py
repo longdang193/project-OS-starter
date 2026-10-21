@@ -643,26 +643,41 @@ def _pane_ownership_lock_path(cwd: Path, session: str, pane: str) -> Path:
 
 
 @contextmanager
-def _exclusive_file_lock(path: Path, conflict_message: str):
+def _exclusive_file_lock(
+    path: Path,
+    conflict_message: str,
+    *,
+    wait_timeout_seconds: float = 0.0,
+    poll_seconds: float = 0.05,
+):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     if os.name == "nt" and os.fstat(fd).st_size == 0:
         os.write(fd, b"\0")
     os.set_inheritable(fd, False)
     acquired = False
+    deadline = (
+        time.monotonic() + max(0.0, wait_timeout_seconds)
+        if wait_timeout_seconds > 0
+        else None
+    )
     try:
-        try:
-            if os.name == "nt":
-                import msvcrt
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
 
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
 
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            raise LaunchBlocked(conflict_message) from exc
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if deadline is None or time.monotonic() >= deadline:
+                    raise LaunchBlocked(conflict_message) from exc
+                time.sleep(min(max(0.001, poll_seconds), max(0.0, deadline - time.monotonic())))
         acquired = True
         yield
     finally:
@@ -697,10 +712,11 @@ def _shared_web_runtime_lock_path() -> Path:
 
 
 @contextmanager
-def _shared_web_runtime_lock():
+def _shared_web_runtime_lock(timeout_seconds: float = 0.0):
     with _exclusive_file_lock(
         _shared_web_runtime_lock_path(),
         "BLOCKED_CAPABILITY: shared CGW web runtime is busy; another web profile is active.",
+        wait_timeout_seconds=timeout_seconds,
     ):
         yield
 
@@ -1437,7 +1453,7 @@ def _submit_codex_prompt(
     dict[str, Any] | None,
     CommandTransportTimeout | None,
 ]:
-    lock = _shared_web_runtime_lock() if shared_web_runtime else nullcontext()
+    lock = _shared_web_runtime_lock(timeout_seconds) if shared_web_runtime else nullcontext()
     with lock:
         try:
             assignment_result = _run(
