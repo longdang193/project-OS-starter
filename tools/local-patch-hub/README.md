@@ -4,6 +4,22 @@
 OpenDesign and 9router updates.
 Each overlay is keyed by exact target Git `HEAD`; unknown bases stop without changes.
 
+## CGW review source
+
+For recurring CGW plan or code reviews, stage the review input in Git first:
+commit and push the selected plan or changes to the intended branch, then use
+`@GitHub` with the repository and an exact branch or commit file URL. Prefer a
+commit-pinned URL when the review must be reproducible. This avoids copying a
+local Windows path into a Herdr request and avoids the request-size limit for
+large plans.
+
+The reviewer must confirm that it read the requested GitHub revision by citing
+a known heading, hash, or other file marker. A local URL fetch or URL presence
+alone is not proof of CGW review. Use the existing bounded local review packet
+only for uncommitted work, inaccessible private repositories, or reviews that
+explicitly require local state; do not add a filesystem service or a second
+packet scheduler.
+
 ## OpenDesign MCP recovery
 
 Start OpenDesign through the patched launcher after installation or update:
