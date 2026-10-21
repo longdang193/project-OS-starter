@@ -102,6 +102,7 @@ _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
 _CGW_REQUEST_TIMEOUT_SECONDS = 600.0
 _CGW_ATTEMPT_TIMEOUT_SECONDS = 900.0
+_CGW_START_TIMEOUT_MS = "300000"
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 120.0
 # ponytail: fixed 30s receipt grace; increase only with measured receipt latency.
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
@@ -111,7 +112,6 @@ _DEEPAGENTS_DIAGNOSTIC_POLL_SECONDS = 2.0
 _DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT = 0.5
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
-_CODEX_START_TIMEOUT = (float(_CODEX_START_TIMEOUT_MS) / 1000) + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
 _CGW_SHIM_PREFLIGHT_URL = "http://127.0.0.1:20129/v1/models"
 _CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS = 2.0
@@ -734,6 +734,7 @@ def _timeout_policy(registry_evidence: Mapping[str, Any]) -> dict[str, Any]:
     if _uses_shared_web_runtime(registry_evidence):
         return {
             "runtime": "cgw",
+            "startup_timeout_ms": _CGW_START_TIMEOUT_MS,
             "request_timeout_seconds": _CGW_REQUEST_TIMEOUT_SECONDS,
             "herdr_attempt_timeout_seconds": _CGW_ATTEMPT_TIMEOUT_SECONDS,
             "outer_watchdog_seconds": _DEEPAGENTS_RUN_TIMEOUT,
@@ -741,6 +742,7 @@ def _timeout_policy(registry_evidence: Mapping[str, Any]) -> dict[str, Any]:
         }
     return {
         "runtime": "native",
+        "startup_timeout_ms": _CODEX_START_TIMEOUT_MS,
         "request_timeout_seconds": None,
         "herdr_attempt_timeout_seconds": _DEEPAGENTS_RUN_TIMEOUT,
         "outer_watchdog_seconds": _DEEPAGENTS_RUN_TIMEOUT,
@@ -3176,7 +3178,7 @@ def resolve_launch(
                 "--pane",
                 pane,
                 "--timeout",
-                _CODEX_START_TIMEOUT_MS,
+                str(timeout_policy["startup_timeout_ms"]),
                 "--",
                 *runtime_arguments,
             ]
@@ -3798,7 +3800,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         (
                             max(0.01, _remaining_deepagents_timeout(attempt_deadline))
                             if args.executor == "deepagents"
-                            else _CODEX_START_TIMEOUT
+                            else (float(timeout_policy["startup_timeout_ms"]) / 1000) + 5.0
                         ),
                         verify=bool(evidence["herdr"].get("pane_cwd")),
                     )
