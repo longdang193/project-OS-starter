@@ -19,13 +19,18 @@ To update: edit canonical source, then run sync.
 
 Use this skill for operational work that must prove a request reaches the Chat-to-CGW path rather than native Codex execution. It defines the procedure and evidence contract; it does not replace Herdr scheduling, the 9Router transport implementation, or patch-hub installation ownership.
 
+Herdr is the only supported CGW execution controller. The supported path is
+Herdr -> 9Router -> CGW. Native Codex subagents must not select or launch
+CGW-backed profiles directly; `web-high` and `web-medium` are Herdr-only
+profiles and are not exposed through the native Codex adapter.
+
 Keep one workflow for CGW routing, readiness, probing, quota safety, and installation. Do not create separate queues, reconcilers, profile registries, or cleanup frameworks for this skill.
 
 ## When to Use
 
 Use when:
 
-- a task requests a `cgw/*` model or CGW-backed `web-high`, `web-medium`, or `web-normal` execution;
+- a task requests a `cgw/*` model or CGW-backed `web-high`, `web-medium`, or `web-normal` execution through Herdr;
 - a probe must prove the requested model and `reasoning_effort` were forwarded;
 - a request reports native quota consumption, `401`, `429`, `502`, `503`, or provider/model mismatch;
 - Herdr pane reuse, stale idle state, duplicate retries, or native execution leakage is suspected;
@@ -40,6 +45,8 @@ Do not use this skill for ordinary native Codex work that does not cross CGW. Us
 3. **Reasoning invariant:** forward the requested `reasoning_effort` unchanged unless the provider contract explicitly rejects it; record the rejection rather than silently changing it.
 4. **Quota invariant:** CGW requests use chat mode. A successful CGW probe must not consume native Codex execution quota. A quota change is a failed verification, not an expected side effect.
 5. **Fail-closed invariant:** missing context, incompatible profile, unauthenticated readiness, unknown overlay base, or ambiguous routing stops delivery instead of falling back.
+6. **Controller invariant:** Herdr is the only supported CGW execution controller. Native Codex subagents must not select `web-high` or `web-medium`; those profiles are Herdr-only.
+7. **Tool-envelope invariant:** CGW Chat is text-only. Ignore optional client `tools` and `tool_choice` metadata because CGW never executes tools; reject multimodal content and unsupported response-format options before dispatch.
 
 ## Ownership Boundaries
 
@@ -162,6 +169,12 @@ Send a real, minimal prompt through the same route used by the intended work. Th
 - quota before and after the probe when quota accounting is part of the claim.
 
 The probe is successful only when the requested model is listed or otherwise proven by the response, the reasoning setting is preserved, the CGW path is confirmed, and native quota is unchanged. A liveness `200` without inference proof is incomplete.
+
+When the client adds built-in tool metadata to a text-only review request, keep the
+metadata out of the CGW payload and record that it was ignored. Do not report
+`tools are not supported` for the client envelope alone, and do not claim that
+GitHub, filesystem, or other tools executed inside CGW. The review source must
+remain a GitHub URL or explicitly delivered text.
 
 ### 5. Classify failures without causing retry storms
 

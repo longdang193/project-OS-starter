@@ -5,6 +5,14 @@ ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_SKILL = ROOT / ".agents" / "skills" / "skill-cgw-runtime-operations" / "SKILL.md"
 
 
+REQUIRED_EXECUTION_BOUNDARY_RULES = (
+    "Herdr is the only supported CGW execution controller",
+    "Native Codex subagents must not select or launch",
+    "`web-high` and `web-medium` are Herdr-only",
+    "CGW Chat is text-only",
+    "optional client `tools` and `tool_choice` metadata",
+)
+
 REQUIRED_GITHUB_REVIEW_RULES = (
     "prefer a GitHub-backed source",
     "Commit and push the selected plan or code",
@@ -25,6 +33,14 @@ REQUIRED_LOCAL_FALLBACK_RULES = (
     "report `incomplete` instead of claiming",
     "the fallback packet is request-scoped evidence, not a second runtime owner.",
 )
+
+
+def test_cgw_skill_requires_herdr_execution_boundary() -> None:
+    content = CANONICAL_SKILL.read_text(encoding="utf-8")
+
+    for rule in REQUIRED_EXECUTION_BOUNDARY_RULES:
+        assert rule in content
+    assert "GitHub, filesystem, or other tools executed inside CGW" in content
 
 
 def test_cgw_skill_prefers_github_review_source() -> None:

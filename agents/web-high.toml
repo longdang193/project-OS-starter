@@ -1,6 +1,7 @@
 name = "web-high"
 model_provider = "9router"
 model = "combo-web-high"
+herdr_only = true
 description = """
 Specialized web-capable profile for demanding research, browsing, and
 long-context tasks.

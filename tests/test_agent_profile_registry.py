@@ -83,6 +83,7 @@ def test_repository_web_profiles_are_explicit_only(name: str, model: str) -> Non
     assert profile.rank is None
     assert profile.model_provider == "9router"
     assert profile.model == model
+    assert profile.herdr_only is True
     assert "web" in profile.description.lower()
     assert "tool" in profile.developer_instructions.lower()
 
@@ -112,6 +113,7 @@ def test_select_review_profiles_bounds_review_count(count: int) -> None:
     [
         ("bad.toml", "name = \"bad\"\n", "model_provider"),
         ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\nextra = \"x\"\n", "unsupported keys"),
+        ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\nherdr_only = \"yes\"\n", "`herdr_only`"),
         ("bad.toml", "name = \"wrong\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\n", "filename must match"),
         ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 0\ndescription = \"x\"\ndeveloper_instructions = \"x\"\n", "rank"),
         ("bad.toml", "name = \"bad\"\nmodel_provider = \"9router\"\nmodel = \"x\"\nrank = 20\ndescription = \"x\"\ndeveloper_instructions = \"x\"\nbase_url = \"http://127.0.0.1\"\n", "runtime-owned keys"),

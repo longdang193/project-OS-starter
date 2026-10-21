@@ -32,7 +32,9 @@ ordering.
 Profiles with positive `rank` form an ordered capability relation. Profiles
 without `rank` are unranked and explicit-only; they are not lower or higher
 than ranked profiles. Profile identity, rank, and model come from the registry;
-specialized profiles may use another name and model.
+specialized profiles may use another name and model. Profiles marked `herdr_only = true`
+are consumed by the repository-owned Herdr launcher and must not be exposed by
+native Codex adapter views.
 In validator-executor setups, select the executor and validator profiles
 independently based on their respective bounded task contracts. A validator may
 use a lower, equal, or higher profile than the executor when that profile can
