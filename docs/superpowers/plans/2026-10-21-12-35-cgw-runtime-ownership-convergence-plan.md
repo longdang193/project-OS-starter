@@ -4,7 +4,7 @@ template_id: implementation-plan
 contract_version: "1"
 status: proposed
 layer: change
-distribution_tier: starter_kit
+distribution_tier: project
 name: cgw-runtime-ownership-convergence
 targets:
   - scripts/herdr_main_launcher.py
