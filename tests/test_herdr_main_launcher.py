@@ -163,6 +163,8 @@ def test_deepagents_classification_rejects_wrapper_completion_without_task_proof
     )
 
     assert result["task_result"]["state"] == "unverified"
+    assert result["status"] == "unverified"
+    assert result["execution"]["state"] == "completed"
     assert result["failure_kind"] == "task_result_unverified"
     assert result["launcher_exit_code"] == 2
 
@@ -3578,7 +3580,7 @@ def test_deepagents_zero_exit_failed_report_is_not_completion() -> None:
 
     assert result["execution"]["state"] == "completed"
     assert result["task_result"] == {"state": "unverified"}
-    assert result["status"] == "completed"
+    assert result["status"] == "unverified"
     assert result["failure_kind"] == "task_result_unverified"
     assert result["launcher_exit_code"] == 2
     assert result["reconciliation_required"] is True
@@ -3661,7 +3663,7 @@ def test_deepagents_main_rejects_completion_with_observer_error(
                 "recovery_required": False,
             },
             {"report_present": False, "observation_error": None},
-            {"status": "completed", "execution": "completed", "exit_code": 2},
+            {"status": "unverified", "execution": "completed", "exit_code": 2},
         ),
         (
             {
@@ -4317,7 +4319,7 @@ def test_deepagents_classification_keeps_missing_managed_task_result_unverified(
     )
 
     assert result["task_result"]["state"] == "unverified"
-    assert result["status"] == "completed"
+    assert result["status"] == "unverified"
     assert result["failure_kind"] == "task_result_unverified"
     assert result["launcher_exit_code"] == 2
     assert result["reconciliation_required"] is True

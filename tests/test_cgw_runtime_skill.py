@@ -11,6 +11,9 @@ REQUIRED_EXECUTION_BOUNDARY_RULES = (
     "`web-high` and `web-medium` are Herdr-only",
     "CGW Chat is text-only",
     "optional client `tools` and `tool_choice` metadata",
+    "use Herdr with the native `codex` executor by default",
+    "never use it as an automatic fallback for a CGW request",
+    "attempt as `unverified`, reconcile the original attempt",
 )
 
 REQUIRED_GITHUB_REVIEW_RULES = (

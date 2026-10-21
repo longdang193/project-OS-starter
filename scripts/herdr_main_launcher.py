@@ -1410,6 +1410,8 @@ def _classify_deepagents_outcome(
             launcher_exit_code = worker_exit_code
         if not cleanup_settled:
             failure_kind = "cleanup_recovery_required"
+        elif status == "completed" and task_result["state"] == "unverified":
+            status = "unverified"
         reconciliation_required = launcher_exit_code != 0
     else:
         failure_kind = fallback_failure_kind or receipt.get("detail") or "receipt_unavailable"
