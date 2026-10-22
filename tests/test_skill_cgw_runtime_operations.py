@@ -42,10 +42,36 @@ def test_cgw_skill_keeps_scheduler_transport_and_installation_ownership_separate
         "herdr owns scheduling and pane lifecycle",
         "9router owns transport and error classification",
         "persistent patch hub owns installation and rollback",
-        "reuse = idle && same_context && compatible_profile",
+        "compatible_profile",
+        "no_conflicting_live_process",
+        "agent_status == done",
         "the shim queue is only a defensive boundary",
         "npm install -g 9router",
         "package version or git base is unknown",
+    ):
+        assert text in skill
+
+
+def test_cgw_skill_requires_single_submission_after_reused_pane_verification() -> None:
+    skill = normalized_skill()
+    for text in (
+        "reused codex panes perform ownership and profile verification only",
+        "one canonical `agent prompt` submission path",
+        "exactly one prompt",
+        "no second submission",
+        "post-dispatch retry",
+        "profile fallback",
+    ):
+        assert text in skill
+
+
+def test_cgw_skill_distinguishes_auth_required_preflight_from_inference_failure() -> None:
+    skill = normalized_skill()
+    for text in (
+        "a `401` from the unauthenticated `/v1/models` preflight",
+        "not by itself proof of authentication failure",
+        "a `401` from the authenticated inference boundary",
+        "stop and repair the binding",
     ):
         assert text in skill
 
