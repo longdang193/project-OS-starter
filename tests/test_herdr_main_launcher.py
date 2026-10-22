@@ -6313,6 +6313,26 @@ def test_assignment_result_builder_keeps_lifecycle_facts_independent() -> None:
     assert result["assignment"]["worker_exit_code"] is None
 
 
+def test_submission_boundaries_are_forwarded_to_final_assignment_payload() -> None:
+    assignment = {
+        "status": "submitted",
+        "pre_submit_completion_seq": None,
+        "pre_submit_state_change_seq": 19,
+    }
+    evidence = {
+        "herdr": {
+            "pre_submit_completion_seq": 11,
+            "pre_submit_state_change_seq": 17,
+        }
+    }
+
+    assert LAUNCHER._attach_submission_boundaries(assignment, evidence) == {
+        "status": "submitted",
+        "pre_submit_completion_seq": 11,
+        "pre_submit_state_change_seq": 19,
+    }
+
+
 def test_assignment_result_builder_derives_compatibility_from_structured_facts() -> None:
     result = LAUNCHER._build_assignment_result(
         dispatch_id="dispatch",

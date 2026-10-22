@@ -121,6 +121,8 @@ _SAFE_ASSIGNMENT_KEYS = {
     "agent_name",
     "failure_kind",
     "reconciliation_required",
+    "pre_submit_completion_seq",
+    "pre_submit_state_change_seq",
 }
 _RUNTIME_BINDING_KEYS = ("task_id", "plan_revision", "run_id")
 _OBSERVED_TIMESTAMP_KEYS = (
@@ -218,6 +220,9 @@ def _safe_assignment(assignment: Mapping[str, Any] | None) -> dict[str, Any]:
                 safe[key] = value
         elif key == "reconciliation_required":
             if isinstance(value, bool):
+                safe[key] = value
+        elif key in {"pre_submit_completion_seq", "pre_submit_state_change_seq"}:
+            if type(value) is int and value >= 0:
                 safe[key] = value
         else:
             safe_value = _safe_text(value)
