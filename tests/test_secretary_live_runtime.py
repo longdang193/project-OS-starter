@@ -108,6 +108,7 @@ def test_recover_quarantined_receipt_is_idempotent_when_already_settled(tmp_path
 
 def test_recover_quarantined_receipt_preserves_quarantine_on_uncertain_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     receipt = _quarantined_receipt(tmp_path)
+    monkeypatch.setattr("scripts.secretary_live_runtime._ensure_herdr_server", lambda *args, **kwargs: {"state": "ready", "started": False})
     monkeypatch.setattr("scripts.secretary_live_runtime._close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": False})
 
     result = recover_quarantined_receipt(receipt, herdr="herdr")
