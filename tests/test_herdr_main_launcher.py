@@ -2923,6 +2923,56 @@ def test_main_auto_codex_uses_resolved_target(
     assert json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]["session"] == "w1"
 
 
+def test_main_reused_codex_agent_submits_prompt_only_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    task = "assign lane"
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text(task),
+        },
+        "codex": {"codex_home": str(codex_home)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "web-high-probe-20261022",
+            "session": "w1",
+            "pane": "w1:p1",
+            "reuse": True,
+            "agent": {"completion_seq": 23, "state_change_seq": 25},
+        },
+    }
+    prompt_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "resolve_launch",
+        lambda **kwargs: (
+            ["herdr", "--session", "w1", "agent", "prompt", "web-high-probe-20261022", task],
+            evidence,
+        ),
+    )
+
+    def fake_run(command, **kwargs):
+        if command[3:5] == ["agent", "prompt"]:
+            prompt_calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "web-high", "--session", "auto", "--pane", "auto",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", task,
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    assert len(prompt_calls) == 1
+
+
 def test_main_reports_failed_assignment_after_start(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -5426,6 +5476,33 @@ def test_pane_safety_reuses_same_context_and_compatible_profile(
     assert result["agent"]["name"] == LAUNCHER._contextual_agent_name(profile_name, context)
 
 
+def test_pane_safety_reuses_completed_compatible_codex_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+    )
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name="web-high-probe-20261022",
+        model="combo-web-high",
+        agent_status="done",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._herdr_pane(
+        tmp_path,
+        "session",
+        "p1",
+        "herdr",
+        expected_profile=profile,
+    )
+
+    assert result["reuse"] is True
+    assert result["agent"]["agent_status"] == "done"
+
+
 def test_pane_safety_rejects_different_or_missing_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -5451,7 +5528,7 @@ def test_pane_safety_rejects_different_or_missing_context(
         model="combo-web-high",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
-    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="already has agent"):
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context is required"):
         LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr", expected_profile=profile)
 
 
@@ -5533,7 +5610,8 @@ def test_pane_safety_releases_idle_stale_agent_state(
     )
 
     assert result["stale_released"] is True
-    assert any("release-agent" in command for command in commands)
+    release_command = next(command for command in commands if "release-agent" in command)
+    assert release_command[release_command.index("release-agent") + 1] == "p1"
 
 
 def test_pane_safety_rejects_missing_process_evidence(
