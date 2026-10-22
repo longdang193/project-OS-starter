@@ -108,6 +108,24 @@ def test_combo_readme_does_not_recommend_downgrading_the_global_router() -> None
     assert "Do not use `-AllowDowngrade`" in readme
 
 
+def test_combo_readme_distinguishes_canonical_lightrsi_path_from_diagnostic_shim() -> None:
+    readme = (ROOT / "tools" / "local-patch-hub" / "README.md").read_text(encoding="utf-8")
+
+    assert "Codex -> LightRSI adapter `:17667` -> 9Router `:20128` -> CGW" in readme
+    assert "20129" in readme
+    assert "diagnostic" in readme.lower()
+    assert "does not own LightRSI" in readme
+
+
+def test_combo_startup_description_does_not_claim_cgw_lifecycle_ownership() -> None:
+    startup = (ROOT / "tools" / "local-patch-hub" / "Install-9RouterCodexComboStartup.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "diagnostic Chat shim" in startup
+    assert "LightRSI and codex-chatgpt-web own their lifecycles" in startup
+
+
 def test_combo_startup_registration_is_available_without_secrets() -> None:
     startup = (ROOT / "tools" / "local-patch-hub" / "Install-9RouterCodexComboStartup.ps1").read_text(
         encoding="utf-8"

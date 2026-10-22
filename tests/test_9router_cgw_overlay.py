@@ -78,7 +78,7 @@ def test_9router_cgw_overlay_is_version_pinned_and_quota_safe() -> None:
     assert "Apply-9RouterCgwOverlay.ps1" in readme
     assert "CGW aliases must target `chatgpt-web/*`" in readme
     assert "optional `tools` and `tool_choice` metadata" in readme
-    assert "/health` alone proves liveness" in readme
+    assert "ordinary non-inference preflight" in readme
     assert "stops both account and combo fallback" in readme
     _assert_unified_patch_hunks_match_their_headers(patch)
 

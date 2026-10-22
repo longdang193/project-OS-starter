@@ -18,8 +18,12 @@ def test_cgw_skill_defines_transport_readiness_and_quota_invariants() -> None:
     skill = normalized_skill()
     for text in (
         "direct chat-to-cgw responses shim",
+        "herdr -> codex pane -> lightrsi adapter :17667 -> 9router :20128 -> cgw :17841",
+        "20129",
+        "direct diagnostic compatibility cgw shim boundary",
         "never route `cgw/*` through native `codex exec`",
-        "authenticated inference probe",
+        "authenticated inference is reserved for an explicit installation acceptance or diagnostic operation",
+        "one real, minimal model-producing request",
         "20128",
         "20129",
         "17841",
@@ -65,13 +69,13 @@ def test_cgw_skill_requires_single_submission_after_reused_pane_verification() -
         assert text in skill
 
 
-def test_cgw_skill_distinguishes_auth_required_preflight_from_inference_failure() -> None:
+def test_cgw_skill_distinguishes_non_inference_preflight_from_delivery_inference() -> None:
     skill = normalized_skill()
     for text in (
-        "a `401` from the unauthenticated `/v1/models` preflight",
-        "not by itself proof of authentication failure",
-        "a `401` from the authenticated inference boundary",
-        "stop and repair the binding",
+        "check readiness without creating a second model request",
+        "without dispatching a prompt",
+        "must not authorize both a readiness inference and a delivery inference",
+        "authenticated inference is reserved for an explicit installation acceptance or diagnostic operation",
     ):
         assert text in skill
 

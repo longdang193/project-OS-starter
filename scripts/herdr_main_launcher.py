@@ -76,6 +76,22 @@ except ModuleNotFoundError:
         resolve_attempt_budget,
         terminal_settlement_proven,
     )
+try:
+    from project_os_runtime.submission_gate import (
+        SubmissionGateConflict,
+        claim_submission,
+        derive_logical_operation_id,
+        gate_path,
+        settle_submission,
+    )
+except ModuleNotFoundError:
+    from scripts.project_os_runtime.submission_gate import (
+        SubmissionGateConflict,
+        claim_submission,
+        derive_logical_operation_id,
+        gate_path,
+        settle_submission,
+    )
 class LaunchBlocked(RuntimeError):
     """Raised when a required runtime binding is unavailable or mismatched."""
 
@@ -113,12 +129,12 @@ _DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT = 0.5
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
-_CGW_SHIM_PREFLIGHT_URL = "http://127.0.0.1:20129/v1/models"
+_CGW_ADAPTER_PREFLIGHT_URL = "http://127.0.0.1:17667/health"
 _CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS = 2.0
 _HERDR_DEFAULT_SESSION = "default"
 _PANE_LOCK_PARENT = "herdr-pane-ownership"
 _SHARED_WEB_RUNTIME_LOCK_PARENT = "herdr-shared-web-runtime"
-_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-20128-20129.lock"
+_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-lightrsi-17667-20128.lock"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _RUNTIME_GRANT_MARKER_PATTERN = re.compile(
@@ -251,6 +267,65 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _submission_gate_binding(registry_launcher: Mapping[str, Any]) -> dict[str, str]:
+    provider = str(registry_launcher.get("model_provider") or "")
+    model = str(registry_launcher.get("model") or "")
+    return {
+        "task_sha256": str(registry_launcher.get("assignment_task_sha256") or ""),
+        "repository_identity": str(registry_launcher.get("repository_identity") or ""),
+        "plan_identity": str(registry_launcher.get("plan_identity") or ""),
+        "profile": str(registry_launcher.get("profile") or ""),
+        "model_identity": f"{provider}/{model}" if provider or model else "",
+        "grant_digest": str(registry_launcher.get("grant_digest") or ""),
+    }
+
+
+def _submission_gate_operation_id(binding: Mapping[str, str]) -> str:
+    return derive_logical_operation_id(**dict(binding))
+
+
+def _submission_gate_path(binding: Mapping[str, str]) -> Path:
+    return gate_path(_submission_gate_operation_id(binding))
+
+
+def _claim_submission_gate(
+    path: Path,
+    binding: Mapping[str, str],
+    attempt_id: str,
+) -> dict[str, Any]:
+    return claim_submission(
+        path,
+        operation_id=_submission_gate_operation_id(binding),
+        attempt_id=attempt_id,
+        binding=binding,
+    )
+
+
+def _settle_submission_gate(path: Path, attempt_id: str, state: str) -> dict[str, Any]:
+    return settle_submission(path, attempt_id=attempt_id, state=state)
+
+
+def _submission_gate_state(
+    *,
+    executor: str,
+    phase: str,
+    prompt_result: Mapping[str, Any] | None,
+    transport_timeout: CommandTransportTimeout | None,
+) -> str:
+    if transport_timeout is not None:
+        return "delivery_uncertain"
+    if executor == "codex" and phase == "prompt":
+        submission = prompt_result.get("submission") if prompt_result else None
+        if submission == "rejected":
+            return "not_delivered"
+        if submission == "acknowledged":
+            return "submitted"
+        return "delivery_uncertain"
+    if phase == "start":
+        return "not_delivered"
+    return "delivery_uncertain"
+
+
 def _native_completed_turn(value: object, *, session: str) -> tuple[dict[str, str] | None, str | None]:
     if value is None:
         return None, None
@@ -360,11 +435,11 @@ def _codex_environment(codex_home: Path) -> dict[str, str]:
 
 
 def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | None:
-    """Verify the local CGW listener before launching web profiles."""
+    """Verify the canonical LightRSI adapter before launching web profiles."""
     if profile.model_provider != "9router" or not profile.model.startswith("combo-web-"):
         return None
     request = urllib.request.Request(
-        _CGW_SHIM_PREFLIGHT_URL,
+        _CGW_ADAPTER_PREFLIGHT_URL,
         headers={"Accept": "application/json"},
         method="GET",
     )
@@ -375,22 +450,22 @@ def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | Non
         status = int(exc.code)
     except (OSError, TimeoutError) as exc:
         raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: CGW Codex shim is unavailable at "
-            f"{_CGW_SHIM_PREFLIGHT_URL}. Start "
+            "BLOCKED_CAPABILITY: LightRSI CGW adapter is unavailable at "
+            f"{_CGW_ADAPTER_PREFLIGHT_URL}. Start "
             "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 before launching "
             f"{profile.name}; provider connection failed: {exc}"
         ) from exc
-    if status not in {200, 401}:
+    if status != 200:
         raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: CGW Codex shim at "
-            f"{_CGW_SHIM_PREFLIGHT_URL} returned HTTP {status}; start "
+            "BLOCKED_CAPABILITY: LightRSI CGW adapter at "
+            f"{_CGW_ADAPTER_PREFLIGHT_URL} returned HTTP {status}; start "
             "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 and retry."
         )
     return {
         "provider": profile.model_provider,
         "model": profile.model,
-        "url": _CGW_SHIM_PREFLIGHT_URL,
-        "port": 20129,
+        "url": _CGW_ADAPTER_PREFLIGHT_URL,
+        "port": 17667,
         "status": status,
     }
 
@@ -587,13 +662,11 @@ def _herdr_pane(
         if agent_status not in {"idle", "done"}:
             raise TargetCandidateRejected(f"Pane agent is active: {pane}")
         if context_identity is None:
-            if agent_status != "done":
-                raise TargetCandidateRejected(f"Pane context is required for idle agent reuse: {pane}")
-        else:
-            expected_marker = _context_marker(context_identity)
-            actual_marker = _agent_context_marker(agent_info.get("name"))
-            if expected_marker != actual_marker:
-                raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
+            raise TargetCandidateRejected(f"Pane context is required for agent reuse: {pane}")
+        expected_marker = _context_marker(context_identity)
+        actual_marker = _agent_context_marker(agent_info.get("name"))
+        if expected_marker != actual_marker:
+            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
 
     process_payload = _json_command(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -1228,6 +1301,9 @@ def _attach_submission_boundaries(
             existing = assignment.get(key)
             if type(existing) is not int or existing < 0:
                 assignment[key] = value
+    submission_gate = evidence.get("submission_gate")
+    if isinstance(submission_gate, Mapping):
+        assignment["submission_gate"] = dict(submission_gate)
     return assignment
 
 
@@ -3496,6 +3572,9 @@ def _main_body(args: argparse.Namespace) -> int:
         "task_sha256": None,
         "delivery_task_sha256": None,
         "grant_digest": None,
+        "submission_gate_path": None,
+        "submission_gate_state": None,
+        "submission_gate_phase": "pre_dispatch",
         "assignment_id": args.assignment_id,
         "repository_identity": args.repository_identity,
         "plan_identity": args.plan_identity,
@@ -3535,6 +3614,23 @@ def _main_body(args: argparse.Namespace) -> int:
             )
         if not isinstance(cleanup, dict):
             cleanup = {"state": "unknown" if started else "not_attempted"}
+        gate_path_value = attempt_context.get("submission_gate_path")
+        gate_state = attempt_context.get("submission_gate_state")
+        if (
+            isinstance(gate_path_value, Path)
+            and isinstance(current_attempt_id, str)
+            and gate_state == "prepared"
+        ):
+            fallback_state = (
+                "not_delivered"
+                if attempt_context.get("submission_gate_phase") == "pre_dispatch"
+                else "delivery_uncertain"
+            )
+            try:
+                _settle_submission_gate(gate_path_value, current_attempt_id, fallback_state)
+                attempt_context["submission_gate_state"] = fallback_state
+            except SubmissionGateConflict as exc:
+                message = f"{message}; submission gate settlement failed: {exc}"
         phases = preparation_performance.get("phase_durations_ms", {})
         if isinstance(phases, dict):
             for phase in phases.values():
@@ -3562,6 +3658,11 @@ def _main_body(args: argparse.Namespace) -> int:
             legacy["delivery_task_sha256"] = attempt_context["delivery_task_sha256"]
         if isinstance(attempt_context.get("grant_digest"), str):
             legacy["grant_digest"] = attempt_context["grant_digest"]
+        if isinstance(attempt_context.get("submission_gate_path"), Path):
+            legacy["submission_gate"] = {
+                "path": str(attempt_context["submission_gate_path"]),
+                "state": attempt_context.get("submission_gate_state"),
+            }
         result = _build_assignment_result(
             dispatch_id=dispatch_id,
             attempt_id=(current_attempt_id if has_attempt else None),
@@ -3618,6 +3719,15 @@ def _main_body(args: argparse.Namespace) -> int:
         for key in ("assignment_id", "repository_identity", "plan_identity"):
             if registry_evidence.get(key) is not None:
                 attempt_context[key] = registry_evidence[key]
+        submission_gate_binding = _submission_gate_binding(registry_evidence)
+        submission_gate_file = _submission_gate_path(submission_gate_binding)
+        attempt_context["submission_gate_path"] = submission_gate_file
+        evidence["submission_gate"] = {
+            "operation_id": _submission_gate_operation_id(submission_gate_binding),
+            "path": str(submission_gate_file),
+            "binding": submission_gate_binding,
+            "state": "pending",
+        }
 
         if args.dry_run:
             performance_evidence.pop("_last_monotonic", None)
@@ -3632,6 +3742,36 @@ def _main_body(args: argparse.Namespace) -> int:
                 "agent_name": evidence.get("herdr", {}).get("agent_name", args.profile + "-main"),
             }
         )
+
+        def claim_model_submission() -> None:
+            gate_result = _claim_submission_gate(
+                submission_gate_file,
+                submission_gate_binding,
+                attempt_id,
+            )
+            if gate_result.get("state") == "blocked":
+                record = gate_result.get("record")
+                prior_attempt = record.get("attempt_id") if isinstance(record, dict) else None
+                raise LaunchBlocked(
+                    "logical operation submission blocked; "
+                    f"prior attempt {prior_attempt or 'unknown'} already owns delivery"
+                )
+            attempt_context["submission_gate_state"] = "prepared"
+            attempt_context["submission_gate_phase"] = "delivery"
+            evidence["submission_gate"].update(
+                {
+                    "state": "prepared",
+                    "generation": gate_result.get("record", {}).get("generation"),
+                }
+            )
+
+        def settle_model_submission(state: str) -> None:
+            if attempt_context.get("submission_gate_state") != "prepared":
+                return
+            _settle_submission_gate(submission_gate_file, attempt_id, state)
+            attempt_context["submission_gate_state"] = state
+            evidence["submission_gate"]["state"] = state
+
         if secretary_runtime is not None:
             evidence["secretary_runtime"] = {
                 **secretary_runtime,
@@ -3921,6 +4061,8 @@ def _main_body(args: argparse.Namespace) -> int:
             pane_run_duration_ms: float | None = None
             pane_run_started = time.monotonic()
             try:
+                if args.executor == "deepagents" and attempt_context.get("submission_gate_state") is None:
+                    claim_model_submission()
                 try:
                         result = _run_with_pane_ownership(
                             args.cwd,
@@ -3947,6 +4089,8 @@ def _main_body(args: argparse.Namespace) -> int:
                     if args.executor == "deepagents":
                         pane_run_duration_ms = max(0.0, time.monotonic() - pane_run_started) * 1000
             except CommandTransportTimeout:
+                if attempt_context.get("submission_gate_state") == "prepared":
+                    settle_model_submission("delivery_uncertain")
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
@@ -4091,6 +4235,8 @@ def _main_body(args: argparse.Namespace) -> int:
         if result.stderr:
             _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
+            if args.executor == "deepagents" and attempt_context.get("submission_gate_state") == "prepared":
+                settle_model_submission("delivery_uncertain")
             record_phase("delivery", attempt_started, attempt_id=attempt_id)
             print(json.dumps(emit_assignment({
                 "assignment": {
@@ -4179,6 +4325,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 agent_name,
                 delivery_task,
             )
+            if attempt_context.get("submission_gate_state") is None:
+                claim_model_submission()
             shared_web_runtime = _uses_shared_web_runtime(registry_launcher)
             timeout_policy = registry_launcher.get("timeout_policy")
             if not isinstance(timeout_policy, dict):
@@ -4224,6 +4372,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 )
                 record_phase("observation", observation_started, attempt_id=attempt_id)
             if transport_timeout is not None:
+                settle_model_submission("delivery_uncertain")
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
                 print(json.dumps(emit_assignment({
                     "assignment": {
@@ -4249,6 +4398,14 @@ def _main_body(args: argparse.Namespace) -> int:
                 raise LaunchBlocked("Codex assignment produced no result.")
             if prompt_result is None:
                 raise LaunchBlocked("Codex prompt classification produced no result.")
+            settle_model_submission(
+                _submission_gate_state(
+                    executor=args.executor,
+                    phase="prompt",
+                    prompt_result=prompt_result,
+                    transport_timeout=None,
+                )
+            )
             if assignment_result.stdout:
                 print(assignment_result.stdout, end="")
             if assignment_result.stderr:
@@ -4396,6 +4553,8 @@ def _main_body(args: argparse.Namespace) -> int:
                 }
             }), sort_keys=True))
             return 0
+        if args.executor == "deepagents":
+            settle_model_submission("submitted")
         if result.returncode:
             record_phase("delivery", attempt_started)
             print(json.dumps(emit_assignment({

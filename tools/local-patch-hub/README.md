@@ -156,7 +156,24 @@ intentional older-version installs. When upstream changes a patched file, add a
 new exact-base directory under `overlays/9router-responses/` and rebase the patch
 there. Keep old overlays for existing checkouts.
 
-## 9router + CGW combo runtime
+## 9router + CGW runtime ownership
+
+The canonical Codex web path is:
+
+```text
+Codex -> LightRSI adapter `:17667` -> 9Router `:20128` -> CGW `:17841`
+```
+
+LightRSI owns the `:17667` adapter lifecycle, 9Router owns transport and
+provider error classification on `:20128`, and `codex-chatgpt-web` owns the
+CGW runtime on `:17841`. The patch hub does not own LightRSI or
+`codex-chatgpt-web`; it must not start a second adapter or CGW process.
+
+The `:20129` CGW Chat shim described below is a separate diagnostic and
+compatibility path. It is not the normal Codex route and is not a substitute
+for the LightRSI adapter.
+
+## 9router + CGW diagnostic combo runtime
 
 At this gate, the CGW combo uses the registered `0.5.104` runtime overlay below. The overlay
 adds the CGW Chat shim, real inference-based model tests, and per-request
@@ -231,7 +248,8 @@ CGW aliases must target `chatgpt-web/*`; raw `gpt-*` targets enter the native Co
 shim with no bearer source, so an incorrectly configured installation cannot
 silently consume Codex quota through a native fallback.
 
-Start both loopback services against the already-installed global 9router:
+Start 9Router and the direct diagnostic shim against the already-installed
+global 9router. This launcher does not start LightRSI or CGW:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
@@ -248,13 +266,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-
   -InstallStartup
 ```
 
-The launcher verifies 9router health and the shim listener. Model tests still
+The launcher verifies 9router health and the diagnostic shim listener. Model tests still
 send a real `POST http://127.0.0.1:20129/v1/chat/completions` prompt; they do
-not use a catalog-only shortcut. The readiness check must include an authenticated inference request;
-`/health` alone proves liveness, not CGW routing. Restart an existing shim process
+not use a catalog-only shortcut. For the canonical Codex path, `/health` is the
+ordinary non-inference preflight; use an authenticated inference request only
+for explicit installation acceptance or a diagnostic run. Restart an existing shim process
 after applying an overlay so it loads the patched validator. The shim then sends `POST
 http://127.0.0.1:17841/v1/responses` with the requested model and optional
 reasoning effort.
+
+For web-backed probes, use one submission with a 60-90 second deadline. Do not
+retry or fall back after dispatch; reconcile the original lifecycle first.
 
 Use the existing startup uninstall command to remove the automatic task:
 

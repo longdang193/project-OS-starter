@@ -124,7 +124,9 @@ launcher. The launcher discovers all eligible existing matching-cwd panes from
 the default Herdr server. With a named session and `--pane auto`, it queries
 only that session's pane list. Both paths validate workspace-qualified pane
 IDs; workspace IDs are not session names. It filters panes with no agent state
-and shell-only foreground process, sorts candidates deterministically, and
+and shell-only foreground process, or reuses an existing Codex agent only when
+its context marker matches the current task identity. Completed agents without
+a context identity remain ineligible. It sorts candidates deterministically and
 selects the first. Candidate evidence records the full eligible set; no matching target returns
 `target_resolution:not_found`, while
 candidate rejection or incomplete discovery remains observable as `blocked` or

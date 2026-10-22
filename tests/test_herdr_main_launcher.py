@@ -26,6 +26,11 @@ SPEC.loader.exec_module(LAUNCHER)
 _MANAGED_DEEPAGENTS_RESOLVER = LAUNCHER._managed_deepagents_executable
 
 
+@pytest.fixture(autouse=True)
+def isolate_submission_gate_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path / "submission-gates"))
+
+
 def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
     agents = tmp_path / "agents"
     agents.mkdir(exist_ok=True)
@@ -317,7 +322,7 @@ def test_codex_arguments_do_not_override_cgw_web_effort(tmp_path: Path) -> None:
     assert not any(argument.startswith("model_reasoning_effort=") for argument in arguments)
 
 
-def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
+def test_web_profile_preflight_blocks_when_lightrsi_adapter_is_unreachable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -329,11 +334,11 @@ def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
 
     monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", refused)
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*20129"):
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*17667"):
         LAUNCHER._preflight_profile_runtime(profile)
 
 
-def test_web_profile_preflight_accepts_auth_required_cgw_shim(
+def test_web_profile_preflight_accepts_healthy_lightrsi_adapter(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -341,7 +346,7 @@ def test_web_profile_preflight_accepts_auth_required_cgw_shim(
     profile = LAUNCHER._profile(tmp_path / "agents", "web-medium")
 
     class Response:
-        status = 401
+        status = 200
 
         def __enter__(self) -> "Response":
             return self
@@ -353,8 +358,8 @@ def test_web_profile_preflight_accepts_auth_required_cgw_shim(
 
     result = LAUNCHER._preflight_profile_runtime(profile)
 
-    assert result["status"] == 401
-    assert result["port"] == 20129
+    assert result["status"] == 200
+    assert result["port"] == 17667
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
@@ -2011,8 +2016,8 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
         lambda selected: {
             "provider": selected.model_provider,
             "model": selected.model,
-            "url": "http://127.0.0.1:20129/v1/models",
-            "port": 20129,
+            "url": "http://127.0.0.1:17667/health",
+            "port": 17667,
             "status": 200,
         },
     )
@@ -5476,7 +5481,7 @@ def test_pane_safety_reuses_same_context_and_compatible_profile(
     assert result["agent"]["name"] == LAUNCHER._contextual_agent_name(profile_name, context)
 
 
-def test_pane_safety_reuses_completed_compatible_codex_agent(
+def test_pane_safety_rejects_completed_codex_agent_without_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -5491,16 +5496,14 @@ def test_pane_safety_reuses_completed_compatible_codex_agent(
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
 
-    result = LAUNCHER._herdr_pane(
-        tmp_path,
-        "session",
-        "p1",
-        "herdr",
-        expected_profile=profile,
-    )
-
-    assert result["reuse"] is True
-    assert result["agent"]["agent_status"] == "done"
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context is required"):
+        LAUNCHER._herdr_pane(
+            tmp_path,
+            "session",
+            "p1",
+            "herdr",
+            expected_profile=profile,
+        )
 
 
 def test_pane_safety_rejects_different_or_missing_context(
@@ -7051,3 +7054,64 @@ def test_retire_lane_preserves_when_recorded_process_identity_is_stale(
 
     assert result["state"] == "unresolved"
     assert result["recovery_required"] is True
+
+
+def test_submission_gate_binding_is_stable_across_restart() -> None:
+    registry = {
+        "assignment_task_sha256": "task-digest",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "profile": "web-high",
+        "model_provider": "9router",
+        "model": "combo-web-high",
+        "grant_digest": "grant-digest",
+    }
+
+    first = LAUNCHER._submission_gate_binding(registry)
+    second = LAUNCHER._submission_gate_binding(dict(registry))
+
+    assert first == second
+    assert LAUNCHER._submission_gate_operation_id(first).startswith("operation-")
+
+
+def test_submission_gate_settlement_is_fail_closed_for_unknown_delivery() -> None:
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result={"submission": "rejected"},
+        transport_timeout=None,
+    ) == "not_delivered"
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result={"submission": "unknown"},
+        transport_timeout=None,
+    ) == "delivery_uncertain"
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result=None,
+        transport_timeout=LAUNCHER.CommandTransportTimeout("timeout"),
+    ) == "delivery_uncertain"
+
+
+def test_submission_gate_does_not_reauthorize_after_submission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path))
+    registry = {
+        "assignment_task_sha256": "task-digest",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "profile": "web-high",
+        "model_provider": "9router",
+        "model": "combo-web-high",
+        "grant_digest": "grant-digest",
+    }
+    binding = LAUNCHER._submission_gate_binding(registry)
+    path = LAUNCHER._submission_gate_path(binding)
+    first = LAUNCHER._claim_submission_gate(path, binding, "attempt-1")
+    assert first["state"] == "claimed"
+    LAUNCHER._settle_submission_gate(path, "attempt-1", "submitted")
+
+    second = LAUNCHER._claim_submission_gate(path, binding, "attempt-2")
+    assert second["state"] == "blocked"
+    assert second["reason"] == "submission already recorded"
