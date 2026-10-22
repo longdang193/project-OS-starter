@@ -5613,6 +5613,24 @@ def test_select_launcher_payload_keeps_launch_identity_and_assignment() -> None:
     assert payload["assignment"]["status"] == "submitted"
 
 
+def test_sanitize_launcher_result_preserves_submission_boundaries() -> None:
+    result = sanitize_launcher_result(
+        request(),
+        returncode=0,
+        payload={
+            "assignment": {
+                "attempt_id": "attempt-1",
+                "pre_submit_completion_seq": 11,
+                "pre_submit_state_change_seq": 17,
+                "status": "submitted",
+            }
+        },
+    )
+
+    assert result["assignment"]["pre_submit_completion_seq"] == 11
+    assert result["assignment"]["pre_submit_state_change_seq"] == 17
+
+
 def test_runtime_script_runs_directly_from_repository_root() -> None:
     completed = subprocess.run(
         [sys.executable, "scripts/secretary_live_runtime.py", "--help"],

@@ -193,6 +193,12 @@ Send a real, minimal prompt through the same route used by the intended work. Th
 
 The probe is successful only when the requested model is listed or otherwise proven by the response, the reasoning setting is preserved, the CGW path is confirmed, and native quota is unchanged. A liveness `200` without inference proof is incomplete.
 
+For Herdr completion freshness, the launcher owns the pre-submit completion and
+state-change sequence baselines. Those baselines must be carried in the final
+assignment evidence when available; missing or null baselines make freshness
+unproven and do not authorize a second submission, profile fallback, or native
+execution.
+
 When the client adds built-in tool metadata to a text-only review request, keep the
 metadata out of the CGW payload and record that it was ignored. Do not report
 `tools are not supported` for the client envelope alone, and do not claim that

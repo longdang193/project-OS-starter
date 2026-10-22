@@ -1189,6 +1189,22 @@ def _finalize_performance(
     return performance
 
 
+def _attach_submission_boundaries(
+    assignment: dict[str, Any],
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    herdr = evidence.get("herdr")
+    if not isinstance(herdr, Mapping):
+        return assignment
+    for key in ("pre_submit_completion_seq", "pre_submit_state_change_seq"):
+        value = herdr.get(key)
+        if type(value) is int and value >= 0:
+            existing = assignment.get(key)
+            if type(existing) is not int or existing < 0:
+                assignment[key] = value
+    return assignment
+
+
 def _build_assignment_result(
     *,
     dispatch_id: str | None,
@@ -3638,6 +3654,7 @@ def _main_body(args: argparse.Namespace) -> int:
             assignment = payload.get("assignment", payload)
             if not isinstance(assignment, dict):
                 raise LaunchBlocked("Assignment evidence must be an object.")
+            _attach_submission_boundaries(assignment, evidence)
             local_capabilities = registry_evidence.get("local_capabilities")
             if isinstance(local_capabilities, dict):
                 assignment["local_capabilities"] = dict(local_capabilities)
