@@ -29,6 +29,7 @@ from scripts.secretary_live_runtime import (
     run_smoke,
     sanitize_launcher_result,
     select_launcher_payload,
+    recover_quarantined_receipt,
 )
 
 
@@ -57,6 +58,77 @@ def normal_request(**overrides: object) -> SecretaryNormalRequest:
     }
     values.update(overrides)
     return SecretaryNormalRequest(**values)
+
+
+def _quarantined_receipt(tmp_path: Path) -> Path:
+    receipt = tmp_path / "probe.json"
+    receipt.write_text(json.dumps({
+        "schema_version": "secretary-live-runtime-v1",
+        "attempt_id": "attempt-1",
+        "recovery_required": True,
+        "resource_inventory": {
+            "schema": "secretary-resource-inventory/v1",
+            "attempt_id": "attempt-1",
+            "state": "quarantined",
+            "reuse_blocked": True,
+            "recovery_required": True,
+            "resources": [
+                {"kind": "workspace", "identity": "workspace-1", "attempt_id": "attempt-1", "state": "quarantined", "authority": "herdr.workspace.close"},
+            ],
+        },
+        "runtime_identity": {"session": "default", "pane": "workspace-1:p1", "agent_name": "agent-1"},
+    }), encoding="utf-8")
+    return receipt
+
+
+def test_recover_quarantined_receipt_requires_exact_resource_identity(tmp_path: Path) -> None:
+    receipt = _quarantined_receipt(tmp_path)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload["resource_inventory"]["resources"][0].pop("attempt_id")
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="attempt identity"):
+        recover_quarantined_receipt(receipt, herdr="herdr")
+
+
+def test_recover_quarantined_receipt_is_idempotent_when_already_settled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _quarantined_receipt(tmp_path)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    payload["recovery_required"] = False
+    payload["resource_inventory"].update({"state": "settled", "reuse_blocked": False, "recovery_required": False})
+    payload["resource_inventory"]["resources"][0]["state"] = "settled"
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr("scripts.secretary_live_runtime._close_herdr_workspace", lambda *args, **kwargs: pytest.fail("cleanup should not run"))
+
+    result = recover_quarantined_receipt(receipt, herdr="herdr")
+
+    assert result["state"] == "settled"
+    assert result["recovery_required"] is False
+
+
+def test_recover_quarantined_receipt_preserves_quarantine_on_uncertain_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _quarantined_receipt(tmp_path)
+    monkeypatch.setattr("scripts.secretary_live_runtime._ensure_herdr_server", lambda *args, **kwargs: {"state": "ready", "started": False})
+    monkeypatch.setattr("scripts.secretary_live_runtime._close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": False})
+
+    result = recover_quarantined_receipt(receipt, herdr="herdr")
+
+    assert result["state"] == "quarantined"
+    assert result["recovery_required"] is True
+
+
+def test_recover_quarantined_receipt_settles_after_verified_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    receipt = _quarantined_receipt(tmp_path)
+    monkeypatch.setattr("scripts.secretary_live_runtime._ensure_herdr_server", lambda *args, **kwargs: {"state": "ready", "started": False})
+    monkeypatch.setattr("scripts.secretary_live_runtime._close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": True})
+
+    result = recover_quarantined_receipt(receipt, herdr="herdr")
+
+    stored = json.loads(receipt.read_text(encoding="utf-8"))
+    assert result["state"] == "settled"
+    assert stored["recovery_required"] is False
+    assert stored["resource_inventory"]["state"] == "settled"
+    assert stored["resource_inventory"]["resources"][0]["state"] == "removed"
 
 
 def test_normal_request_excludes_herdr_selectors_and_builder() -> None:
