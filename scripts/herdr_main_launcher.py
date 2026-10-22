@@ -1785,6 +1785,7 @@ def _codex_completion_snapshot(
         "content": output,
         "output_sha256": _sha256_text(output),
         "output_chars": len(output),
+        "observation_elapsed_ms": max(0, int((time.monotonic() - started) * 1000)),
         "observation_error": observation_error,
         "content_source": content_source,
         **(

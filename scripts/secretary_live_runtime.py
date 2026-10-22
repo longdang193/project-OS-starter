@@ -817,6 +817,7 @@ def _observe_submitted_codex(
     payload: Mapping[str, Any],
     *,
     pre_submit: Mapping[str, Any] | None = None,
+    initial_snapshot: Mapping[str, Any] | None = None,
     env: dict[str, str],
 ) -> dict[str, Any]:
     herdr = payload.get("herdr")
@@ -883,13 +884,21 @@ def _observe_submitted_codex(
     if not isinstance(anchor, Mapping):
         anchor = None
 
-    deadline = time.monotonic() + _CODEX_OBSERVATION_TIMEOUT_SECONDS
+    initial_elapsed_ms = initial_snapshot.get("observation_elapsed_ms", 0) if isinstance(initial_snapshot, Mapping) else 0
+    if not isinstance(initial_elapsed_ms, (int, float)) or isinstance(initial_elapsed_ms, bool) or initial_elapsed_ms < 0:
+        initial_elapsed_ms = 0
+    observation_budget = max(
+        0.01,
+        _CODEX_OBSERVATION_TIMEOUT_SECONDS - (float(initial_elapsed_ms) / 1000),
+    )
+    deadline = time.monotonic() + observation_budget
     snapshot: dict[str, Any] = {
         "state": "unknown",
         "observation_error": "completion observation deadline expired",
     }
     completed = False
     freshness_proven = False
+    initial_snapshot_consumed = False
     if native_boundary_captured:
         if not isinstance(anchor, Mapping):
             anchor = {}
@@ -900,14 +909,18 @@ def _observe_submitted_codex(
         anchor = {**anchor, "state_change_seq": herdr_pre_submit_state_change_seq}
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
-        snapshot = _codex_completion_snapshot(
-            executable,
-            session,
-            agent_name,
-            env=env,
-            pane=pane,
-            timeout_seconds=min(5.0, remaining),
-        )
+        if not initial_snapshot_consumed and isinstance(initial_snapshot, Mapping):
+            snapshot = dict(initial_snapshot)
+            initial_snapshot_consumed = True
+        else:
+            snapshot = _codex_completion_snapshot(
+                executable,
+                session,
+                agent_name,
+                env=env,
+                pane=pane,
+                timeout_seconds=min(5.0, remaining),
+            )
         if any(key in snapshot for key in ("assignment_id", "attempt_id")):
             if (
                 (assignment_id is not None and snapshot.get("assignment_id") not in (None, assignment_id))
@@ -978,6 +991,7 @@ def _observe_submitted_codex(
             "content",
             "output_sha256",
             "output_chars",
+            "observation_elapsed_ms",
             "observation_error",
             "producer",
             "content_source",
@@ -3521,10 +3535,21 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
+            assignment = payload.get("assignment")
+            launcher_observation = (
+                assignment.get("observation")
+                if isinstance(assignment, Mapping)
+                else None
+            )
             post_submit = _observe_submitted_codex(
                 request,
                 payload,
                 pre_submit=submission_anchor,
+                initial_snapshot=(
+                    launcher_observation
+                    if isinstance(launcher_observation, Mapping)
+                    else None
+                ),
                 env=environment,
             )
             result["post_submit_observation"] = post_submit

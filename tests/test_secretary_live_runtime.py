@@ -3345,6 +3345,56 @@ def test_observe_submitted_codex_keeps_fast_idle_terminal_answer_diagnostic_only
     assert observation["producer"] == "dcode-project"
 
 
+def test_observe_submitted_codex_reuses_launcher_snapshot_without_repolling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = {
+        **_submission_anchor(),
+        "state": "idle",
+        "completion_seq": 2,
+        "content": "Codex screen\n• FRESH ANSWER",
+        "output_sha256": "b" * 64,
+        "output_chars": 29,
+        "observation_error": None,
+        "native_completed_turn": {
+            "kind": "completed",
+            "authority": "lightrsi-codex-context-history",
+            "sessionId": "session",
+            "turnId": "turn-1",
+            "assistantText": "fresh answer",
+        },
+        "observation_elapsed_ms": 30_000,
+    }
+    calls = 0
+
+    def fail_if_repolled(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("launcher completion snapshot was discarded")
+
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._codex_completion_snapshot",
+        fail_if_repolled,
+    )
+    monkeypatch.setattr(
+        "scripts.secretary_live_runtime._release_codex_agent",
+        lambda *args, **kwargs: {"state": "removed"},
+    )
+
+    observation = _observe_submitted_codex(
+        request(session="session", pane="pane"),
+        _correlated_payload(),
+        pre_submit={**_submission_anchor(), "completion_seq": 1},
+        initial_snapshot=snapshot,
+        env={},
+    )
+
+    assert observation["state"] == "idle"
+    assert observation["freshness_proven"] is True
+    assert observation["cleanup"] == {"state": "removed"}
+    assert calls == 0
+
+
 def test_observe_submitted_codex_uses_bound_structured_content_over_terminal_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
