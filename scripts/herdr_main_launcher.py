@@ -1456,23 +1456,24 @@ def _wait_for_shared_web_runtime_turn(
 ) -> subprocess.CompletedProcess[str]:
     started = time.monotonic()
     last_result: subprocess.CompletedProcess[str] | None = None
-    for target_state in ("working", "idle"):
+    wait_states = (("working",), ("idle", "done", "blocked"))
+    for target_states in wait_states:
         remaining_seconds = max(0.01, timeout_seconds - (time.monotonic() - started))
         timeout_ms = max(1, int(remaining_seconds * 1000))
         try:
+            wait_command = [
+                herdr,
+                "--session",
+                session,
+                "agent",
+                "wait",
+                agent_name,
+            ]
+            for target_state in target_states:
+                wait_command.extend(("--until", target_state))
+            wait_command.extend(("--timeout", str(timeout_ms)))
             last_result = _run(
-                [
-                    herdr,
-                    "--session",
-                    session,
-                    "agent",
-                    "wait",
-                    agent_name,
-                    "--until",
-                    target_state,
-                    "--timeout",
-                    str(timeout_ms),
-                ],
+                wait_command,
                 env=env,
                 timeout=max(_HERDR_COMMAND_TIMEOUT, remaining_seconds),
             )
