@@ -26,6 +26,11 @@ SPEC.loader.exec_module(LAUNCHER)
 _MANAGED_DEEPAGENTS_RESOLVER = LAUNCHER._managed_deepagents_executable
 
 
+@pytest.fixture(autouse=True)
+def isolate_submission_gate_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path / "submission-gates"))
+
+
 def fake_profile(tmp_path: Path, name: str, rank: int | None) -> None:
     agents = tmp_path / "agents"
     agents.mkdir(exist_ok=True)
@@ -7049,3 +7054,64 @@ def test_retire_lane_preserves_when_recorded_process_identity_is_stale(
 
     assert result["state"] == "unresolved"
     assert result["recovery_required"] is True
+
+
+def test_submission_gate_binding_is_stable_across_restart() -> None:
+    registry = {
+        "assignment_task_sha256": "task-digest",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "profile": "web-high",
+        "model_provider": "9router",
+        "model": "combo-web-high",
+        "grant_digest": "grant-digest",
+    }
+
+    first = LAUNCHER._submission_gate_binding(registry)
+    second = LAUNCHER._submission_gate_binding(dict(registry))
+
+    assert first == second
+    assert LAUNCHER._submission_gate_operation_id(first).startswith("operation-")
+
+
+def test_submission_gate_settlement_is_fail_closed_for_unknown_delivery() -> None:
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result={"submission": "rejected"},
+        transport_timeout=None,
+    ) == "not_delivered"
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result={"submission": "unknown"},
+        transport_timeout=None,
+    ) == "delivery_uncertain"
+    assert LAUNCHER._submission_gate_state(
+        executor="codex",
+        phase="prompt",
+        prompt_result=None,
+        transport_timeout=LAUNCHER.CommandTransportTimeout("timeout"),
+    ) == "delivery_uncertain"
+
+
+def test_submission_gate_does_not_reauthorize_after_submission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path))
+    registry = {
+        "assignment_task_sha256": "task-digest",
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "profile": "web-high",
+        "model_provider": "9router",
+        "model": "combo-web-high",
+        "grant_digest": "grant-digest",
+    }
+    binding = LAUNCHER._submission_gate_binding(registry)
+    path = LAUNCHER._submission_gate_path(binding)
+    first = LAUNCHER._claim_submission_gate(path, binding, "attempt-1")
+    assert first["state"] == "claimed"
+    LAUNCHER._settle_submission_gate(path, "attempt-1", "submitted")
+
+    second = LAUNCHER._claim_submission_gate(path, binding, "attempt-2")
+    assert second["state"] == "blocked"
+    assert second["reason"] == "submission already recorded"

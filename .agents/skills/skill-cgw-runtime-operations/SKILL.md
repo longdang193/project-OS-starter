@@ -31,6 +31,13 @@ After a settled lifecycle receipt without a semantic task report, classify the
 attempt as `unverified`, reconcile the original attempt, and do not re-submit
 the same task.
 
+Before any model-producing delivery, the launcher records a durable logical
+operation claim keyed by the task, repository, plan, profile, model, and grant
+binding. A `submitted` or `delivery_uncertain` claim blocks restart-based
+replay; reconcile the original attempt instead. Only a proven `not_delivered`
+claim may be reopened, and pane cleanup or a new attempt ID never grants a
+second submission by itself.
+
 Keep one workflow for CGW routing, readiness, probing, quota safety, and installation. Do not create separate queues, reconcilers, profile registries, or cleanup frameworks for this skill.
 
 ## When to Use
