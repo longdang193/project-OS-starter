@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import sqlite3
+import tempfile
 import tomllib
 import uuid
 from collections.abc import Sequence
@@ -2346,6 +2347,110 @@ def canonical_resource_inventory(
     }
 
 
+def recover_quarantined_receipt(receipt: Path, *, herdr: str = "herdr") -> dict[str, Any]:
+    """Close exactly the resources owned by one quarantined attempt.
+
+    Recovery is deliberately separate from probing: it never submits a task,
+    retries a task, or selects another profile. Uncertain cleanup keeps the
+    receipt quarantined so a later invocation can retry the same cleanup.
+    """
+
+    receipt_path = Path(receipt).expanduser().resolve()
+    if receipt_path.stat().st_size > _WORKSPACE_STATUS_MAX_BYTES:
+        raise ValueError("receipt exceeds the bounded recovery read size")
+    try:
+        payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("receipt is not valid JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("receipt must be a JSON object")
+
+    attempt_id = _safe_text(payload.get("attempt_id"))
+    inventory = payload.get("resource_inventory")
+    if attempt_id is None or not isinstance(inventory, Mapping):
+        raise ValueError("receipt is missing attempt identity or resource inventory")
+    if inventory.get("attempt_id") != attempt_id:
+        raise ValueError("resource inventory attempt identity does not match receipt attempt identity")
+    resources = inventory.get("resources")
+    if not isinstance(resources, list) or not resources:
+        raise ValueError("receipt has no exact resource identities")
+
+    validated: list[dict[str, Any]] = []
+    for resource in resources:
+        if not isinstance(resource, Mapping):
+            raise ValueError("resource inventory contains a non-object entry")
+        kind = _safe_text(resource.get("kind"))
+        identity = resource.get("identity")
+        resource_attempt = resource.get("attempt_id")
+        state = _safe_text(resource.get("state"))
+        if kind is None or not isinstance(identity, str) or not identity.strip() or state is None:
+            raise ValueError("resource inventory contains an incomplete identity")
+        if resource_attempt != attempt_id:
+            raise ValueError("resource attempt identity does not match receipt attempt identity")
+        validated.append(dict(resource))
+
+    if payload.get("recovery_required") is not True and inventory.get("state") == "settled":
+        return {
+            "state": "settled",
+            "recovery_required": False,
+            "attempt_id": attempt_id,
+            "receipt": str(receipt_path),
+            "idempotent": True,
+        }
+    if inventory.get("state") != "quarantined" and payload.get("recovery_required") is not True:
+        raise ValueError("receipt is not quarantined or marked for recovery")
+
+    environment = dict(os.environ)
+    server = _ensure_herdr_server(herdr, env=environment)
+    cleanup: list[dict[str, Any]] = []
+    all_verified = True
+    for resource in validated:
+        if resource.get("state") in {"removed", "already_absent", "settled"}:
+            cleanup.append({"kind": resource["kind"], "identity": resource["identity"], "verified": True, "state": "already_absent"})
+            continue
+        if resource["kind"] not in {"workspace", "herdr.workspace"}:
+            result = {"kind": resource["kind"], "identity": resource["identity"], "verified": False, "state": "quarantined", "reason": "no canonical cleanup owner"}
+        else:
+            result = _close_herdr_workspace(herdr, resource["identity"], env=environment)
+            result = {"kind": resource["kind"], "identity": resource["identity"], **result}
+        cleanup.append(result)
+        all_verified = all_verified and result.get("verified") is True
+
+    if not all_verified:
+        return {
+            "state": "quarantined",
+            "recovery_required": True,
+            "attempt_id": attempt_id,
+            "receipt": str(receipt_path),
+            "server": server,
+            "cleanup": cleanup,
+        }
+
+    for resource in validated:
+        resource["state"] = "removed"
+    inventory_update = dict(inventory)
+    inventory_update.update({
+        "resources": validated,
+        "state": "settled",
+        "reuse_blocked": False,
+        "recovery_required": False,
+    })
+    updated = dict(payload)
+    updated.update({"resource_inventory": inventory_update, "recovery_required": False})
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=receipt_path.parent, delete=False) as temp:
+        temp.write(json.dumps(updated, indent=2, sort_keys=True) + "\n")
+        temp_path = Path(temp.name)
+    os.replace(temp_path, receipt_path)
+    return {
+        "state": "settled",
+        "recovery_required": False,
+        "attempt_id": attempt_id,
+        "receipt": str(receipt_path),
+        "server": server,
+        "cleanup": cleanup,
+    }
+
+
 def _safe_result_value(value: object, *, allow_long: bool = False) -> str | None:
     text = _safe_text(value)
     if text is None or (not allow_long and len(text) > 4096):
@@ -3699,7 +3804,22 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--profile", default="normal")
     run.add_argument("--logical-operation-id")
     run.add_argument("--resume", action="store_true")
+    recover = subparsers.add_parser("recover")
+    recover.add_argument("--receipt", type=Path, required=True)
+    recover.add_argument("--herdr", default="herdr")
     args = parser.parse_args(argv)
+    if args.command == "recover":
+        try:
+            result = recover_quarantined_receipt(args.receipt, herdr=args.herdr)
+        except (OSError, RuntimeError, ValueError, LaunchBlocked) as exc:
+            result = {
+                "state": "quarantined",
+                "recovery_required": True,
+                "error": type(exc).__name__,
+                "error_detail": str(exc),
+            }
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["state"] == "settled" else 2
     if args.command == "run":
         codex_home = (args.codex_home or Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")).expanduser()
         request = SecretaryNormalRequest(
