@@ -155,6 +155,12 @@ Readiness must prove all of the following:
 - a minimal inference request can reach CGW;
 - the response is classified as CGW chat transport rather than native execution.
 
+A `401` from the unauthenticated `/v1/models` preflight is not by itself proof
+of authentication failure when the shim protects that metadata route. Continue
+to the authenticated minimal inference probe; a `401` from the authenticated
+inference boundary is an authentication/configuration failure and must stop and
+repair the binding.
+
 Do not retry an unauthenticated or queue-full request through another account, native executor, or raw provider endpoint.
 
 ### 3. Match the Herdr pane
@@ -162,14 +168,21 @@ Do not retry an unauthenticated or queue-full request through another account, n
 Use an existing pane only when this exact predicate is true:
 
 ```text
-reuse = idle && same_context && compatible_profile
+reuse = compatible_profile
+        && no_conflicting_live_process
+        && ((agent_status == idle && same_context) || agent_status == done)
 ```
 
-The context identifier should be an existing thread, plan, task-group, repository/work-item, or other stable identifier already available to the workflow. Missing or different context means allocate a new pane. An active pane or a pane with a conflicting live process is unavailable.
+The context identifier should be an existing thread, plan, task-group, repository/work-item, or other stable identifier already available to the workflow. Missing or different context means allocate a new pane for an idle agent. A compatible completed (`done`) Codex agent may be reused after ownership, profile, and process verification; when a context identifier is supplied, it must still match. An active pane or a pane with a conflicting live process is unavailable.
 
 Profile compatibility is required in addition to context compatibility. A pane bound to `gpt-*` native execution is not compatible with a `cgw/*` request, even if the pane is idle. Do not mix unrelated subjects in one pane.
 
 Use the existing lifecycle cleanup for stale idle state and the existing completion/retirement mechanism for finished panes. Do not add reconciliation logic here.
+
+Reused Codex panes perform ownership and profile verification only. They must not
+execute `agent prompt` during pane selection. After verification, use one
+canonical `agent prompt` submission path: exactly one prompt, with no second
+submission, post-dispatch retry, or profile fallback.
 
 ### 4. Deliver one controlled probe
 
@@ -201,7 +214,7 @@ remain a GitHub URL or explicitly delivered text.
 
 Keep these failure classes separate:
 
-- **Authentication/configuration:** `401`, missing key, invalid bearer, or wrong endpoint. Stop and repair the binding.
+- **Authentication/configuration:** `401` from the authenticated inference boundary, missing key, invalid bearer, or wrong endpoint. Stop and repair the binding.
 - **Local capacity:** `429` queue full, single-flight saturation, or a stale occupied pane. Stop duplicate retries, clean stale lifecycle state, and retry one request at a time.
 - **Provider availability:** `502` or `503` after the request reached the intended upstream. Preserve the provider failure and do not reinterpret it as a model fallback.
 - **Routing defect:** the response identifies native execution, the wrong provider, or the wrong model. Stop immediately and use `skill-systematic-debugging` to trace shared callers and all routing paths.
