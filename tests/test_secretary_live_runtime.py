@@ -3239,6 +3239,51 @@ def test_observe_submitted_codex_does_not_treat_null_baseline_as_boundary(
     assert observation["freshness_proven"] is False
     assert observation["observation_error"] == "submission freshness not proven"
 
+
+def test_observe_submitted_codex_accepts_state_change_boundary_without_completion_seq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_codex_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "done",
+            "state_change_seq": 2,
+            "completion_seq": None,
+            "native_completed_turn": {
+                "kind": "completed",
+                "authority": runtime.NATIVE_RESULT_AUTHORITY,
+                "sessionId": "session",
+                "turnId": "turn-1",
+                "assistantText": "fresh answer",
+            },
+        },
+    )
+    monkeypatch.setattr(runtime, "_release_codex_agent", lambda *args, **kwargs: {"state": "removed"})
+
+    observation = runtime._observe_submitted_codex(
+        request(session="session", pane="pane"),
+        {
+            "herdr": {
+                "executable": "herdr.exe",
+                "session": "session",
+                "pane": "pane",
+                "agent_name": "agent",
+                "pre_submit_completion_seq": None,
+                "pre_submit_state_change_seq": 1,
+            },
+            "assignment": {"attempt_id": "attempt-1"},
+        },
+        env={},
+    )
+
+    assert observation["freshness_proven"] is True
+    assert observation.get("observation_error") is None
+    assert observation["cleanup"] == {"state": "removed"}
+
+
 def _correlated_payload() -> dict[str, object]:
     return {
         "herdr": {

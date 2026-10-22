@@ -806,6 +806,34 @@ def test_web_prompt_waits_for_turn_to_start_before_waiting_for_idle(
     assert [command[7] for command in wait_commands] == ["working", "idle"]
 
 
+def test_shared_web_runtime_wait_accepts_terminal_done_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "{}", "")
+
+    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
+
+    result = LAUNCHER._wait_for_shared_web_runtime_turn(
+        "herdr.exe",
+        "codex-probe",
+        "web-high-main",
+        env={},
+        timeout_seconds=1.0,
+    )
+
+    assert result.returncode == 0
+    wait_commands = [command for command in commands if command[3:5] == ["agent", "wait"]]
+    assert len(wait_commands) == 2
+    assert [
+        [command[index + 1] for index, value in enumerate(command) if value == "--until"]
+        for command in wait_commands
+    ] == [["working"], ["idle", "done", "blocked"]]
+
+
 def test_web_prompt_wait_failure_is_not_reported_as_success(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

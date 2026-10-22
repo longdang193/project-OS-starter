@@ -849,6 +849,18 @@ def _observe_submitted_codex(
             herdr_pre_submit_completion_seq = assignment_completion_seq
         else:
             herdr_pre_submit_completion_seq = None
+    herdr_pre_submit_state_change_seq = herdr.get("pre_submit_state_change_seq")
+    state_boundary_captured = (
+        type(herdr_pre_submit_state_change_seq) is int
+        and herdr_pre_submit_state_change_seq >= 0
+    )
+    if not state_boundary_captured and isinstance(assignment, Mapping):
+        assignment_state_change_seq = assignment.get("pre_submit_state_change_seq")
+        if type(assignment_state_change_seq) is int and assignment_state_change_seq >= 0:
+            state_boundary_captured = True
+            herdr_pre_submit_state_change_seq = assignment_state_change_seq
+        else:
+            herdr_pre_submit_state_change_seq = None
     if ownership is not None:
         for key in ("assignment_id", "attempt_id"):
             owned_value = ownership.get(key)
@@ -877,6 +889,10 @@ def _observe_submitted_codex(
         if not isinstance(anchor, Mapping):
             anchor = {}
         anchor = {**anchor, "completion_seq": herdr_pre_submit_completion_seq}
+    if state_boundary_captured:
+        if not isinstance(anchor, Mapping):
+            anchor = {}
+        anchor = {**anchor, "state_change_seq": herdr_pre_submit_state_change_seq}
     while time.monotonic() < deadline:
         remaining = max(0.01, deadline - time.monotonic())
         snapshot = _codex_completion_snapshot(
@@ -910,22 +926,17 @@ def _observe_submitted_codex(
         snapshot.update({"session": session, "pane": pane, "agent_name": agent_name})
         if assignment_id is not None:
             snapshot["assignment_id"] = assignment_id
-        if (
-            freshness_proven
-            and native_boundary_captured
-            and isinstance(attempt_id, str)
-            and isinstance(snapshot.get("completion_seq"), int)
-        ):
+        if freshness_proven and isinstance(attempt_id, str):
             snapshot.update({
-                "producer": NATIVE_RESULT_PRODUCER,
                 "attempt_id": attempt_id,
-                "assistant_owned": True,
                 "freshness_proven": True,
             })
+            snapshot.setdefault("producer", NATIVE_RESULT_PRODUCER)
+            snapshot.setdefault("assistant_owned", True)
         semantic_content = native_turn["assistantText"] if native_turn else None
         if snapshot.get("state") in {"failed", "stopped"}:
             break
-        if not native_boundary_captured and snapshot.get("state") in {"idle", "done"}:
+        if not (native_boundary_captured or state_boundary_captured) and snapshot.get("state") in {"idle", "done"}:
             break
         if (
             snapshot.get("state") in {"idle", "done"}
@@ -975,6 +986,7 @@ def _observe_submitted_codex(
     if attempt_id is not None:
         observation["attempt_id"] = attempt_id
     observation["pre_submit_completion_seq"] = herdr_pre_submit_completion_seq
+    observation["pre_submit_state_change_seq"] = herdr_pre_submit_state_change_seq
     observation["freshness_proven"] = freshness_proven
     cleanup: dict[str, Any] = {"state": "not_attempted"}
     if snapshot.get("state") in {"idle", "done"}:
@@ -998,14 +1010,15 @@ def _submission_freshness_proven(
         return False
     anchor_completion_seq = anchor.get("completion_seq")
     snapshot_completion_seq = snapshot.get("completion_seq")
-    if "completion_seq" in anchor or "completion_seq" in snapshot:
-        return (
-            type(anchor_completion_seq) is int
-            and anchor_completion_seq >= 0
-            and type(snapshot_completion_seq) is int
-            and snapshot_completion_seq >= 0
-            and snapshot_completion_seq > anchor_completion_seq
-        )
+    if (
+        type(anchor_completion_seq) is int
+        and anchor_completion_seq >= 0
+        and type(snapshot_completion_seq) is int
+        and snapshot_completion_seq >= 0
+    ):
+        return snapshot_completion_seq > anchor_completion_seq
+    anchor_state_change_seq = anchor.get("state_change_seq")
+    snapshot_state_change_seq = snapshot.get("state_change_seq")
     identity_changed = False
     for key in ("result_id", "result_reference", "completion_id"):
         if snapshot.get(key) not in (None, "") and snapshot.get(key) != anchor.get(key):
@@ -1025,6 +1038,15 @@ def _submission_freshness_proven(
             != _codex_completion_prefix(anchor.get("content"))
         ):
             return False
+    if (
+        type(anchor_state_change_seq) is int
+        and anchor_state_change_seq >= 0
+        and type(snapshot_state_change_seq) is int
+        and snapshot_state_change_seq >= 0
+    ):
+        return snapshot_state_change_seq > anchor_state_change_seq
+    if "completion_seq" in anchor or "completion_seq" in snapshot:
+        return False
     anchor_seq = anchor.get("state_change_seq")
     snapshot_seq = snapshot.get("state_change_seq")
     if anchor_seq is not None and snapshot_seq is not None and anchor_seq != snapshot_seq:
