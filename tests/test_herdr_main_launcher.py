@@ -317,7 +317,7 @@ def test_codex_arguments_do_not_override_cgw_web_effort(tmp_path: Path) -> None:
     assert not any(argument.startswith("model_reasoning_effort=") for argument in arguments)
 
 
-def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
+def test_web_profile_preflight_blocks_when_lightrsi_adapter_is_unreachable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -329,11 +329,11 @@ def test_web_profile_preflight_blocks_when_cgw_shim_is_unreachable(
 
     monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", refused)
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*20129"):
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*17667"):
         LAUNCHER._preflight_profile_runtime(profile)
 
 
-def test_web_profile_preflight_accepts_auth_required_cgw_shim(
+def test_web_profile_preflight_accepts_healthy_lightrsi_adapter(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -341,7 +341,7 @@ def test_web_profile_preflight_accepts_auth_required_cgw_shim(
     profile = LAUNCHER._profile(tmp_path / "agents", "web-medium")
 
     class Response:
-        status = 401
+        status = 200
 
         def __enter__(self) -> "Response":
             return self
@@ -353,8 +353,8 @@ def test_web_profile_preflight_accepts_auth_required_cgw_shim(
 
     result = LAUNCHER._preflight_profile_runtime(profile)
 
-    assert result["status"] == 401
-    assert result["port"] == 20129
+    assert result["status"] == 200
+    assert result["port"] == 17667
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
@@ -2011,8 +2011,8 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
         lambda selected: {
             "provider": selected.model_provider,
             "model": selected.model,
-            "url": "http://127.0.0.1:20129/v1/models",
-            "port": 20129,
+            "url": "http://127.0.0.1:17667/health",
+            "port": 17667,
             "status": 200,
         },
     )
@@ -5476,7 +5476,7 @@ def test_pane_safety_reuses_same_context_and_compatible_profile(
     assert result["agent"]["name"] == LAUNCHER._contextual_agent_name(profile_name, context)
 
 
-def test_pane_safety_reuses_completed_compatible_codex_agent(
+def test_pane_safety_rejects_completed_codex_agent_without_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -5491,16 +5491,14 @@ def test_pane_safety_reuses_completed_compatible_codex_agent(
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
 
-    result = LAUNCHER._herdr_pane(
-        tmp_path,
-        "session",
-        "p1",
-        "herdr",
-        expected_profile=profile,
-    )
-
-    assert result["reuse"] is True
-    assert result["agent"]["agent_status"] == "done"
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context is required"):
+        LAUNCHER._herdr_pane(
+            tmp_path,
+            "session",
+            "p1",
+            "herdr",
+            expected_profile=profile,
+        )
 
 
 def test_pane_safety_rejects_different_or_missing_context(

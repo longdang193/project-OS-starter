@@ -63,7 +63,7 @@ Register-ScheduledTask `
   -Trigger $trigger `
   -Principal $principal `
   -Settings $settings `
-  -Description "Starts the Project OS 9router and CGW Codex loopback runtime after user logon." `
+  -Description "Starts the Project OS 9router transport and diagnostic Chat shim after user logon; LightRSI and codex-chatgpt-web own their lifecycles." `
   -Force | Out-Null
 
 Write-Output "Registered $TaskName for user logon with a ${DelaySeconds}s delay."

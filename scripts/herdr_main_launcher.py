@@ -113,12 +113,12 @@ _DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT = 0.5
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
-_CGW_SHIM_PREFLIGHT_URL = "http://127.0.0.1:20129/v1/models"
+_CGW_ADAPTER_PREFLIGHT_URL = "http://127.0.0.1:17667/health"
 _CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS = 2.0
 _HERDR_DEFAULT_SESSION = "default"
 _PANE_LOCK_PARENT = "herdr-pane-ownership"
 _SHARED_WEB_RUNTIME_LOCK_PARENT = "herdr-shared-web-runtime"
-_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-20128-20129.lock"
+_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-lightrsi-17667-20128.lock"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _RUNTIME_GRANT_MARKER_PATTERN = re.compile(
@@ -360,11 +360,11 @@ def _codex_environment(codex_home: Path) -> dict[str, str]:
 
 
 def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | None:
-    """Verify the local CGW listener before launching web profiles."""
+    """Verify the canonical LightRSI adapter before launching web profiles."""
     if profile.model_provider != "9router" or not profile.model.startswith("combo-web-"):
         return None
     request = urllib.request.Request(
-        _CGW_SHIM_PREFLIGHT_URL,
+        _CGW_ADAPTER_PREFLIGHT_URL,
         headers={"Accept": "application/json"},
         method="GET",
     )
@@ -375,22 +375,22 @@ def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | Non
         status = int(exc.code)
     except (OSError, TimeoutError) as exc:
         raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: CGW Codex shim is unavailable at "
-            f"{_CGW_SHIM_PREFLIGHT_URL}. Start "
+            "BLOCKED_CAPABILITY: LightRSI CGW adapter is unavailable at "
+            f"{_CGW_ADAPTER_PREFLIGHT_URL}. Start "
             "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 before launching "
             f"{profile.name}; provider connection failed: {exc}"
         ) from exc
-    if status not in {200, 401}:
+    if status != 200:
         raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: CGW Codex shim at "
-            f"{_CGW_SHIM_PREFLIGHT_URL} returned HTTP {status}; start "
+            "BLOCKED_CAPABILITY: LightRSI CGW adapter at "
+            f"{_CGW_ADAPTER_PREFLIGHT_URL} returned HTTP {status}; start "
             "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 and retry."
         )
     return {
         "provider": profile.model_provider,
         "model": profile.model,
-        "url": _CGW_SHIM_PREFLIGHT_URL,
-        "port": 20129,
+        "url": _CGW_ADAPTER_PREFLIGHT_URL,
+        "port": 17667,
         "status": status,
     }
 
@@ -587,13 +587,11 @@ def _herdr_pane(
         if agent_status not in {"idle", "done"}:
             raise TargetCandidateRejected(f"Pane agent is active: {pane}")
         if context_identity is None:
-            if agent_status != "done":
-                raise TargetCandidateRejected(f"Pane context is required for idle agent reuse: {pane}")
-        else:
-            expected_marker = _context_marker(context_identity)
-            actual_marker = _agent_context_marker(agent_info.get("name"))
-            if expected_marker != actual_marker:
-                raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
+            raise TargetCandidateRejected(f"Pane context is required for agent reuse: {pane}")
+        expected_marker = _context_marker(context_identity)
+        actual_marker = _agent_context_marker(agent_info.get("name"))
+        if expected_marker != actual_marker:
+            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
 
     process_payload = _json_command(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],

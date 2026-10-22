@@ -20,7 +20,8 @@ To update: edit canonical source, then run sync.
 Use this skill for operational work that must prove a request reaches the Chat-to-CGW path rather than native Codex execution. It defines the procedure and evidence contract; it does not replace Herdr scheduling, the 9Router transport implementation, or patch-hub installation ownership.
 
 Herdr is the only supported CGW execution controller. The supported path is
-Herdr -> 9Router -> CGW. Native Codex subagents must not select or launch
+Herdr -> Codex pane -> LightRSI adapter :17667 -> 9Router :20128 -> CGW :17841.
+Native Codex subagents must not select or launch
 CGW-backed profiles directly; `web-high` and `web-medium` are Herdr-only
 profiles and are not exposed through the native Codex adapter.
 
@@ -77,8 +78,10 @@ Read the existing launcher, environment, profile registry, and patch-hub receipt
 
 The commonly used local boundaries are:
 
+- `17667`: LightRSI adapter used by the canonical Codex path;
 - `20128`: 9Router entrypoint;
-- `20129`: local Codex/CGW shim boundary;
+- `20129`: direct diagnostic compatibility CGW shim boundary, not the normal
+  Codex path;
 - `17841`: CGW upstream Responses endpoint.
 
 These ports are evidence hints, not a new configuration system. If the configured values differ, use the configured values and record them in the probe result.
@@ -151,23 +154,25 @@ Use the existing Herdr/controller delivery path to build this packet. Do not
 add a filesystem service, packet queue, scheduler, or reconciliation framework;
 the fallback packet is request-scoped evidence, not a second runtime owner.
 
-### 2. Check readiness at the real boundary
+### 2. Check readiness without creating a second model request
 
-Run the existing CGW readiness probe before delivery. `/health` is liveness only and is insufficient.
+Run the existing non-inference CGW preflight before ordinary delivery. The
+canonical Codex preflight checks the LightRSI adapter liveness endpoint and
+resolved provider/model configuration; it does not send a model-producing
+request. `/health` is intentionally liveness here because a normal task must
+not authorize both a readiness inference and a delivery inference.
 
-Readiness must prove all of the following:
+Readiness must prove all of the following without dispatching a prompt:
 
-- the router and shim processes are reachable;
+- the configured LightRSI adapter and 9Router boundaries are reachable;
 - the expected profile and provider/model binding are present;
-- authentication is accepted at the request boundary;
-- a minimal inference request can reach CGW;
-- the response is classified as CGW chat transport rather than native execution.
+- the selected runtime identity and overlay receipt are compatible;
+- no native executor or conflicting runtime owns the selected path.
 
-A `401` from the unauthenticated `/v1/models` preflight is not by itself proof
-of authentication failure when the shim protects that metadata route. Continue
-to the authenticated minimal inference probe; a `401` from the authenticated
-inference boundary is an authentication/configuration failure and must stop and
-repair the binding.
+Authenticated inference is reserved for an explicit installation acceptance or
+diagnostic operation, or for the one real task request. Its result may be
+cached against the runtime/configuration/overlay identity, but it must not be
+automatically repeated before every task.
 
 Do not retry an unauthenticated or queue-full request through another account, native executor, or raw provider endpoint.
 
@@ -192,9 +197,10 @@ execute `agent prompt` during pane selection. After verification, use one
 canonical `agent prompt` submission path: exactly one prompt, with no second
 submission, post-dispatch retry, or profile fallback.
 
-### 4. Deliver one controlled probe
+### 4. Deliver one controlled request
 
-Send a real, minimal prompt through the same route used by the intended work. The probe must capture:
+Send one real, minimal model-producing request through the same route used by
+the intended work. The request must capture:
 
 - requested profile and model;
 - resolved provider and model at the CGW boundary;
@@ -204,7 +210,11 @@ Send a real, minimal prompt through the same route used by the intended work. Th
 - native process evidence, if any;
 - quota before and after the probe when quota accounting is part of the claim.
 
-The probe is successful only when the requested model is listed or otherwise proven by the response, the reasoning setting is preserved, the CGW path is confirmed, and native quota is unchanged. A liveness `200` without inference proof is incomplete.
+The request is successful only when the requested model is listed or otherwise
+proven by the response, the reasoning setting is preserved, the CGW path is
+confirmed, and native quota is unchanged. For an ordinary task, the response
+from this one request is the inference proof; do not send a separate readiness
+inference first.
 
 For Herdr completion freshness, the launcher owns the pre-submit completion and
 state-change sequence baselines. Those baselines must be carried in the final
@@ -264,7 +274,8 @@ The overlay procedure must remain idempotent, preserve tracked user changes, det
 Before reporting success, record:
 
 - the exact workspace, package version, Git base, overlay receipt, and profile;
-- the readiness command and authenticated inference result;
+- the non-inference readiness command and the one authenticated inference result
+  from the delivery or explicit diagnostic operation;
 - the requested and observed model;
 - the requested and observed `reasoning_effort`;
 - the endpoint/provider and error classification, if applicable;
@@ -279,7 +290,9 @@ For material backend behavior, the direct boundary evidence from `skill-backend-
 Stop and report `blocked` when:
 
 - the configured CGW endpoint or credential source cannot be resolved;
-- readiness reaches only `/health` and no authenticated inference probe is available;
+- the ordinary preflight cannot prove the configured adapter is reachable, or an
+  explicit diagnostic/acceptance operation cannot obtain authenticated inference
+  evidence;
 - the requested profile cannot be proven compatible with the selected pane;
 - the response identifies native execution or a different provider/model;
 - quota changes during a CGW probe;
