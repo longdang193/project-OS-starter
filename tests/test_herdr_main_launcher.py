@@ -57,6 +57,27 @@ def _confirmed_task_result(status: str = "completed") -> dict[str, object]:
     return {"state": "confirmed", "status": status}
 
 
+def test_project_runtime_grant_canonicalizes_existing_marker() -> None:
+    task = "answer exactly OK [Runtime Grant: delegation.child_agents = deny]"
+
+    projected = LAUNCHER._project_runtime_grant(
+        task,
+        {"delegation": {"child_agents": "deny"}},
+    )
+
+    assert projected.count("[Runtime Grant: delegation.child_agents = deny]") == 1
+
+
+def test_project_runtime_grant_rejects_conflicting_existing_marker() -> None:
+    task = "answer exactly OK [Runtime Grant: delegation.child_agents = allow]"
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="conflicting Runtime Grant"):
+        LAUNCHER._project_runtime_grant(
+            task,
+            {"delegation": {"child_agents": "deny"}},
+        )
+
+
 def test_secretary_runtime_binding_requires_all_identity_fields() -> None:
     binding = LAUNCHER._normalize_secretary_runtime_binding(
         task_id="task-1",

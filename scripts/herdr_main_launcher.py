@@ -121,6 +121,9 @@ _SHARED_WEB_RUNTIME_LOCK_PARENT = "herdr-shared-web-runtime"
 _SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-20128-20129.lock"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
+_RUNTIME_GRANT_MARKER_PATTERN = re.compile(
+    r"\s*\[Runtime Grant: delegation\.child_agents = (allow|deny)\]"
+)
 _SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe", "cmd.exe", "bash", "sh", "zsh", "fish"}
 _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -1044,7 +1047,11 @@ def _project_runtime_grant(task: str, runtime_grant: dict[str, Any]) -> str:
     child_agents = delegation.get("child_agents") if isinstance(delegation, dict) else None
     if child_agents not in _CHILD_AGENT_GRANT_VALUES:
         raise LaunchBlocked("Runtime Grant is missing valid delegation.child_agents.")
-    return f"{task} [Runtime Grant: delegation.child_agents = {child_agents}]"
+    existing = _RUNTIME_GRANT_MARKER_PATTERN.findall(task)
+    if any(value != child_agents for value in existing):
+        raise LaunchBlocked("Task contains a conflicting Runtime Grant delegation.child_agents marker.")
+    task_without_markers = _RUNTIME_GRANT_MARKER_PATTERN.sub("", task).rstrip()
+    return f"{task_without_markers} [Runtime Grant: delegation.child_agents = {child_agents}]"
 
 
 def _elapsed_ms(started: float) -> float:
