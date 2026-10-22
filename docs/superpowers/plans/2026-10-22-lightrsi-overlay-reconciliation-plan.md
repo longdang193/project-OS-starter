@@ -410,4 +410,3 @@ mutated, and the plan remains proposed for approval.
    `git diff --check` pass from the execution workspace.
 8. The plan remains `proposed` until approved for execution and later fresh
    verification.
-
