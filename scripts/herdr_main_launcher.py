@@ -572,7 +572,7 @@ def _herdr_pane(
     existing_agent = bool(selected.get("agent") or selected.get("agent_status") not in (None, "unknown"))
     agent_info: dict[str, Any] | None = None
     if existing_agent:
-        if executor != "codex" or expected_profile is None or context_identity is None:
+        if executor != "codex" or expected_profile is None:
             raise TargetCandidateRejected(f"Pane already has agent state: {pane}")
         agent_info = _agent_for_pane(
             herdr,
@@ -583,12 +583,17 @@ def _herdr_pane(
         )
         if not isinstance(agent_info, dict):
             raise TargetCandidateRejected(f"Pane agent identity is unavailable: {pane}")
-        if str(agent_info.get("agent_status") or "unknown") != "idle":
+        agent_status = str(agent_info.get("agent_status") or "unknown")
+        if agent_status not in {"idle", "done"}:
             raise TargetCandidateRejected(f"Pane agent is active: {pane}")
-        expected_marker = _context_marker(context_identity)
-        actual_marker = _agent_context_marker(agent_info.get("name"))
-        if expected_marker != actual_marker:
-            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
+        if context_identity is None:
+            if agent_status != "done":
+                raise TargetCandidateRejected(f"Pane context is required for idle agent reuse: {pane}")
+        else:
+            expected_marker = _context_marker(context_identity)
+            actual_marker = _agent_context_marker(agent_info.get("name"))
+            if expected_marker != actual_marker:
+                raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
 
     process_payload = _json_command(
         [herdr, "--session", session, "pane", "process-info", "--pane", pane],
@@ -776,10 +781,24 @@ def _run_with_pane_ownership(
     env: dict[str, str],
     timeout: float,
     verify: bool = True,
+    execute_command: bool = True,
+    expected_profile: AgentProfile | None = None,
+    context_identity: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     with _pane_ownership_lock(cwd, session, pane):
         if verify:
-            _herdr_pane(cwd, session, pane, herdr, executor=executor, env=env)
+            _herdr_pane(
+                cwd,
+                session,
+                pane,
+                herdr,
+                executor=executor,
+                env=env,
+                expected_profile=expected_profile,
+                context_identity=context_identity,
+            )
+        if not execute_command:
+            return subprocess.CompletedProcess(command, 0, "", "")
         return _run(command, env=env, timeout=timeout)
 
 
@@ -2119,13 +2138,13 @@ def _release_stale_idle_agent(
             session,
             "pane",
             "release-agent",
+            pane,
             "--source",
             source,
             "--agent",
             name,
             "--seq",
             str(sequence),
-            pane,
         ],
         env=env,
         timeout=timeout,
@@ -3887,6 +3906,16 @@ def _main_body(args: argparse.Namespace) -> int:
             environment = _codex_environment(Path(str(codex_evidence["codex_home"])))
         else:
             environment = _herdr_environment()
+        dispatch_profile = (
+            _profile(Path(args.cwd).resolve() / "agents", args.profile)
+            if args.executor == "codex"
+            else None
+        )
+        dispatch_context_identity = _stable_context_identity(
+            secretary_task_id=args.secretary_task_id,
+            plan_identity=args.plan_identity,
+            assignment_id=args.assignment_id,
+        )
         for attempt in range(2):
             attempt_started = time.monotonic()
             pane_run_duration_ms: float | None = None
@@ -3907,6 +3936,12 @@ def _main_body(args: argparse.Namespace) -> int:
                             else (float(timeout_policy["startup_timeout_ms"]) / 1000) + 5.0
                         ),
                         verify=bool(evidence["herdr"].get("pane_cwd")),
+                        execute_command=not (
+                            args.executor == "codex"
+                            and evidence["herdr"].get("reuse") is True
+                        ),
+                        expected_profile=dispatch_profile,
+                        context_identity=dispatch_context_identity,
                     )
                 finally:
                     if args.executor == "deepagents":
