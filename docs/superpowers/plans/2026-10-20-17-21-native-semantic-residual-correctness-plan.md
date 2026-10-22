@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: superseded
 layer: change
 name: native-semantic-residual-correctness
 targets:
@@ -15,6 +15,10 @@ targets:
 ---
 
 # Native Semantic Residual Correctness
+
+Historical plan superseded by the native semantic implementation now present on
+`main` and its subsequent runtime follow-up work. Retained for historical review
+and recommendation context; no separate successor plan is required.
 
 ## Goal
 
