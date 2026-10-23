@@ -141,6 +141,15 @@ launch a browser, authenticate, submit a review, inspect hidden state, or retry
 indefinitely. If it cannot visibly confirm the requested model and effort, stop
 the review as `incomplete` or `blocked`.
 
+The model selector may open on the thinking-effort subview, leaving stale model
+rows in the DOM while the visible `Medium`/`High` power control covers them.
+Navigate through the visible `Select model` control before locating a model;
+then click a safe point in the upper part of the requested row, use real
+Playwright hit-testing, and verify `aria-checked` afterward. Do not replace
+that click with `element.click()`, `force`, or hidden-state inspection: pointer
+interception is a selector failure, not evidence that the model is locked.
+Match the model label separately from nearby status or usage-banner text.
+
 For an explicitly authorized end-to-end prompt submission, use
 `scripts/run-review-prompt.mjs`. It navigates an existing authenticated page
 to ChatGPT, selects and verifies the model and effort, fills the prompt, and
