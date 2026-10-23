@@ -143,6 +143,30 @@ submits it once. `openReviewTab(context)` and
 authenticated Playwright context; they do not launch a browser or
 authenticate. The helpers never retry, rerun, or interpret the review response.
 
+### Helper execution boundary
+
+These `.mjs` helpers run in the Node/Playwright runner, not in the ChatGPT page
+context. Do not import them from `page.evaluate` or another inline browser
+snippet; page evaluation cannot resolve workspace modules. Load them through
+the runner's file-backed entry point instead:
+
+```js
+import { runReviewPromptInNewTab } from "./.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
+
+const { page } = await runReviewPromptInNewTab(context, {
+  model: "GPT-6",
+  effort: "High",
+  prompt: reviewPrompt
+});
+```
+
+The runner must provide an already authenticated Playwright `context`. Use its
+`filename` or `sourcePath` option when the browser tool supports file-backed
+execution. If the helper cannot be loaded or the authenticated context cannot
+be attached, report `incomplete` or `blocked`; do not replace the helper with
+hidden DOM or network-state inspection. Prompt submission remains gated by the
+explicit user authorization required by this skill.
+
 ### 3. Open the review
 
 Use Playwright first to open or control an authenticated normal Chrome/Edge
