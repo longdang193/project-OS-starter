@@ -117,7 +117,7 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: activate Task 5 in the isolated LightRSI worktree and reconcile canonical/generated profile and fixture evidence
+- Next action: activate Task 6 and reconcile cross-repository evidence, installed-state inventory, and rollback proof
 - Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -127,8 +127,8 @@ separate.
 | Task 2 | `completed` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
 | Task 3 | `completed` | `9router` + `LightRSI` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
 | Task 4 | `completed` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | current equivalents: 279 passed; adapter drift check passed; historical filenames `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py` are absent and were not substituted as failures |
-| Task 5 | `active` | `LightRSI` | `lead controller` | Task 1 | canonical/generated profile and fixture proof | activated after Task 4 launcher proof |
-| Task 6 | `pending` | all three repositories | `unresolved` | Tasks 2-5 | synchronized verification and rollback record | pending |
+| Task 5 | `completed` | `LightRSI` | `lead controller` | Task 1 | canonical/generated profile and fixture proof | generated policy projection consumed; retained-combo contract fixture and provider/capability assertions passed; focused and full workspace checks passed |
+| Task 6 | `active` | all three repositories | `lead controller` | Tasks 2-5 | synchronized verification and rollback record | activated after Task 5 full-suite proof |
 | Task 7 | `pending` | all three repositories | `unresolved` | Task 6 | fresh final verification and handoff evidence | pending |
 
 ## Task Breakdown
@@ -470,12 +470,12 @@ separate.
 - Stop for: any generated output changed without a canonical source change, any retained logical profile without provider/capability evidence, or any profile that resolves to a retired member.
 
 **Steps:**
-- [ ] Replace duplicated retired-name/prefix literals with the generated projection and assert the contract version matches the 9router owner.
-- [ ] Preserve `combo-ui` and `combo-xhigh` as logical profiles only when the acceptance matrix records fresh downstream provider/capability evidence with no retired member.
-- [ ] Add a bounded cross-repository contract check that resolves `combo-ui` and `combo-xhigh` against a declared 9Router fixture or runtime snapshot, recursively validates members and aliases, and proves intended provider identity/capabilities without copying mutable member lists into LightRSI.
-- [ ] Rename the no-replay fixture message at `context-rebase-behavior.test.ts` from `CGW request was dispatched` to provider-neutral wording and assert the no-replay marker, dispatch state, status, and retry count instead of the retired name.
-- [ ] Regenerate all LightRSI adapter/config outputs from their canonical inputs and scan canonical plus generated files for retired selections.
-- [ ] Run the exact package typecheck, build, and focused profile tests from the frozen checkout, then run the broader workspace suite separately.
+- [x] Replace duplicated retired-name/prefix literals with the generated projection and assert the contract version matches the 9router owner.
+- [x] Preserve `combo-ui` and `combo-xhigh` as logical profiles only when the acceptance matrix records fresh downstream provider/capability evidence with no retired member.
+- [x] Add a bounded cross-repository contract check that resolves `combo-ui` and `combo-xhigh` against a declared 9Router fixture or runtime snapshot, recursively validates members and aliases, and proves intended provider identity/capabilities without copying mutable member lists into LightRSI.
+- [x] Rename the no-replay fixture message at `context-rebase-behavior.test.ts` from `CGW request was dispatched` to provider-neutral wording and assert the no-replay marker, dispatch state, status, and retry count instead of the retired name.
+- [x] Regenerate all LightRSI adapter/config outputs from their canonical inputs and scan canonical plus generated files for retired selections.
+- [x] Run the exact package typecheck, build, and focused profile tests from the frozen checkout, then run the broader workspace suite separately.
 
 **Verification:**
 - `agent-profile-contract.test.ts` rejects all four retired families and proves retained logical profiles resolve to no retired member.
@@ -483,6 +483,13 @@ separate.
 
 **Exit Criteria:**
 - LightRSI canonical and generated surfaces agree, retained profiles remain usable, and no generic behavior test treats CGW as a supported runtime contract.
+
+**Execution Evidence (2026-10-23):**
+- Passed focused profile and adapter checks: TokenPilot profile suite `9/9`; Codex upstream and context-rebase matrix `48/48`.
+- Passed `pnpm --dir components/presets/tokenpilot typecheck`, `pnpm --dir components/adapters/codex typecheck`, `pnpm --dir components/presets/tokenpilot build`, and `pnpm --dir components/adapters/codex build`.
+- Passed the full LightRSI workspace suite after building required local runtime artifacts: package suites passed, including Codex `606/606`, CLI `38/38`, MCP `17/17`, and TokenPilot `9/9`.
+- Added `components/presets/tokenpilot/retired-model-policy.json` as the generated 9Router policy projection and `components/presets/tokenpilot/tests/fixtures/9router-retained-combo-contract.json` as a bounded provider/capability contract fixture; no mutable combo member list is copied into LightRSI.
+- Setup note: the first broad-suite attempts required the existing MCP and CLI package builds to materialize ignored `dist` entries; after those builds, the full workspace rerun passed.
 
 ### Task 6: Consolidate evidence, readiness, and rollback proof
 
