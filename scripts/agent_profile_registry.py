@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+import json
 import random
 import tomllib
 
@@ -23,8 +24,26 @@ REQUIRED_KEYS = {
     "developer_instructions",
 }
 ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "herdr_only"}
-RETIRED_MODEL_NAMES = frozenset({"combo-web-high", "combo-web-medium"})
-RETIRED_MODEL_PREFIXES = ("cgw/", "chatgpt-web/")
+_RETIREMENT_POLICY_PATH = Path(__file__).resolve().parents[1] / "repo_config" / "retired-model-policy.json"
+
+
+def _load_retirement_policy() -> dict[str, object]:
+    try:
+        payload = json.loads(_RETIREMENT_POLICY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Cannot read retirement policy {_RETIREMENT_POLICY_PATH}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Retirement policy {_RETIREMENT_POLICY_PATH} must be a JSON object.")
+    for key in ("retiredModelNames", "retiredModelPrefixes"):
+        values = payload.get(key)
+        if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+            raise RuntimeError(f"Retirement policy `{key}` must be a non-empty string list.")
+    return payload
+
+
+_RETIREMENT_POLICY = _load_retirement_policy()
+RETIRED_MODEL_NAMES = frozenset(_RETIREMENT_POLICY["retiredModelNames"])
+RETIRED_MODEL_PREFIXES = tuple(_RETIREMENT_POLICY["retiredModelPrefixes"])
 
 
 @dataclass(frozen=True)

@@ -110,8 +110,7 @@ new supervisor or runtime ledger. For DeepAgents, read the correlated lifecycle
 receipt first. A confirmed receipt is authoritative and skips `pane wait-output`,
 `pane process-info`, and `pane read`; unresolved receipts use pane probes only
 for diagnostics or legacy fallback. For Codex, inspect `agent get` and
-`agent read`. The repository launcher additionally serializes `9router`
-Retired CGW and web-combo aliases are rejected before provider dispatch and do
+`agent read`. Retired CGW and web-combo aliases are rejected before provider dispatch and do
 not acquire a runtime lock, perform a preflight, or enter the attempt lifecycle.
 Maintained native requests use the normal admission and settlement path. Record
 executor, session, pane, agent identity, task hash, state, and evidence source;

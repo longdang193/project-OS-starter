@@ -287,6 +287,45 @@ def test_resolve_launch_rejects_explicit_over_limit_agent_name_before_start(
     assert pane_calls == []
 
 
+@pytest.mark.parametrize(
+    "model",
+    ["combo-web-high", "combo-web-medium", "cgw/gpt-5.6-sol", "chatgpt-web/gpt-5.6-sol"],
+)
+def test_resolve_launch_rejects_retired_models_before_side_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+) -> None:
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "retired.toml").write_text(
+        'name = "retired"\n'
+        'model_provider = "9router"\n'
+        f'model = "{model}"\n'
+        'description = "test"\n'
+        'developer_instructions = "do not modify files"\n',
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(LAUNCHER, "_run", lambda *args, **kwargs: calls.append("transport"))
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda *args, **kwargs: calls.append("preflight"))
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: calls.append("pane"))
+    monkeypatch.setattr(LAUNCHER, "_submit_codex_prompt", lambda *args, **kwargs: calls.append("prompt"))
+
+    with pytest.raises(LAUNCHER.LaunchBlocked, match="retired model"):
+        LAUNCHER.resolve_launch(
+            profile_name="retired",
+            session="auto",
+            pane="auto",
+            cwd=tmp_path,
+            expected_base="HEAD",
+            executor="codex",
+            task="assign lane",
+        )
+
+    assert calls == []
+
+
 def test_unique_agent_names_are_bounded_and_unique(monkeypatch: pytest.MonkeyPatch) -> None:
     values = iter(("a" * 32, "b" * 32))
     monkeypatch.setattr(LAUNCHER.uuid, "uuid4", lambda: type("UUID", (), {"hex": next(values)})())
