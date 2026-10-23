@@ -112,11 +112,11 @@ canonical-versus-packaged policy ownership.
 - Implement the canonical retirement validation contract and its packaged projection proof.
 
 **Template Profile:**
-- Controller-selected: `unresolved while task is pending`
+- Controller-selected: `normal`
 - Selection basis: registry behavior is bounded and source/test driven; resolve through planning dispatch before activation.
 
 **Validator Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `review`
 - Selection basis: independently verify provider alias rejection and no-side-effect ordering.
 
 **Specification Coverage:**
@@ -162,11 +162,11 @@ canonical-versus-packaged policy ownership.
 - Refine target discovery error classification and deadline behavior without adding another lifecycle subsystem.
 
 **Template Profile:**
-- Controller-selected: `unresolved while task is pending`
+- Controller-selected: `high`
 - Selection basis: launcher behavior is high-impact but localized to target discovery and existing pane-lock helpers.
 
 **Validator Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `review`
 - Selection basis: validate both allocation and preserved fail-closed cases independently.
 
 **Specification Coverage:**
@@ -215,11 +215,11 @@ canonical-versus-packaged policy ownership.
 - Reconcile documentation and generated/package validation after the behavioral changes are proven.
 
 **Template Profile:**
-- Controller-selected: `unresolved while task is pending`
+- Controller-selected: `normal`
 - Selection basis: final cross-surface reconciliation and verification.
 
 **Validator Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `review`
 - Selection basis: independently inspect generated policy ownership and final test output.
 
 **Specification Coverage:**
