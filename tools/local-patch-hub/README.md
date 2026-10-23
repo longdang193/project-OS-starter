@@ -173,6 +173,39 @@ The `:20129` CGW Chat shim described below is a separate diagnostic and
 compatibility path. It is not the normal Codex route and is not a substitute
 for the LightRSI adapter.
 
+### `codex-chatgpt-web` takeover safety gate
+
+The browser-helper takeover defect reported in
+[codex-chatgpt-web issue #854](https://github.com/miuuyy/codex-chatgpt-web/issues/854)
+could treat an already-running browser turn as a fresh lease and press Send a
+second time. The fix is released in `codex-chatgpt-web` v6.1.12 and later: an
+ambiguous helper takeover stops for inspection instead of entering the fresh
+message path. Keep the runtime at or above v6.1.12; v6.1.13 is the current
+known-good runtime at this gate.
+
+The patch hub does not patch, install, or restart `codex-chatgpt-web`. Before a
+live probe, verify the externally owned runtime through its non-inference
+identity endpoint and fail closed if the version or ownership state is wrong:
+
+```powershell
+$health = Invoke-RestMethod -Uri http://127.0.0.1:17841/healthz -TimeoutSec 5
+if ($health.service -ne "codex-chatgpt-web" -or
+    ([version]$health.version -lt [version]"6.1.12") -or
+    $health.mode -ne "browser-only" -or
+    $health.accepting_turns -ne $true) {
+  throw "codex-chatgpt-web runtime identity or takeover safety gate failed"
+}
+if ([int]$health.active_http_turns -ne 0 -or
+    [int]$health.active_browser_turns -ne 0) {
+  throw "codex-chatgpt-web has an active turn; observe and reconcile before probing"
+}
+```
+
+Do not use `/healthz` as an inference probe, and do not restart or take over a
+runtime with an active turn. If the endpoint is unavailable, the version is
+below v6.1.12, or active turns are present, stop and repair or reconcile the
+externally owned browser runtime before sending any prompt.
+
 ## 9router + CGW diagnostic combo runtime
 
 At this gate, the CGW combo uses the registered `0.5.104` runtime overlay below. The overlay

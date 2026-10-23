@@ -19,24 +19,30 @@ def binding() -> dict[str, str]:
         "task_sha256": "task-digest",
         "repository_identity": "repo/example",
         "plan_identity": "plan/example",
-        "profile": "web-high",
-        "model_identity": "cgw/web-high",
+        "profile": "normal",
+        "model_identity": "9router/combo-normal",
         "grant_digest": "grant-digest",
     }
 
 
-def test_logical_operation_id_is_stable_and_binding_scoped() -> None:
-    first = derive_logical_operation_id(**binding())
-    second = derive_logical_operation_id(**binding())
+def operation_identity() -> dict[str, str]:
+    return {
+        "task_id": "task-1",
+        "plan_revision": "plan-rev-1",
+        "run_id": "run-1",
+    }
+
+
+def test_logical_operation_id_is_stable_and_not_binding_scoped() -> None:
+    first = derive_logical_operation_id(**operation_identity())
+    second = derive_logical_operation_id(**operation_identity())
 
     assert first == second
     assert first.startswith("operation-")
-    assert first != derive_logical_operation_id(**{**binding(), "task_sha256": "other"})
-    assert first != derive_logical_operation_id(**{**binding(), "repository_identity": "other"})
 
 
 def test_claim_persists_intent_and_blocks_restart_after_submission(tmp_path: Path) -> None:
-    operation_id = derive_logical_operation_id(**binding())
+    operation_id = derive_logical_operation_id(**operation_identity())
     path = gate_path(operation_id, root=tmp_path)
 
     claimed = claim_submission(
@@ -62,7 +68,7 @@ def test_claim_persists_intent_and_blocks_restart_after_submission(tmp_path: Pat
 
 
 def test_uncertain_submission_blocks_retry_until_reconciled(tmp_path: Path) -> None:
-    operation_id = derive_logical_operation_id(**binding())
+    operation_id = derive_logical_operation_id(**operation_identity())
     path = gate_path(operation_id, root=tmp_path)
     claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
     settle_submission(path, attempt_id="attempt-1", state="delivery_uncertain")
@@ -79,7 +85,7 @@ def test_uncertain_submission_blocks_retry_until_reconciled(tmp_path: Path) -> N
 
 
 def test_concurrent_claims_have_one_owner(tmp_path: Path) -> None:
-    operation_id = derive_logical_operation_id(**binding())
+    operation_id = derive_logical_operation_id(**operation_identity())
     path = gate_path(operation_id, root=tmp_path)
 
     def claim(attempt_id: str) -> dict[str, object]:
@@ -97,7 +103,7 @@ def test_concurrent_claims_have_one_owner(tmp_path: Path) -> None:
 
 
 def test_conflicting_binding_fails_closed(tmp_path: Path) -> None:
-    operation_id = derive_logical_operation_id(**binding())
+    operation_id = derive_logical_operation_id(**operation_identity())
     path = gate_path(operation_id, root=tmp_path)
     claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
 

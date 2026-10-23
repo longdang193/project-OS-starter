@@ -33,6 +33,11 @@ from scripts.secretary_live_runtime import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolate_submission_gate_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path / "submission-gates"))
+
+
 def request(**overrides: object) -> SecretaryLaunchRequest:
     values: dict[str, object] = {
         "task_id": "task-1",
@@ -89,6 +94,45 @@ def test_recover_quarantined_receipt_requires_exact_resource_identity(tmp_path: 
 
     with pytest.raises(ValueError, match="attempt identity"):
         recover_quarantined_receipt(receipt, herdr="herdr")
+
+
+def test_run_probe_claims_admission_before_workspace_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    events: list[str] = []
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime, "_configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(
+        runtime,
+        "claim_submission",
+        lambda *args, **kwargs: events.append("claim") or {"state": "claimed"},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda *args, **kwargs: events.append("prepare") or (_ for _ in ()).throw(
+            runtime.LaunchBlocked("workspace allocation stopped")
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "settle_submission",
+        lambda *args, **kwargs: events.append("settle") or {},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_observe_provider_telemetry",
+        lambda *args, **kwargs: {"disposition": "inconclusive"},
+    )
+
+    result = runtime.run_probe(request(), output=tmp_path / "probe.json")
+
+    assert events == ["claim", "prepare", "settle"]
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
 
 
 def test_recover_quarantined_receipt_is_idempotent_when_already_settled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1100,6 +1144,33 @@ def test_resolved_request_uses_profile_model_and_git_revision(
     assert resolved.model_identity == "combo-normal"
     assert resolved.runtime_grant_digest == "not_applicable"
     assert resolved.reuse_allowed is True
+
+
+def test_native_secretary_rejects_herdr_only_profile_before_starting_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "herdr-only.toml").write_text(
+        'name = "herdr-only"\n'
+        'model_provider = "9router"\n'
+        'model = "combo-herdr-only"\n'
+        'description = "web profile"\n'
+        'developer_instructions = "use tools"\n'
+        'herdr_only = true\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime, "_read_only_git_anchor", lambda _: (tmp_path, "head-1"))
+    monkeypatch.setattr(runtime, "_read_only_workspace_identity", lambda _, output=None: (False, None, ()))
+
+    with pytest.raises(runtime.LaunchBlocked, match="herdr_only"):
+        runtime._resolve_normal_request(
+            normal_request(worktree=tmp_path, profile="herdr-only"),
+            {},
+        )
 
 
 def test_configured_provider_requires_active_secretary_route(tmp_path: Path) -> None:

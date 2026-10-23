@@ -45,6 +45,14 @@ except ModuleNotFoundError:
     )
 
 try:
+    from agent_profile_registry import load_agent_profiles
+    from project_os_runtime.attempt import grant_digest, normalize_runtime_grant
+    from project_os_runtime.submission_gate import (
+        claim_submission,
+        derive_logical_operation_id,
+        gate_path,
+        settle_submission,
+    )
     from project_os_runtime.secretary_economics import normalize_response_usage
     from project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
@@ -76,6 +84,14 @@ try:
     )
     from project_os_runtime.codex_app_server import CodexAppServerClient, NativeAppServerError
 except ModuleNotFoundError:
+    from scripts.agent_profile_registry import load_agent_profiles
+    from scripts.project_os_runtime.attempt import grant_digest, normalize_runtime_grant
+    from scripts.project_os_runtime.submission_gate import (
+        claim_submission,
+        derive_logical_operation_id,
+        gate_path,
+        settle_submission,
+    )
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
     from scripts.project_os_runtime.secretary_receipts import (
         SOURCE_PRODUCERS,
@@ -264,6 +280,7 @@ class SecretaryLaunchRequest:
     profile: str = "normal"
     session: str = "auto"
     pane: str = "auto"
+    logical_operation_id: str | None = None
 
     def __post_init__(self) -> None:
         for field in (
@@ -283,6 +300,8 @@ class SecretaryLaunchRequest:
             _required_text(getattr(self, field), field)
         if self.provider != SECRETARY_PROVIDER:
             raise ValueError(f"Secretary provider must be {SECRETARY_PROVIDER}")
+        if self.logical_operation_id is not None:
+            _required_text(self.logical_operation_id, "logical_operation_id")
 
 
 @dataclass(frozen=True)
@@ -383,6 +402,16 @@ def _resolve_normal_request(
             profile = tomllib.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
         except (OSError, tomllib.TOMLDecodeError):
             profile = {}
+        if isinstance(profile, Mapping) and profile.get("herdr_only") is True:
+            profiles = load_agent_profiles(
+                repository_root / "agents",
+                runtime_provider=provider_identity,
+            )
+            selected_profile = profiles.get(request.profile)
+            if selected_profile is None or selected_profile.herdr_only:
+                raise LaunchBlocked(
+                    f"Native Secretary cannot launch herdr_only profile: {request.profile}"
+                )
         profile_provider = profile.get("model_provider") if isinstance(profile, Mapping) else None
         if profile_provider is not None and profile_provider != provider_identity:
             raise ValueError(f"Secretary profile must use {provider_identity}")
@@ -488,6 +517,8 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
     ]
     if dry_run:
         command.append("--dry-run")
+    if request.logical_operation_id is not None:
+        command.extend(["--logical-operation-id", request.logical_operation_id])
     return command
 
 
@@ -1764,6 +1795,30 @@ def _configured_model(request: SecretaryLaunchRequest) -> str:
         raise RuntimeError(f"Secretary profile must use {SECRETARY_PROVIDER}")
     model = profile.get("model")
     return model.strip() if isinstance(model, str) and model.strip() else "unknown"
+
+
+def _probe_operation_id(request: SecretaryLaunchRequest) -> str:
+    return request.logical_operation_id or derive_logical_operation_id(
+        task_id=request.task_id,
+        plan_revision=request.plan_revision,
+        run_id=request.run_id,
+    )
+
+
+def _probe_submission_binding(
+    request: SecretaryLaunchRequest,
+    *,
+    configured_model: str,
+) -> dict[str, str]:
+    runtime_grant = normalize_runtime_grant(executor="codex")
+    return {
+        "task_sha256": hashlib.sha256(request.task.encode("utf-8")).hexdigest(),
+        "repository_identity": request.repository_identity,
+        "plan_identity": request.plan_identity,
+        "profile": request.profile,
+        "model_identity": f"{request.provider}/{configured_model}",
+        "grant_digest": grant_digest("codex", runtime_grant),
+    }
 
 
 def _smoke_receipt(
@@ -3605,13 +3660,35 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     payload: Mapping[str, Any] | None = None
     submission_anchor: Mapping[str, Any] | None = None
     provider_session_id: str | None = None
+    operation_id = _probe_operation_id(request)
+    submission_binding = _probe_submission_binding(request, configured_model="unknown")
+    submission_path: Path | None = None
+    submission_attempt_id = uuid.uuid4().hex
+    submission_claimed = False
     try:
         _configured_provider(request.codex_home)
         configured_model = _configured_model(request)
+        submission_binding = _probe_submission_binding(
+            request,
+            configured_model=configured_model,
+        )
+        submission_path = gate_path(operation_id)
+        admission = claim_submission(
+            submission_path,
+            operation_id=operation_id,
+            attempt_id=submission_attempt_id,
+            binding=submission_binding,
+        )
+        if admission.get("state") == "blocked":
+            raise LaunchBlocked(
+                "logical operation admission blocked; prior attempt already owns delivery"
+            )
+        submission_claimed = True
         if not herdr:
             raise LaunchBlocked("Required executable unavailable on PATH: herdr")
+        launch_request = replace(request, logical_operation_id=operation_id)
         launch_request, preflight, workspace_id = _prepare_herdr_target(
-            request,
+            launch_request,
             herdr=herdr,
             env=environment,
         )
@@ -3760,6 +3837,24 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     result["evidence_provenance"] = "capability-probe"
                     result["failure_kind"] = "runtime_workspace_cleanup_evidence_missing"
                     result.update(_classify_capabilities("BLOCKED_CAPABILITY", result.get("post_submit_observation")))
+        if submission_claimed and submission_path is not None:
+            if result is not None and result.get("disposition") == "READY":
+                settlement = "settled"
+            elif workspace_id is None:
+                settlement = "not_delivered"
+            else:
+                settlement = "delivery_uncertain"
+            settle_submission(
+                submission_path,
+                attempt_id=submission_attempt_id,
+                state=settlement,
+            )
+            if result is not None:
+                result["submission_gate"] = {
+                    "logical_operation_id": operation_id,
+                    "state": settlement,
+                    "path": str(submission_path),
+                }
     if result is None:
         raise RuntimeError("Secretary smoke did not produce a launcher result")
     result.setdefault("preflight", preflight)

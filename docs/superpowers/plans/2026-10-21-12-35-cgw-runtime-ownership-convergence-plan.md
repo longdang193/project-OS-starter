@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: superseded
 layer: change
 distribution_tier: project
 name: cgw-runtime-ownership-convergence
@@ -20,6 +20,9 @@ targets:
 ---
 
 # CGW Runtime Ownership Convergence
+
+Historical plan superseded and retired on October 23, 2026 during the CGW plan
+review. Retained for historical context; no successor plan is required.
 
 ## Goal
 

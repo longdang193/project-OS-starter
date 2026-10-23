@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: superseded
 layer: change
 name: 9router-codex-opaque-relay
 targets:
@@ -17,6 +17,9 @@ targets:
 ---
 
 # 9Router Codex Opaque Relay
+
+Historical plan superseded and retired on October 23, 2026 during the CGW plan
+review. Retained for historical context; no successor plan is required.
 
 ## Review Basis
 

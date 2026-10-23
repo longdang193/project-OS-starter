@@ -72,20 +72,11 @@ def test_repository_review_profiles_preserve_specialized_contract(name: str, mod
     assert "pass, fail, or blocked" in instructions
 
 
-@pytest.mark.parametrize(
-    ("name", "model"),
-    (("web-medium", "combo-web-medium"), ("web-high", "combo-web-high")),
-)
-def test_repository_web_profiles_are_explicit_only(name: str, model: str) -> None:
+def test_repository_web_profiles_are_removed() -> None:
     profiles = REGISTRY.load_agent_profiles(ROOT / "agents")
-    profile = profiles[name]
 
-    assert profile.rank is None
-    assert profile.model_provider == "9router"
-    assert profile.model == model
-    assert profile.herdr_only is True
-    assert "web" in profile.description.lower()
-    assert "tool" in profile.developer_instructions.lower()
+    assert "web-high" not in profiles
+    assert "web-medium" not in profiles
 
 
 def test_select_review_profiles_samples_distinct_candidates() -> None:

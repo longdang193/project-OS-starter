@@ -243,7 +243,7 @@ index 00000000..e2acc200
 +  it("stops combo fallback on the local queue boundary", async () => {
 +    let calls = 0;
 +    const result = await handleComboChat({
-+      body: { model: "combo-web-high" },
++      body: { model: "combo-normal" },
 +      models: ["cgw/gpt-6.1-sol", "cgw/gpt-5.6-sol"],
 +      handleSingleModel: async () => {
 +        calls += 1;
@@ -262,7 +262,7 @@ index 00000000..e2acc200
 +  it("stops combo fallback after CGW dispatch", async () => {
 +    let calls = 0;
 +    const result = await handleComboChat({
-+      body: { model: "combo-web-high" },
++      body: { model: "combo-normal" },
 +      models: ["cgw/gpt-6.1-sol", "cgw/gpt-5.6-sol"],
 +      handleSingleModel: async () => {
 +        calls += 1;
