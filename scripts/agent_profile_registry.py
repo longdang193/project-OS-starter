@@ -24,7 +24,7 @@ REQUIRED_KEYS = {
 }
 ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "herdr_only"}
 RETIRED_MODEL_NAMES = frozenset({"combo-web-high", "combo-web-medium"})
-RETIRED_MODEL_PREFIXES = ("cgw/",)
+RETIRED_MODEL_PREFIXES = ("cgw/", "chatgpt-web/")
 
 
 @dataclass(frozen=True)

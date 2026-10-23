@@ -122,7 +122,7 @@ def test_load_profiles_rejects_invalid_sources(
         REGISTRY.load_agent_profiles(agents)
 
 
-@pytest.mark.parametrize("model", ["combo-web-high", "combo-web-medium", "cgw/gpt-5.6-sol"])
+@pytest.mark.parametrize("model", ["combo-web-high", "combo-web-medium", "cgw/gpt-5.6-sol", "chatgpt-web/gpt-5.6-sol"])
 def test_load_profiles_rejects_retired_models(tmp_path: Path, model: str) -> None:
     write_profile(tmp_path, "retired", None)
     profile_path = tmp_path / "agents" / "retired.toml"
