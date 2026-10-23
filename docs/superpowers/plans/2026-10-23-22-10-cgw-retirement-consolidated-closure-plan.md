@@ -115,21 +115,21 @@ separate.
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `codex/cgw-retirement-consolidated-closure`
-- Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
+- Base commit: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: activate Task 7 for fresh final verification; keep deployment completion separate because installed startup cleanup remains approval-gated
-- Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
+- Next action: preserve Task 7 as active until implementation commits are authorized and the two discovered Startup entries are removed or explicitly dispositioned; then rerun final verification against immutable implementation revisions
+- Blockers: final verification is `incomplete` because implementation/release SHAs cannot be recorded while implementation commits remain prohibited, and installed-state cleanup remains approval-gated for `9router.vbs` and `ProjectOS-LightMem2-Codex-Overlay.cmd`; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 0 | `completed` | current | `lead controller` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
-| Task 1 | `completed` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, exact Vitest matrix 34/34, extended image matrix 37/37 |
-| Task 2 | `completed` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
-| Task 3 | `completed` | `9router` + `LightRSI` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
-| Task 4 | `completed` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | current equivalents: 279 passed; adapter drift check passed; historical filenames `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py` are absent and were not substituted as failures |
-| Task 5 | `completed` | `LightRSI` | `lead controller` | Task 1 | canonical/generated profile and fixture proof | generated policy projection consumed; retained-combo contract fixture and provider/capability assertions passed; focused and full workspace checks passed |
-| Task 6 | `completed` | all three repositories | `lead controller` | Tasks 2-5 | synchronized verification and rollback record | evidence reconciled; source-complete is distinct from deployment-complete; startup cleanup remains approval-gated |
-| Task 7 | `active` | all three repositories | `lead controller` | Task 6 | fresh final verification and handoff evidence | activated after Task 6 evidence reconciliation; final status cannot be `verified` while installed startup cleanup is unresolved |
+| Task 0 | `completed` | current | `codex` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
+| Task 1 | `completed` | `9router-worktree` | `codex` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, exact Vitest matrix 34/34, extended image matrix 37/37 |
+| Task 2 | `completed` | `9router` | `codex` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
+| Task 3 | `completed` | `9router` + `LightRSI` | `codex` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
+| Task 4 | `completed` | `project-OS-starter` | `codex` | Task 1 | launcher boundary and CGW-surface absence tests | current equivalents: 279 passed; adapter drift check passed; historical filenames `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py` are absent and were not substituted as failures |
+| Task 5 | `completed` | `LightRSI` | `codex` | Task 1 | canonical/generated profile and fixture proof | generated policy projection consumed; retained-combo contract fixture and provider/capability assertions passed; focused and full workspace checks passed |
+| Task 6 | `completed` | all three repositories | `codex` | Tasks 2-5 | synchronized verification and rollback record | evidence reconciled; source-complete is distinct from deployment-complete; startup cleanup remains approval-gated |
+| Task 7 | `active` | all three repositories | `codex` | Task 6 | fresh final verification and handoff evidence | focused and broad proof recorded; `skill-verification-before-completion` result is `incomplete` because implementation/release SHAs and installed Startup cleanup remain unresolved |
 
 ## Task Breakdown
 
@@ -169,11 +169,11 @@ separate.
 - Stop for: any unresolved ownership decision, missing exact path, unpinned revision, or acceptance criterion that cannot be proven by a declared command.
 
 **Steps:**
-- [ ] Run `skill-plan-document-reviewer` against this plan before creating implementation branches.
-- [ ] Confirm `9router/open-sse/config/retiredModels.js` is the canonical retirement-policy owner and that consumer projections are generated rather than hand-edited.
-- [ ] Confirm the relay decision: retain the Codex transport boundary, remove `chatgpt-web/*` as its internal model identity, and preserve no public CGW selection path.
-- [ ] Confirm the performance comparison uses the same stubbed workload, Node version, request count, and measurement fields before and after the relay change.
-- [ ] Record the exact three implementation checkout revisions and the current generated-surface owners in the Coordination State evidence.
+- [x] Run `skill-plan-document-reviewer` against this plan before creating implementation branches.
+- [x] Confirm `9router/open-sse/config/retiredModels.js` is the canonical retirement-policy owner and that consumer projections are generated rather than hand-edited.
+- [x] Confirm the relay decision: retain the Codex transport boundary, remove `chatgpt-web/*` as its internal model identity, and preserve no public CGW selection path.
+- [x] Confirm the performance comparison uses the same stubbed workload, Node version, request count, and measurement fields before and after the relay change.
+- [x] Record the exact three implementation checkout revisions and the current generated-surface owners in the Coordination State evidence.
 
 **Verification:**
 - The plan reviewer returns an accepted result with no blocking finding, or the plan remains `proposed` and execution does not start.
@@ -587,15 +587,22 @@ separate.
 - Stop for: any failed required check, unresolved active retired identifier, mismatched revision, missing relay proof, missing rollback evidence, or unverified retained profile.
 
 **Steps:**
-- [ ] Run the focused Project OS, LightRSI, and 9router matrices first and record fresh output.
-- [ ] Run broader suites separately; classify unrelated pre-existing failures without treating them as retirement proof.
-- [ ] Confirm no retired identifier can be emitted, accepted, resolved, selected, dispatched, retried, or persisted through an active path.
-- [ ] Exercise retired direct names and aliases through warmup/naming, image-generation, model catalog, alias-write, combo, fallback, cancellation, and replay boundaries; verify no synthetic `200`, unexpected `500`, unusable catalog entry, or generic retry path remains.
-- [ ] Confirm maintained native routing, generic fallback, cancellation, replay, quota, timeout, and Codex relay behavior with fresh regression evidence.
-- [ ] Confirm the native Codex relay is separately typed and authenticated, and that any surviving legacy protocol field is an explicit route-level exception rather than a general CGW selection path.
-- [ ] Confirm LightRSI retained combos avoid unnecessary cold catalog discovery only where exact-name validation and outage behavior are proven.
-- [ ] Confirm source and installed-state statuses are distinct and that the final evidence references exact immutable revisions.
-- [ ] Run `skill-verification-before-completion`; only a `verified` result may change this plan from `proposed` to `completed`.
+- [x] Run the focused Project OS, LightRSI, and 9router matrices first and record fresh output.
+- [x] Run broader suites separately; classify unrelated pre-existing failures without treating them as retirement proof.
+- [x] Confirm no retired identifier can be emitted, accepted, resolved, selected, dispatched, retried, or persisted through an active path.
+- [x] Exercise retired direct names and aliases through warmup/naming, image-generation, model catalog, alias-write, combo, fallback, cancellation, and replay boundaries; verify no synthetic `200`, unexpected `500`, unusable catalog entry, or generic retry path remains.
+- [x] Confirm maintained native routing, generic fallback, cancellation, replay, quota, timeout, and Codex relay behavior with fresh regression evidence.
+- [x] Confirm the native Codex relay is separately typed and authenticated, and that any surviving legacy protocol field is an explicit route-level exception rather than a general CGW selection path.
+- [x] Confirm LightRSI retained combos avoid unnecessary cold catalog discovery only where exact-name validation and outage behavior are proven.
+- [x] Confirm source and installed-state statuses are distinct and that the final evidence references exact immutable revisions.
+- [x] Run `skill-verification-before-completion`; it returned `incomplete`, so this plan remains `active`.
+
+**Execution Evidence (2026-10-23):**
+- Fresh focused proof passed: 9router retirement/combo/relay/image matrix `4 files, 51 passed`; Project OS current-equivalent Task 4 matrix `279 passed` plus `python scripts/sync_agent_adapters.py --all-platforms --check`; LightRSI focused matrices `9/9` and `48/48`, typechecks/builds passed, and the full workspace rerun passed with Codex `606/606`, CLI `38/38`, MCP `17/17`, and TokenPilot `9/9`.
+- Boundary and stability proof passed: maintained non-historical source scans found no unexpected active retired path; warmup/naming, image `410`, catalog filtering, alias-write rejection, stale-combo list/delete/repair, fallback/cancellation/replay, retained-combo, and cold-catalog behavior are covered by the accepted Task 1-6 evidence. The 9router matrix emitted a `MaxListenersExceededWarning` from repeated disposable database setup; it did not fail tests and remains test-harness hygiene overhead rather than a runtime retirement defect.
+- Relay proof passed with two identical 100-request-per-path runs on Node `v24.15.0`; the typed native relay remains separately reachable and authenticated, with zero retries, disconnects, and errors. Its measured overhead is recorded in Task 6 and is an explicit compatibility trade-off, not a public CGW selection path.
+- Verification result: `incomplete`. The source worktrees are source-complete for the reviewed changes, but implementation/release SHAs cannot be recorded while implementation commits remain prohibited. Installed-state inventory still contains `9router.vbs` targeting `C:\Users\HOANG PHI LONG DANG\repos\9router\cli\cli.js` and `ProjectOS-LightMem2-Codex-Overlay.cmd` targeting `tools/open-design-local-patch/Apply-LightMem2CodexOverlay.ps1`; removing those entries or associated package state requires explicit approval and was not performed.
+- Smallest unblock: authorize implementation commits and the required installed-state cleanup, then rerun the final verification against the resulting immutable repository revisions and updated startup inventory. Until then, do not mark this plan `completed` or claim deployment-complete.
 
 **Verification:**
 - All required focused checks pass, the evidence table is internally consistent, and the verifier returns `verified` or an explicit `incomplete` / `blocked` result.
