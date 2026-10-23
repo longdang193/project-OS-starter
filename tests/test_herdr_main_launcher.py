@@ -313,53 +313,13 @@ def test_codex_arguments_project_complete_contract(tmp_path: Path) -> None:
     assert "check_for_update_on_startup=false" in arguments
 
 
-def test_codex_arguments_do_not_override_cgw_web_effort(tmp_path: Path) -> None:
-    fake_profile(tmp_path, "web-high", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "web-high")
+def test_codex_arguments_preserve_native_profile_contract(tmp_path: Path) -> None:
+    fake_profile(tmp_path, "high", None)
+    profile = LAUNCHER._profile(tmp_path / "agents", "high")
 
     arguments = LAUNCHER._codex_arguments(profile, tmp_path)
 
     assert not any(argument.startswith("model_reasoning_effort=") for argument in arguments)
-
-
-def test_web_profile_preflight_blocks_when_lightrsi_adapter_is_unreachable(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    fake_profile(tmp_path, "web-high", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "web-high")
-
-    def refused(*args: object, **kwargs: object) -> object:
-        raise OSError("connection refused")
-
-    monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", refused)
-
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="BLOCKED_CAPABILITY.*17667"):
-        LAUNCHER._preflight_profile_runtime(profile)
-
-
-def test_web_profile_preflight_accepts_healthy_lightrsi_adapter(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    fake_profile(tmp_path, "web-medium", None)
-    profile = LAUNCHER._profile(tmp_path / "agents", "web-medium")
-
-    class Response:
-        status = 200
-
-        def __enter__(self) -> "Response":
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr(LAUNCHER.urllib.request, "urlopen", lambda *args, **kwargs: Response())
-
-    result = LAUNCHER._preflight_profile_runtime(profile)
-
-    assert result["status"] == 200
-    assert result["port"] == 17667
 
 
 def test_codex_arguments_disable_heavy_browser_mcps_for_workers(tmp_path: Path) -> None:
@@ -644,41 +604,6 @@ def test_codex_assignment_command_prompts_started_agent() -> None:
     ]
 
 
-def test_shared_web_runtime_profiles_use_one_single_flight_key() -> None:
-    assert LAUNCHER._uses_shared_web_runtime(
-        {"model_provider": "9router", "model": "combo-web-high"}
-    ) is True
-    assert LAUNCHER._uses_shared_web_runtime(
-        {"model_provider": "9router", "model": "combo-web-medium"}
-    ) is True
-    assert LAUNCHER._uses_shared_web_runtime(
-        {"model_provider": "9router", "model": "combo-high"}
-    ) is False
-    assert LAUNCHER._uses_shared_web_runtime(
-        {"model_provider": "other", "model": "combo-web-high"}
-    ) is False
-
-
-def test_cgw_timeout_policy_is_longer_than_provider_default_but_below_watchdog() -> None:
-    policy = LAUNCHER._timeout_policy(
-        {"model_provider": "9router", "model": "combo-web-high"}
-    )
-
-    assert policy == {
-        "runtime": "cgw",
-        "startup_timeout_ms": "300000",
-        "request_timeout_seconds": 600.0,
-        "herdr_attempt_timeout_seconds": 900.0,
-        "outer_watchdog_seconds": 1800.0,
-        "timeout_action": "reconcile_retirement_before_retry",
-    }
-    assert (
-        policy["request_timeout_seconds"]
-        < policy["herdr_attempt_timeout_seconds"]
-        < policy["outer_watchdog_seconds"]
-    )
-
-
 def test_native_timeout_policy_remains_unchanged() -> None:
     policy = LAUNCHER._timeout_policy(
         {"model_provider": "9router", "model": "combo-high"}
@@ -688,222 +613,6 @@ def test_native_timeout_policy_remains_unchanged() -> None:
     assert policy["startup_timeout_ms"] == LAUNCHER._CODEX_START_TIMEOUT_MS
     assert policy["request_timeout_seconds"] is None
     assert policy["herdr_attempt_timeout_seconds"] == LAUNCHER._DEEPAGENTS_RUN_TIMEOUT
-
-
-def test_shared_web_runtime_lock_rejects_concurrent_owner_and_releases_after_failure(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    lock_path = tmp_path / "shared-web.lock"
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock_path", lambda: lock_path)
-
-    with pytest.raises(RuntimeError, match="sentinel"):
-        with LAUNCHER._shared_web_runtime_lock():
-            with pytest.raises(LAUNCHER.LaunchBlocked, match="shared CGW web runtime"):
-                with LAUNCHER._shared_web_runtime_lock():
-                    pytest.fail("concurrent shared web runtime lock acquired")
-            raise RuntimeError("sentinel")
-
-    with LAUNCHER._shared_web_runtime_lock():
-        pass
-
-
-def test_shared_web_runtime_lock_waits_within_bounded_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    lock_path = tmp_path / "shared-web.lock"
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock_path", lambda: lock_path)
-
-    with LAUNCHER._shared_web_runtime_lock():
-        started = time.monotonic()
-        with pytest.raises(LAUNCHER.LaunchBlocked, match="shared CGW web runtime"):
-            with LAUNCHER._shared_web_runtime_lock(timeout_seconds=0.03):
-                pytest.fail("concurrent shared web runtime lock acquired")
-        assert time.monotonic() - started >= 0.02
-
-
-def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    evidence = {
-        "registry_launcher": {
-            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
-            "model_provider": "9router",
-            "model": "combo-web-high",
-        },
-        "codex": {"codex_home": str(codex_home)},
-        "herdr": {
-            "executable": "herdr.exe",
-            "agent_name": "normal-main",
-            "session": "codex-probe",
-            "pane": "w1:p5",
-            "pre_submit_completion_seq": 11,
-        },
-    }
-    commands: list[list[str]] = []
-
-    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
-
-    @contextmanager
-    def fake_runtime_lock(timeout_seconds=0.0):
-        yield
-
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        if command[3:5] == ["agent", "get"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":{"agent":{"agent_status":"idle","completion_seq":12}}}',
-                "",
-            )
-        if command[3:5] == ["agent", "read"]:
-            return subprocess.CompletedProcess(command, 0, '{"result":"CGW_MULTI_MESSAGE_OK"}', "")
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    assert LAUNCHER.main(
-        [
-            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
-            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
-        ]
-    ) == 0
-
-    wait_commands = [command for command in commands if command[3:5] == ["agent", "wait"]]
-    assert len(wait_commands) == 2
-    assert [command[7] for command in wait_commands] == ["working", "idle"]
-    assert wait_commands[0][:7] == [
-        "herdr.exe", "--session", "codex-probe", "agent", "wait",
-        "normal-main", "--until",
-    ]
-    assert wait_commands[0][8] == "--timeout"
-    assert int(wait_commands[0][9]) > 0
-    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert result["status"] == "completed"
-    assert result["task_result"] == {
-        "state": "reported_completed",
-        "source": "codex_pane",
-    }
-
-
-def test_web_prompt_waits_for_turn_to_start_before_waiting_for_idle(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    commands: list[list[str]] = []
-
-    @contextmanager
-    def fake_runtime_lock(timeout_seconds=0.0):
-        yield
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "{}", "")
-
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    assignment_result, prompt_result, transport_timeout = LAUNCHER._submit_codex_prompt(
-        ["herdr.exe", "agent", "prompt", "web-high-main", "assign lane"],
-        herdr="herdr.exe",
-        session="codex-probe",
-        agent_name="web-high-main",
-        env={},
-        shared_web_runtime=True,
-        timeout_seconds=1.0,
-    )
-
-    assert assignment_result is not None
-    assert prompt_result == {
-        "submission": "acknowledged",
-        "prompt_accepted": True,
-        "failure_kind": None,
-        "reconciliation_required": False,
-    }
-    assert transport_timeout is None
-    wait_commands = [command for command in commands if command[3:5] == ["agent", "wait"]]
-    assert [command[7] for command in wait_commands] == ["working", "idle"]
-
-
-def test_shared_web_runtime_wait_accepts_terminal_done_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    commands: list[list[str]] = []
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "{}", "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    result = LAUNCHER._wait_for_shared_web_runtime_turn(
-        "herdr.exe",
-        "codex-probe",
-        "web-high-main",
-        env={},
-        timeout_seconds=1.0,
-    )
-
-    assert result.returncode == 0
-    wait_commands = [command for command in commands if command[3:5] == ["agent", "wait"]]
-    assert len(wait_commands) == 2
-    assert [
-        [command[index + 1] for index, value in enumerate(command) if value == "--until"]
-        for command in wait_commands
-    ] == [["working"], ["idle", "done", "blocked"]]
-
-
-def test_web_prompt_wait_failure_is_not_reported_as_success(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    evidence = {
-        "registry_launcher": {
-            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
-            "model_provider": "9router",
-            "model": "combo-web-medium",
-        },
-        "codex": {"codex_home": str(codex_home)},
-        "herdr": {
-            "executable": "herdr.exe",
-            "agent_name": "normal-main",
-            "session": "codex-probe",
-            "pane": "w1:p5",
-        },
-    }
-    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
-    @contextmanager
-    def fake_runtime_lock(timeout_seconds=0.0):
-        yield
-
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
-
-    def fake_run(command, **kwargs):
-        if command[3:5] == ["agent", "wait"]:
-            return subprocess.CompletedProcess(command, 1, "", "wait timed out")
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    assert LAUNCHER.main(
-        [
-            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
-            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
-        ]
-    ) == 2
-    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert result["status"] == "blocked"
-    assert "shared CGW web runtime wait failed" in result["failure_kind"]
 
 
 def test_codex_completion_snapshot_reads_status_and_output(
@@ -1280,7 +989,7 @@ def test_codex_prompt_result_marks_success_acknowledged() -> None:
 @pytest.mark.parametrize(
     "content",
     [
-        "\u25a0 unexpected status 502 Bad Gateway: CGW returned no assistant text",
+        "\u25a0 unexpected status 502 Bad Gateway: provider returned no assistant text",
         "OpenAIAPIError: An internal error occurred",
     ],
 )
@@ -1304,7 +1013,7 @@ def test_idle_codex_completion_requires_advanced_completion_sequence() -> None:
     snapshot = {
         "state": "idle",
         "completion_seq": 12,
-        "content": "CGW_MULTI_MESSAGE_OK",
+        "content": "provider_MULTI_MESSAGE_OK",
         "observation_error": None,
     }
 
@@ -1323,7 +1032,7 @@ def test_idle_codex_completion_accepts_advanced_state_sequence_without_completio
         "state": "idle",
         "state_change_seq": 12,
         "completion_seq": None,
-        "content": "CGW_DUPLICATE_GUARD_OK",
+        "content": "provider_DUPLICATE_GUARD_OK",
         "observation_error": None,
     }
 
@@ -1331,144 +1040,6 @@ def test_idle_codex_completion_accepts_advanced_state_sequence_without_completio
         snapshot,
         pre_submit_state_change_seq=11,
     )["status"] == "completed"
-
-
-def test_shared_web_completion_error_is_reported_by_main_launcher(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    evidence = {
-        "registry_launcher": {
-            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
-            "model_provider": "9router",
-            "model": "combo-web-high",
-        },
-        "codex": {"codex_home": str(codex_home)},
-        "herdr": {
-            "executable": "herdr.exe",
-            "agent_name": "normal-main",
-            "session": "codex-probe",
-            "pane": "w1:p5",
-            "pre_submit_completion_seq": 11,
-        },
-    }
-    commands: list[list[str]] = []
-
-    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
-
-    @contextmanager
-    def fake_runtime_lock(timeout_seconds=0.0):
-        yield
-
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        if command[3:5] == ["agent", "get"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":{"agent":{"agent_status":"idle","completion_seq":12,"pane_id":"w1:p5"}}}',
-                "",
-            )
-        if command[3:5] == ["agent", "read"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":"\\u25a0 unexpected status 502 Bad Gateway: CGW returned no assistant text"}',
-                "",
-            )
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    assert LAUNCHER.main(
-        [
-            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
-            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
-        ]
-    ) == 2
-
-    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert result["status"] == "unverified"
-    assert result["failure_kind"] == "task_result_unverified"
-    assert result["reconciliation_required"] is True
-    assert result["exit_code"] == 2
-    assert sum(command[3:5] == ["agent", "prompt"] for command in commands) == 1
-
-
-def test_shared_web_completion_is_reported_without_submission_retry(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    evidence = {
-        "registry_launcher": {
-            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
-            "model_provider": "9router",
-            "model": "combo-web-high",
-        },
-        "codex": {"codex_home": str(codex_home)},
-        "herdr": {
-            "executable": "herdr.exe",
-            "agent_name": "normal-main",
-            "session": "codex-probe",
-            "pane": "w1:p5",
-            "pre_submit_completion_seq": 11,
-        },
-    }
-    commands: list[list[str]] = []
-
-    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
-
-    @contextmanager
-    def fake_runtime_lock(timeout_seconds=0.0):
-        yield
-
-    monkeypatch.setattr(LAUNCHER, "_shared_web_runtime_lock", fake_runtime_lock)
-
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        if command[3:5] == ["agent", "get"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":{"agent":{"agent_status":"idle","completion_seq":12,"pane_id":"w1:p5"}}}',
-                "",
-            )
-        if command[3:5] == ["agent", "read"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                '{"result":"CGW_DUPLICATE_GUARD_OK"}',
-                "",
-            )
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(LAUNCHER, "_run", fake_run)
-
-    assert LAUNCHER.main(
-        [
-            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
-            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
-        ]
-    ) == 0
-
-    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
-    assert result["status"] == "completed"
-    assert result["task_result"] == {
-        "state": "reported_completed",
-        "source": "codex_pane",
-    }
-    assert result["completion_observed"] is True
-    assert result["reconciliation_required"] is False
-    assert result["completion"]["content"] == "CGW_DUPLICATE_GUARD_OK"
-    assert sum(command[3:5] == ["agent", "prompt"] for command in commands) == 1
 
 
 def test_powershell_literal_escapes_apostrophes() -> None:
@@ -1999,28 +1570,17 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
     profile = LAUNCHER.AgentProfile(
-        Path("web-high.toml"),
-        "web-high",
+        Path("high.toml"),
+        "high",
         "9router",
-        "combo-web-high",
+        "combo-high",
         None,
         "test",
         "do not modify files",
     )
     context = "task:subject-1"
-    agent_name = LAUNCHER._contextual_agent_name("web-high", context)
+    agent_name = LAUNCHER._contextual_agent_name("high", context)
     monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_preflight_profile_runtime",
-        lambda selected: {
-            "provider": selected.model_provider,
-            "model": selected.model,
-            "url": "http://127.0.0.1:17667/health",
-            "port": 17667,
-            "status": 200,
-        },
-    )
     monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
     monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
     monkeypatch.setattr(
@@ -2046,7 +1606,7 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
     )
 
     command, evidence = LAUNCHER.resolve_launch(
-        profile_name="web-high",
+        profile_name="high",
         session="codex-probe",
         pane="w1:p1",
         cwd=ROOT,
@@ -2063,61 +1623,7 @@ def test_resolve_launch_reuses_same_context_with_prompt_command(
     assert command[6] == "same subject [Runtime Grant: delegation.child_agents = deny]"
     assert evidence["herdr"]["reuse"] is True
     assert evidence["herdr"]["context_marker"] == LAUNCHER._context_marker(context)
-    assert evidence["registry_launcher"]["timeout_policy"]["startup_timeout_ms"] == "300000"
-
-
-def test_resolve_launch_projects_cgw_startup_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    profile = LAUNCHER.AgentProfile(
-        Path("web-high.toml"),
-        "web-high",
-        "9router",
-        "combo-web-high",
-        None,
-        "test",
-        "do not modify files",
-    )
-    monkeypatch.setattr(LAUNCHER, "_profile", lambda *args: profile)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_preflight_profile_runtime",
-        lambda selected: {"provider": selected.model_provider, "model": selected.model, "status": 200},
-    )
-    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
-    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_codex_runtime",
-        lambda *args, **kwargs: {"codex_home": str(codex_home), "stop_hook_scopes": []},
-    )
-    monkeypatch.setattr(LAUNCHER, "_codex_runtime_mcp_servers", lambda *args, **kwargs: {})
-    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_herdr_pane",
-        lambda *args, **kwargs: {
-            "pane": {"cwd": str(ROOT)},
-            "process_info": {"foreground_processes": []},
-            "reuse": False,
-        },
-    )
-
-    command, evidence = LAUNCHER.resolve_launch(
-        profile_name="web-high",
-        session="codex-probe",
-        pane="w1:p1",
-        cwd=ROOT,
-        expected_base="HEAD",
-        executor="codex",
-        task="start a CGW worker",
-    )
-
-    assert command[command.index("--timeout") + 1] == "300000"
-    assert evidence["registry_launcher"]["timeout_policy"]["startup_timeout_ms"] == "300000"
+    assert evidence["registry_launcher"]["timeout_policy"]["startup_timeout_ms"] == LAUNCHER._CODEX_START_TIMEOUT_MS
 
 
 def test_resolve_launch_projects_selected_codex_mcp_server(
@@ -5446,7 +4952,7 @@ def test_context_identity_prefers_existing_task_then_plan_then_assignment() -> N
 
 @pytest.mark.parametrize(
     ("profile_name", "model"),
-    [("web-high", "combo-web-high"), ("normal", "combo-normal")],
+    [("high", "combo-high"), ("normal", "combo-normal")],
 )
 def test_contextual_agent_name_is_stable_for_web_profiles(profile_name: str, model: str) -> None:
     context = "task:subject-1"
@@ -5513,7 +5019,7 @@ def _reusable_codex_pane_responses(
 
 @pytest.mark.parametrize(
     ("profile_name", "model"),
-    [("web-high", "combo-web-high"), ("normal", "combo-normal")],
+    [("high", "combo-high"), ("normal", "combo-normal")],
 )
 def test_pane_safety_reuses_same_context_and_compatible_profile(
     monkeypatch: pytest.MonkeyPatch,
@@ -5550,12 +5056,12 @@ def test_pane_safety_rejects_completed_codex_agent_without_context(
     tmp_path: Path,
 ) -> None:
     profile = LAUNCHER.AgentProfile(
-        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
     )
     responses = iter(_reusable_codex_pane_responses(
         tmp_path=tmp_path,
-        agent_name="web-high-probe-20261022",
-        model="combo-web-high",
+        agent_name="high-probe-20261022",
+        model="combo-high",
         agent_status="done",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
@@ -5575,12 +5081,12 @@ def test_pane_safety_rejects_different_or_missing_context(
     tmp_path: Path,
 ) -> None:
     profile = LAUNCHER.AgentProfile(
-        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
     )
     responses = iter(_reusable_codex_pane_responses(
         tmp_path=tmp_path,
-        agent_name=LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
-        model="combo-web-high",
+        agent_name=LAUNCHER._contextual_agent_name("high", "task:subject-1"),
+        model="combo-high",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
     with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context mismatch"):
@@ -5591,8 +5097,8 @@ def test_pane_safety_rejects_different_or_missing_context(
 
     responses = iter(_reusable_codex_pane_responses(
         tmp_path=tmp_path,
-        agent_name=LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
-        model="combo-web-high",
+        agent_name=LAUNCHER._contextual_agent_name("high", "task:subject-1"),
+        model="combo-high",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
     with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context is required"):
@@ -5622,7 +5128,7 @@ def test_pane_safety_rejects_active_or_profile_mismatched_pane(
     responses = iter(_reusable_codex_pane_responses(
         tmp_path=tmp_path,
         agent_name=LAUNCHER._contextual_agent_name("normal", "task:subject-1"),
-        model="combo-web-high",
+        model="combo-high",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
     with pytest.raises(LAUNCHER.TargetCandidateRejected, match="profile mismatch"):
@@ -5637,7 +5143,7 @@ def test_pane_safety_releases_idle_stale_agent_state(
     tmp_path: Path,
 ) -> None:
     profile = LAUNCHER.AgentProfile(
-        Path("web-high.toml"), "web-high", "9router", "combo-web-high", None, "test", "test",
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
     )
     commands: list[list[str]] = []
     responses = iter([
@@ -5652,7 +5158,7 @@ def test_pane_safety_releases_idle_stale_agent_state(
         {
             "result": {
                 "agents": [{
-                    "name": LAUNCHER._contextual_agent_name("web-high", "task:subject-1"),
+                    "name": LAUNCHER._contextual_agent_name("high", "task:subject-1"),
                     "agent_status": "idle", "completion_seq": 9, "pane_id": "p1",
                     "agent_session": {"source": "herdr:codex"},
                 }]
@@ -7125,9 +6631,9 @@ def test_submission_gate_binding_is_stable_across_restart() -> None:
         "assignment_task_sha256": "task-digest",
         "repository_identity": "repo/example",
         "plan_identity": "plan/example",
-        "profile": "web-high",
+        "profile": "high",
         "model_provider": "9router",
-        "model": "combo-web-high",
+        "model": "combo-high",
         "grant_digest": "grant-digest",
         "task_id": "task-1",
         "plan_revision": "plan-rev-1",
@@ -7173,9 +6679,9 @@ def test_submission_gate_does_not_reauthorize_after_submission(tmp_path: Path, m
         "assignment_task_sha256": "task-digest",
         "repository_identity": "repo/example",
         "plan_identity": "plan/example",
-        "profile": "web-high",
+        "profile": "high",
         "model_provider": "9router",
-        "model": "combo-web-high",
+        "model": "combo-high",
         "grant_digest": "grant-digest",
         "task_id": "task-1",
         "plan_revision": "plan-rev-1",

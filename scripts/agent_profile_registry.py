@@ -23,6 +23,8 @@ REQUIRED_KEYS = {
     "developer_instructions",
 }
 ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "herdr_only"}
+RETIRED_MODEL_NAMES = frozenset({"combo-web-high", "combo-web-medium"})
+RETIRED_MODEL_PREFIXES = ("cgw/",)
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,14 @@ def _required_string(payload: dict[str, object], key: str, source: Path) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Agent profile {source} `{key}` must be a non-empty string.")
     return value.strip()
+
+
+def validate_model_reference(model: str, source: Path | str) -> None:
+    if model in RETIRED_MODEL_NAMES or model.startswith(RETIRED_MODEL_PREFIXES):
+        raise ValueError(
+            f"Agent profile {source} uses retired model `{model}`; "
+            "retired CGW/web-combo aliases are unsupported."
+        )
 
 
 def load_agent_profiles(
@@ -90,11 +100,13 @@ def load_agent_profiles(
             raise ValueError(f"Agent profile `{source}` `herdr_only` must be a boolean.")
         if name in profiles:
             raise ValueError(f"Duplicate agent profile: {name}")
+        model = _required_string(payload, "model", source)
+        validate_model_reference(model, source)
         profiles[name] = AgentProfile(
             source=source,
             name=name,
             model_provider=model_provider,
-            model=_required_string(payload, "model", source),
+            model=model,
             rank=rank,
             description=_required_string(payload, "description", source),
             developer_instructions=_required_string(payload, "developer_instructions", source),

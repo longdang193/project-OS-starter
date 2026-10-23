@@ -122,6 +122,19 @@ def test_load_profiles_rejects_invalid_sources(
         REGISTRY.load_agent_profiles(agents)
 
 
+@pytest.mark.parametrize("model", ["combo-web-high", "combo-web-medium", "cgw/gpt-5.6-sol"])
+def test_load_profiles_rejects_retired_models(tmp_path: Path, model: str) -> None:
+    write_profile(tmp_path, "retired", None)
+    profile_path = tmp_path / "agents" / "retired.toml"
+    profile_path.write_text(
+        profile_path.read_text(encoding="utf-8").replace("model = \"combo-retired\"", f"model = \"{model}\""),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="retired model"):
+        REGISTRY.load_agent_profiles(tmp_path / "agents")
+
+
 def test_load_profiles_rejects_duplicate_present_ranks(tmp_path: Path) -> None:
     write_profile(tmp_path, "low", 10)
     write_profile(tmp_path, "ui", 10)

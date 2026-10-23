@@ -1,26 +1,32 @@
 function Install-9RouterGlobal {
   param(
     [Parameter(Mandatory = $true)][string]$TargetPath,
-    [switch]$AllowDowngrade,
-    [string]$InstallReceiptJson
+    [switch]$AllowDowngrade
   )
 
   $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
   $globalRoot = (& $npm "root" "-g" | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw "$npm global root lookup failed with exit code $LASTEXITCODE." }
   $globalBinRoot = Split-Path $globalRoot -Parent
-  $targetPackage = Get-Content -Raw -LiteralPath (Join-Path $TargetPath "cli\package.json") | ConvertFrom-Json
+  $targetPath = (Resolve-Path -LiteralPath $TargetPath -ErrorAction Stop).Path
+  $git = (Get-Command git.exe -ErrorAction Stop).Source
+  $targetPackagePath = Join-Path $targetPath "cli\package.json"
+  if (-not (Test-Path -LiteralPath $targetPackagePath -PathType Leaf)) { throw "TargetPath is missing cli\package.json: $targetPath" }
+  $targetPackage = Get-Content -Raw -LiteralPath $targetPackagePath | ConvertFrom-Json
   $targetVersion = [Version]$targetPackage.version
-  $installReceipt = $null
-  if (-not [string]::IsNullOrWhiteSpace($InstallReceiptJson)) {
-    try {
-      $installReceipt = $InstallReceiptJson | ConvertFrom-Json
-    } catch {
-      throw "Global 9router install receipt is invalid JSON: $($_.Exception.Message)"
+  $sourceCommit = (& $git -C $targetPath rev-parse HEAD 2>&1 | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch "^[0-9a-f]{40}$") { throw "TargetPath is not a Git checkout with a valid source commit: $targetPath" }
+  function Get-PackageContentDigest {
+    param([Parameter(Mandatory = $true)][string]$PackageRoot)
+    $hashBuilder = [Text.StringBuilder]::new()
+    $packageRootPath = (Resolve-Path -LiteralPath $PackageRoot -ErrorAction Stop).Path
+    foreach ($file in @(Get-ChildItem -LiteralPath $packageRootPath -Recurse -File | Where-Object { $_.Name -ne "9router-install.json" } | Sort-Object FullName)) {
+      $relativePath = [IO.Path]::GetRelativePath($packageRootPath, $file.FullName).Replace([IO.Path]::DirectorySeparatorChar, "/")
+      $fileHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+      [void]$hashBuilder.Append($relativePath).Append([Environment]::NewLine).Append($fileHash).Append([Environment]::NewLine)
     }
-    if ([string]$installReceipt.packageVersion -ne [string]$targetPackage.version) {
-      throw "Global 9router install receipt targets version $($installReceipt.packageVersion), expected $($targetPackage.version)."
-    }
+    $bytes = [Text.Encoding]::UTF8.GetBytes($hashBuilder.ToString())
+    return ([Security.Cryptography.SHA256]::HashData($bytes) | ForEach-Object { $_.ToString("x2") }) -join ""
   }
   $installedPackagePath = Join-Path $globalRoot "9router\package.json"
   $packageRoot = Join-Path $globalRoot "9router"
@@ -30,16 +36,10 @@ function Install-9RouterGlobal {
     param(
       [Parameter(Mandatory = $true)][string]$PackageRoot,
       [Parameter(Mandatory = $true)][string]$CommandShim,
-      [Parameter(Mandatory = $true)][object]$ExpectedReceipt,
-      [Parameter(Mandatory = $true)][string]$ExpectedVersion
+      [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+      [Parameter(Mandatory = $true)][string]$ExpectedSourceCommit
     )
-
-    if ($null -eq $ExpectedReceipt -or
-        -not (Test-Path -LiteralPath (Join-Path $PackageRoot "package.json") -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $CommandShim -PathType Leaf)) {
-      return $false
-    }
-
+    if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot "package.json") -PathType Leaf) -or -not (Test-Path -LiteralPath $CommandShim -PathType Leaf)) { return $false }
     try {
       $packageItem = Get-Item -LiteralPath $PackageRoot -Force
       if ($packageItem.LinkType) { return $false }
@@ -47,27 +47,19 @@ function Install-9RouterGlobal {
       if ([string]$installedPackage.version -ne $ExpectedVersion) { return $false }
       if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot "cli.js") -PathType Leaf)) { return $false }
       $installedAppPath = Join-Path $PackageRoot "app"
-      if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and
-          -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) {
-        return $false
-      }
-
-      $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
+      if (-not (Test-Path -LiteralPath (Join-Path $installedAppPath "server.js") -PathType Leaf) -and -not (Test-Path -LiteralPath (Join-Path $installedAppPath "custom-server.js") -PathType Leaf)) { return $false }
+      $receiptPath = Join-Path $PackageRoot "9router-install.json"
       if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
-      $installedReceipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
-      foreach ($field in @("schemaVersion", "overlayId", "overlayVersion", "baseCommit", "targetVersion", "packageVersion", "sourceHead")) {
-        if ([string]$installedReceipt.$field -ne [string]$ExpectedReceipt.$field) { return $false }
-      }
-
+      $receipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
+      if ([int]$receipt.schemaVersion -ne 1 -or [string]$receipt.packageVersion -ne $ExpectedVersion -or [string]$receipt.sourceCommit -ne $ExpectedSourceCommit -or [string]$receipt.packageContentDigest -notmatch "^[0-9a-f]{64}$") { return $false }
+      if ((Get-PackageContentDigest -PackageRoot $PackageRoot) -ne [string]$receipt.packageContentDigest) { return $false }
       $versionOutput = (& $CommandShim "--version" 2>&1 | Out-String).Trim()
       return $LASTEXITCODE -eq 0 -and $versionOutput -eq $ExpectedVersion
-    } catch {
-      return $false
-    }
+    } catch { return $false }
   }
 
-  if (Test-ExistingGlobalInstall -PackageRoot $packageRoot -CommandShim $cmdShim -ExpectedReceipt $installReceipt -ExpectedVersion ([string]$targetPackage.version)) {
-    Write-Output "Global 9router package already matches version $($targetPackage.version) and the requested overlay receipt; skipping rebuild and replacement."
+  if (Test-ExistingGlobalInstall -PackageRoot $packageRoot -CommandShim $cmdShim -ExpectedVersion ([string]$targetPackage.version) -ExpectedSourceCommit $sourceCommit) {
+    Write-Output "Global 9router package already matches version $($targetPackage.version) and verified content digest; skipping rebuild and replacement."
     return
   }
 
@@ -75,7 +67,7 @@ function Install-9RouterGlobal {
     $installedPackage = Get-Content -Raw -LiteralPath $installedPackagePath | ConvertFrom-Json
     $installedVersion = [Version]$installedPackage.version
     if ($targetVersion -lt $installedVersion) {
-      throw "Refusing to downgrade global 9router from $installedVersion to $targetVersion. Rebase overlay or pass -AllowDowngrade."
+      throw "Refusing to downgrade global 9router from $installedVersion to $targetVersion. Pass -AllowDowngrade only for an intentional older-version install."
     }
   }
 
@@ -155,8 +147,8 @@ function Install-9RouterGlobal {
     throw "Cannot replace global 9router while processes remain: $remainingIds"
   }
 
-  Ensure-NpmDependencies -WorkingDirectory $TargetPath -MarkerPath (Join-Path $TargetPath "node_modules\next\package.json")
-  Ensure-NpmDependencies -WorkingDirectory (Join-Path $TargetPath "cli") -MarkerPath (Join-Path $TargetPath "cli\node_modules\esbuild\package.json")
+  Ensure-NpmDependencies -WorkingDirectory $TargetPath -MarkerPath (Join-Path $targetPath "node_modules\next\package.json")
+  Ensure-NpmDependencies -WorkingDirectory (Join-Path $targetPath "cli") -MarkerPath (Join-Path $TargetPath "cli\node_modules\esbuild\package.json")
 
   $cliPath = Join-Path $TargetPath "cli"
   $buildLog = Join-Path ([IO.Path]::GetTempPath()) ("9router-build-" + [Guid]::NewGuid().ToString("N") + ".log")
@@ -170,21 +162,13 @@ function Install-9RouterGlobal {
     throw "$npm build failed with exit code $buildExitCode. $($buildDetails -join ' ')"
   }
   Remove-Item -LiteralPath $buildLog, $buildErrorLog -Force -ErrorAction SilentlyContinue
-  $builtAppPath = Join-Path $TargetPath "cli\app"
+  $builtAppPath = Join-Path $targetPath "cli\app"
   if (-not (Test-Path -LiteralPath (Join-Path $builtAppPath "server.js") -PathType Leaf) -and
       -not (Test-Path -LiteralPath (Join-Path $builtAppPath "custom-server.js") -PathType Leaf)) {
     throw "9router build is incomplete: missing cli\app\server.js and cli\app\custom-server.js."
   }
   $packageStage = Join-Path ([IO.Path]::GetTempPath()) ("9router-package-" + [Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $packageStage | Out-Null
-  $receiptStage = Join-Path $packageStage "9router-cgw-overlay.json"
-  if ($null -ne $installReceipt) {
-    [IO.File]::WriteAllText(
-      $receiptStage,
-      ($installReceipt | ConvertTo-Json -Depth 10 -Compress) + [Environment]::NewLine,
-      [Text.UTF8Encoding]::new($false)
-    )
-  }
   $rollbackRoot = Join-Path ([IO.Path]::GetTempPath()) ("9router-rollback-" + [Guid]::NewGuid().ToString("N"))
   $packageRoot = Join-Path $globalRoot "9router"
   $rollbackPackageRoot = Join-Path $rollbackRoot "package"
@@ -251,12 +235,15 @@ function Install-9RouterGlobal {
       if ($versionExitCode -ne 0 -or $versionOutput -ne [string]$targetPackage.version) {
         throw "Global 9router install is unusable: expected version $($targetPackage.version), got '$versionOutput'."
       }
-      if ($null -ne $installReceipt) {
-        if (-not (Test-Path -LiteralPath $receiptStage -PathType Leaf)) {
-          throw "Global 9router install receipt staging failed: missing $receiptStage"
-        }
-        Move-Item -LiteralPath $receiptStage -Destination (Join-Path $packageRoot "9router-cgw-overlay.json") -Force
+      $receipt = [ordered]@{
+        schemaVersion = 1
+        packageVersion = [string]$targetPackage.version
+        sourceCommit = $sourceCommit
+        packageContentDigest = Get-PackageContentDigest -PackageRoot $packageRoot
       }
+      $receiptStage = Join-Path $packageStage "9router-install.json"
+      [IO.File]::WriteAllText($receiptStage, ($receipt | ConvertTo-Json -Depth 5) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+      Move-Item -LiteralPath $receiptStage -Destination (Join-Path $packageRoot "9router-install.json") -Force
     } catch {
       $installError = $_
       $hasRollbackArtifacts = $rollbackReady -or
@@ -281,5 +268,5 @@ function Install-9RouterGlobal {
     }
   }
 
-  Write-Output "Installed 9router global package and verified cli.js, 9router.cmd, and version $versionOutput."
+  Write-Output "Installed 9router global package and verified cli.js, 9router.cmd, version $versionOutput, source commit $sourceCommit, and content digest."
 }

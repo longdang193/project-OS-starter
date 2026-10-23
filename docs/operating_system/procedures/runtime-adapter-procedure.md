@@ -111,11 +111,11 @@ receipt first. A confirmed receipt is authoritative and skips `pane wait-output`
 `pane process-info`, and `pane read`; unresolved receipts use pane probes only
 for diagnostics or legacy fallback. For Codex, inspect `agent get` and
 `agent read`. The repository launcher additionally serializes `9router`
-`combo-web-*` prompt turns with a shared runtime lock, waits within the current
-attempt budget when another turn owns it, and holds that lock until `agent wait
---until idle` succeeds; a failed or timed-out wait is not a successful
-admission. Record executor, session, pane, agent identity, task hash, state, and
-evidence source; keep state `unknown` when evidence is missing or stale.
+Retired CGW and web-combo aliases are rejected before provider dispatch and do
+not acquire a runtime lock, perform a preflight, or enter the attempt lifecycle.
+Maintained native requests use the normal admission and settlement path. Record
+executor, session, pane, agent identity, task hash, state, and evidence source;
+keep state `unknown` when evidence is missing or stale.
 Treat `pane read` and `agent read` output as disposable probe data: metadata-only
 by default, explicitly bounded and redacted when raw output is required. Never
 treat silence as completion or trigger automatic kill, retry, or plan advance.
