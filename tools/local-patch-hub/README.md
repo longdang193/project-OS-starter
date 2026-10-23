@@ -79,118 +79,15 @@ To apply the overlay whenever the patched OpenDesign launcher starts, set `LIGHT
 
 Add a new versioned directory under `overlays/lightrsi-codex-hook-portable/` after rebasing the patch onto a new upstream commit. The current Codex compatibility overlay accepts explicit `/v1/responses/compact`, strips only historical `web_search_call` items on the outbound clone, tries upstream `/responses/compact`, and falls back to `/responses` on upstream `404`; ordinary `/responses` stays unchanged. Do not edit generated `dist/tokenpilot-codex-hook.cmd` files.
 
-## 9router overlays
+## 9router ownership
 
-Use a clean checkout that tracks upstream; keep fork experiments separate:
+9router is maintained directly in the fork at
+`https://github.com/longdang193/9router`. This patch hub no longer applies,
+installs, launches, or verifies 9router overlays. Follow the fork's canonical
+[`docs/UPSTREAM-SYNC.md`](https://github.com/longdang193/9router/blob/master/docs/UPSTREAM-SYNC.md)
+for the one-time baseline, scheduled upstream synchronization, conflict
+handling, privileged-path review, and rollback procedure.
 
-```powershell
-git clone https://github.com/decolua/9router.git C:\path\to\9router-upstream
-```
-
-After updating that checkout from upstream, run:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterSecurityOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -InstallGlobal
-```
-
-The script reapplies the unmerged security fix with Git 3-way merge. It stops on conflicts instead of leaving a partial patch. Verify without changing files:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterSecurityOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
-```
-
-When upstream changes the patched files, create a new base directory under `overlays/9router-security/` and rebase the patch there. Current security bases include `eb712ca8` (`0.5.69`) and `ce4460ef` (`0.5.99`). Keep old overlays for existing checkouts.
-
-Apply the Responses API output compatibility overlay separately:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterResponsesOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -InstallGlobal
-```
-
-Verify update safety without changing files:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterResponsesOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
-```
-
-Current 9router Responses overlays cover `0.5.65` (`e0be4111`), `0.5.69`
-(`eb712ca8`), and `0.5.99` (`ce4460ef`). The Responses overlay fixes
-`response.completed.response.output`, preserves upstream SSE errors instead of
-inventing empty completion events, and keeps Codex compact URL selection
-request-local. The reconciler accepts exact bases, already-applied overlays,
-upstream-native fixes, and clean Git 3-way rebases; whitespace-only line-ending
-changes do not block application. It checks every patched runtime path before
-treating an existing install as complete, so older partial overlays receive the
-missing fix. Rebase verification applies into a temporary Git index, so conflict
-checks do not mutate the target. `-InstallGlobal` stops and waits for all 9router
-Node processes, validates `cli\app` before replacement, packs the CLI before
-global install so npm cannot leave a Junction to a disposable worktree, rejects
-linked global packages, then verifies global `cli.js`, standalone app files,
-`9router.cmd`, and executable version; relaunch with
-`9router --tray --skip-update -p 20128 -H 127.0.0.1`. Use `-AllowDowngrade` only for
-intentional older-version installs. When upstream changes a patched file, add a
-new exact-base directory under `overlays/9router-responses/` and rebase the patch
-there. Keep old overlays for existing checkouts.
-
-## 9router runtime ownership
-
-The patch hub owns only the local 9router transport listener on port 20128. LightRSI owns its adapter lifecycle, and provider credentials, web runtimes, and optional startup tasks remain outside this launcher.
-
-Start the already-installed global 9router and verify its loopback health endpoint:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 \
-  -TargetRoot C:\path\to\9router
-```
-
-Use -InstallGlobal when the global package needs repair or refresh. The installer keeps generic version validation, downgrade protection, rollback, idempotent exact-receipt short-circuiting, and process replacement safety. Each successful install writes 9router-install.json with a schema version, package version, source Git commit, and SHA-256 digest of the verified installed package contents.
-
-The launcher validates that receipt before starting 9router and does not start, authenticate, or manage any additional provider, shim, bearer source, port, or Windows scheduled task. If the receipt is missing, stale, or fails its content identity checks, rerun the installer explicitly.
-
-The launcher does not mutate existing scheduled tasks or installed runtimes as part of retirement. Remove any old user-created startup task separately through the operating system task manager if it is still present.
-## 9router Codex opaque relay overlay
-
-The Codex opaque relay is a separate exact-base overlay for the `0.5.99`
-9router source at commit `ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8`. It adds
-`/v1/chatgpt-web/responses` without changing the existing `/v1/responses`
-route, normal provider execution, model aliases, or UI integration.
-
-Apply the relay overlay to a clean or disposable source checkout:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCodexRelayOverlay.ps1 -TargetRoot C:\path\to\9router-upstream
-```
-
-Verify an already-applied overlay without changing files:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCodexRelayOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
-```
-
-The route is a loopback-only, POST-only opaque relay. Next may canonicalize a local request URL to `localhost` even when the listener is bound to `127.0.0.1`; both names are treated as loopback. It requires native Codex
-Bearer authorization, `Content-Type: application/json`, and matching native
-`x-codex-turn-metadata` in the header and body. Set the upstream only through
-the process environment, using an exact loopback Responses URL:
-
-```powershell
-$env:CODEX_RELAY_UPSTREAM_URL = "http://127.0.0.1:17841/v1/responses"
-```
-
-The relay forwards the original request bytes and a versioned allowlist of
-observed native headers, including native `Content-Encoding: zstd`, streams
-upstream status and SSE bytes without parsing, and propagates client
-cancellation. It validates a bounded decompressed copy of zstd requests while
-forwarding the original compressed bytes unchanged. It rejects browser `Origin` requests,
-non-loopback upstreams, redirects, oversized bodies above `8388608` bytes,
-generic requests without native metadata, and no automatic replay after
-forwarding begins. It does not
-forward administrative or stored provider credentials. `GET` returns `426` so
-native WebSocket negotiation fails closed before the HTTP Responses fallback;
-there is no relay `/v1/models` route and no model aliasing.
-
-Keep the externally owned browser-backed relay service on its own loopback port, normally
-`127.0.0.1:17841`, and verify launcher restart ownership before any live
-installation. `-InstallGlobal` remains opt-in and requires explicit approval;
-source application and verification do not alter installed 9router or stored
-credentials. Full native relay proof remains a separate acceptance gate
-when the upstream relay is browser-only.
+The patch hub intentionally retains only the OpenDesign recovery and LightMem2
+Codex hook overlay documented above. Do not add new 9router patch registries or
+runtime launchers here.
