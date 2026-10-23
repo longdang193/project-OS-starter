@@ -117,7 +117,7 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: execute Task 4 in the isolated Project OS worktree and prove launcher admission rejects retired CGW profiles before side effects
+- Next action: activate Task 5 in the isolated LightRSI worktree and reconcile canonical/generated profile and fixture evidence
 - Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -126,8 +126,8 @@ separate.
 | Task 1 | `completed` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, exact Vitest matrix 34/34, extended image matrix 37/37 |
 | Task 2 | `completed` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
 | Task 3 | `completed` | `9router` + `LightRSI` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
-| Task 4 | `active` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | admitted after Task 3 proof; next sequential task |
-| Task 5 | `pending` | `LightRSI` | `unresolved` | Task 1 | canonical/generated profile and fixture proof | pending |
+| Task 4 | `completed` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | current equivalents: 279 passed; adapter drift check passed; historical filenames `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py` are absent and were not substituted as failures |
+| Task 5 | `active` | `LightRSI` | `lead controller` | Task 1 | canonical/generated profile and fixture proof | activated after Task 4 launcher proof |
 | Task 6 | `pending` | all three repositories | `unresolved` | Tasks 2-5 | synchronized verification and rollback record | pending |
 | Task 7 | `pending` | all three repositories | `unresolved` | Task 6 | fresh final verification and handoff evidence | pending |
 
@@ -412,19 +412,25 @@ separate.
 - Stop for: any direct edit to a generated projection, any retired request that acquires a lock or starts a process, or any maintained native profile regression.
 
 **Steps:**
-- [ ] Replace the local lexical policy with the generated retirement-contract projection and preserve the four retired families plus the maintained `combo-ui` and `combo-xhigh` profiles.
-- [ ] Add a table-driven launcher test for `combo-web-high`, `combo-web-medium`, `cgw/gpt-5.6-sol`, and `chatgpt-web/gpt-5.6-sol` that asserts no preflight, transport, lock, or prompt-dispatch mock is called.
-- [ ] Search and remove remaining active CGW overlay, shim, startup, port, receipt, and installer paths while preserving the independent Codex relay documentation.
-- [ ] Reconcile maintained documentation with final ownership: mark the old installer/overlay claims as superseded, link to `tools/local-patch-hub/README.md` for direct-fork ownership, and fix the broken Herdr Observation sentence in `runtime-adapter-procedure.md`.
-- [ ] Regenerate adapter projections and run the adapter drift check instead of editing generated files manually.
+- [x] Replace the local lexical policy with the generated retirement-contract projection and preserve the four retired families plus the maintained `combo-ui` and `combo-xhigh` profiles.
+- [x] Add a table-driven launcher test for `combo-web-high`, `combo-web-medium`, `cgw/gpt-5.6-sol`, and `chatgpt-web/gpt-5.6-sol` that asserts no preflight, transport, lock, or prompt-dispatch mock is called.
+- [x] Search and remove remaining active CGW overlay, shim, startup, port, receipt, and installer paths while preserving the independent Codex relay documentation.
+- [x] Reconcile maintained documentation with final ownership: mark the old installer/overlay claims as superseded, link to `tools/local-patch-hub/README.md` for direct-fork ownership, and fix the broken Herdr Observation sentence in `runtime-adapter-procedure.md`.
+- [x] Regenerate adapter projections and run the adapter drift check instead of editing generated files manually.
 
 **Verification:**
-- Run `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_9router_global_install.py tests/test_9router_codex_relay_overlay.py`.
+- Run `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_9router_patch_hub_deprecation.py tests/test_lightrsi_codex_overlay.py`.
 - Run `python scripts/sync_agent_adapters.py --all-platforms --check`.
-- Search maintained Project OS files for `CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|CGW_SHIM` and classify only canonical policy, historical evidence, or preserved relay-boundary references as allowed matches.
+- Search maintained Project OS files for `CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|CGW_SHIM` and classify only canonical policy, rejection tests, historical evidence, or preserved relay-boundary references as allowed matches.
 
 **Exit Criteria:**
 - Project OS fails closed before runtime side effects, generated surfaces are synchronized, and active CGW launcher/install paths are absent.
+
+**Execution Evidence (2026-10-23):**
+- Passed: `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_9router_patch_hub_deprecation.py tests/test_lightrsi_codex_overlay.py` with `279 passed`.
+- Passed: `python scripts/sync_agent_adapters.py --all-platforms --check` with all adapter outputs up to date.
+- Classified remaining maintained references: retirement-policy/rejection coverage and documentation of the preserved native boundary; no active Project OS CGW launcher, overlay, shim, startup, port, receipt, or installer path was found.
+- Discrepancy: the historical verification command named `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py`; neither file exists in the current checkout, so current maintained equivalents were run instead and the absence is recorded rather than treated as a test failure.
 
 ### Task 5: Synchronize LightRSI profiles and remove stale contract wording
 
