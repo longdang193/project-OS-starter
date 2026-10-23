@@ -129,11 +129,11 @@ to `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`,
 
 **Verified implementation heads:**
 
-| Repository | Branch | Verified SHA | Scope |
-| --- | --- | --- | --- |
-| `project-OS-starter` | `codex/cgw-web-combo-retirement-project-os` | `2980a2ab4c8c89814d3688e7bad98802560367ed` | Reject `chatgpt-web/` in the canonical profile validator |
-| `LightRSI` | `codex/cgw-web-combo-retirement-lightrsi` | `761e6f45e05b77d8a72e314a0f8de8a36fd101b3` | Profile contract and retained logical-profile tests |
-| `9router` | `codex/cgw-web-combo-retirement-9router` | `d57b57ea7f5d12340d2e8e1a24c844fef18b48c4` | Retired-model policy, stale-combo catalog, public boundaries, and regression tests |
+| Repository | Branch | Verified implementation SHA | Release merge SHA | Scope |
+| --- | --- | --- | --- | --- |
+| `project-OS-starter` | `codex/cgw-web-combo-retirement-project-os` | `2980a2ab4c8c89814d3688e7bad98802560367ed` | `1091557118a4a12564f6a232b27eb01dd5fbb1d8` | Reject `chatgpt-web/` in the canonical profile validator |
+| `LightRSI` | `codex/cgw-web-combo-retirement-lightrsi` | `761e6f45e05b77d8a72e314a0f8de8a36fd101b3` | `ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c` | Profile contract and retained logical-profile tests |
+| `9router` | `codex/cgw-web-combo-retirement-9router` | `d57b57ea7f5d12340d2e8e1a24c844fef18b48c4` | `3e21db2dd9326fa794e015c30660aa6ab8dcc94a` | Retired-model policy, stale-combo catalog, public boundaries, and regression tests |
 
 **Fresh verification:**
 
@@ -143,6 +143,7 @@ to `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`,
 - 9Router boundary/retirement matrix: `npx vitest run unit/model-routing.test.js unit/retired-combo-ownership.test.js unit/account-fallback.test.js unit/combo-fusion.test.js unit/combo-routing.test.js unit/executor-replay-policy.test.js unit/no-replay-routing.test.js unit/chat-request-correlation.test.js --testTimeout=20000` from `9router/tests` — `8 files, 54 tests passed` at `d57b57ea`.
 - 9Router production build: `pnpm build` — completed successfully at `d57b57ea`; the optional `better-sqlite3` binding was unavailable and the documented `node:sqlite` fallback was used.
 - Static safety: `git diff --check` passed in all three implementation worktrees. Active Project OS paths contain only the canonical retirement constants and explicit rejection tests; no CGW launcher, shim, overlay, port, lock, startup, or receipt path remains.
+- Post-merge reconciliation: the tested source paths are tree-identical between each implementation SHA and its release merge SHA; no additional focused rerun was required beyond the recorded post-merge smoke/static comparison.
 
 **Broader-suite disposition:** The 9Router `combo-autoswitch.test.js` file was
 unchanged and has two pre-existing failures (`web_search tool -> search` and
