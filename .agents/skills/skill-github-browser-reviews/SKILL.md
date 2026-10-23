@@ -1,6 +1,6 @@
 ---
 name: skill-github-browser-reviews
-description: Use when reviewing plans, code, or files through a normal ChatGPT browser tab with the GitHub connector.
+description: Use only when the user explicitly requests this skill for a GitHub review through a normal ChatGPT browser tab with `@GitHub`.
 required_reads: []
 distribution_tier: starter_kit
 ---
@@ -9,18 +9,27 @@ distribution_tier: starter_kit
 
 ## Role
 
-Use this skill for project reviews that read committed work from GitHub through
-a normal ChatGPT browser tab with `@GitHub`. It defines the preparation, request, and evidence
+Use this skill only after the user explicitly invokes it by name or explicitly
+requests the GitHub Browser Reviews workflow. It defines the preparation, request, and evidence
 rules for a read-only review; it does not modify files, merge changes, or
 replace repository ownership and branch controls.
 
 ## When to Use
 
-Use when:
+Use only when the user explicitly requests this skill or workflow, for example:
 
-- a plan, code change, or file needs an external review;
-- the review can read a committed revision from GitHub;
-- findings should be returned without modifying the repository.
+- `$skill-github-browser-reviews`;
+- "Use the GitHub Browser Reviews skill";
+- an equivalent explicit request naming this skill and asking for a GitHub browser-tab review.
+
+Do not activate this skill merely because:
+
+- a plan, code change, or pull request needs review;
+- the task mentions GitHub or asks to open, review, or merge a pull request;
+- the review can read a committed revision from GitHub.
+
+Use the applicable review or pull-request skill instead when this skill was not
+explicitly requested.
 
 Do not use a local Windows path as the only review source. If the requested revision is
 not available on GitHub, report `incomplete` or `blocked` instead of claiming
@@ -28,20 +37,22 @@ that the review inspected local state.
 
 ## Non-Negotiable Invariants
 
-1. **Publication invariant:** Commit and push the selected plan or code changes
+1. **Explicit-invocation invariant:** Do not use this skill unless the user
+   explicitly requested it by name or explicitly requested its workflow.
+2. **Publication invariant:** Commit and push the selected plan or code changes
    to the intended branch before opening the review.
-2. **Revision invariant:** Give the reviewer an exact branch or commit and an
+3. **Revision invariant:** Give the reviewer an exact branch or commit and an
    exact file URL. The review request must include the file path or GitHub file URL.
    Pin URLs to a commit when reproducibility matters.
-3. **Browser invariant:** Use a normal ChatGPT browser tab and invoke `@GitHub`.
-4. **Model invariant:** Let the user select either `GPT-5.6-Sol` or `GPT-6`.
-5. **Reasoning invariant:** Let the user select `instant`, `medium`, or `high`
+4. **Browser invariant:** Use a normal ChatGPT browser tab and invoke `@GitHub`.
+5. **Model invariant:** Let the user select either `GPT-5.6-Sol` or `GPT-6`.
+6. **Reasoning invariant:** Let the user select `instant`, `medium`, or `high`
    and preserve that choice in the review request.
-6. **Scope invariant:** Keep the request read-only and identify the stable
+7. **Scope invariant:** Keep the request read-only and identify the stable
    context, repository, revision, file path, and review question.
-7. **Evidence invariant:** Require the reviewer to cite a known heading, hash,
+8. **Evidence invariant:** Require the reviewer to cite a known heading, hash,
    or other file marker from the requested revision.
-8. **Privacy invariant:** Do not include credentials, environment values,
+9. **Privacy invariant:** Do not include credentials, environment values,
    private instructions, or unrelated repository contents in the request.
 
 ## Review Procedure

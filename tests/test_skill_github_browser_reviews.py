@@ -16,6 +16,9 @@ def normalized_skill() -> str:
 def test_skill_defines_push_and_review_evidence() -> None:
     skill = normalized_skill()
     for text in (
+        "use this skill only after the user explicitly invokes it by name",
+        "do not activate this skill merely because",
+        "explicit-invocation invariant",
         "commit and push",
         "normal chatgpt browser tab",
         "@github",

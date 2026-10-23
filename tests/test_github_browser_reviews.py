@@ -6,6 +6,9 @@ CANONICAL_SKILL = ROOT / ".agents" / "skills" / "skill-github-browser-reviews" /
 
 
 REQUIRED_BROWSER_REVIEW_RULES = (
+    "Use this skill only after the user explicitly invokes it by name",
+    "Do not activate this skill merely because",
+    "Explicit-invocation invariant",
     "normal ChatGPT browser tab",
     "with `@GitHub`",
     "Commit and push the selected plan or code",
@@ -41,6 +44,14 @@ def test_skill_requires_browser_tab_github_review_workflow() -> None:
 
     for rule in REQUIRED_BROWSER_REVIEW_RULES:
         assert rule in content
+
+
+def test_skill_requires_explicit_user_invocation() -> None:
+    content = CANONICAL_SKILL.read_text(encoding="utf-8")
+
+    assert "Use this skill only after the user explicitly invokes it by name" in content
+    assert "Do not activate this skill merely because" in content
+    assert "Explicit-invocation invariant" in content
 
 
 def test_skill_allows_model_and_reasoning_selection() -> None:
