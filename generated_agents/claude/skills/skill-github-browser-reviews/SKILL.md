@@ -79,11 +79,22 @@ radio items and a `Power` thinking-effort control. The effort is displayed as
 dragging the overlapping visual thumb. Record the selected model and effort
 exactly as displayed.
 
-Use the visible selected state as the authority. A usage-limit or locked-model
-banner is separate evidence: record it when it prevents the requested model
-from being selected or leaves the selected model unverified. Do not infer that
-the requested model was selected from a click that produced no visible state
-change.
+Use the visible selected state as the authority. Treat model selection and
+thinking effort as separate controls and verify them separately. A generic
+`Locked`, `Usage limit reached`, or similar banner is unscoped evidence unless
+the visible UI attaches it to a specific model item or the specific effort
+control. Never attribute that banner to a model merely because it appears
+near the model list, and never treat it as account-wide model unavailability.
+
+For the requested model, verify the visible radio item's checked/selected
+state and inspect only the same item's visible disabled, locked, or error
+state. A click timeout, pointer interception, unchanged page, or failure to
+click an overlapping control does not prove that the model is locked. If the
+requested model remains visibly selectable but an unscoped banner is present,
+record the banner as an unscoped selector warning and continue only when the
+requested model and effort are both visibly verified. If either value is not
+verified, report it as unverified or incomplete rather than guessing the
+cause.
 
 ## Review Procedure
 
@@ -112,10 +123,13 @@ Use this bounded interaction sequence:
    the request.
 
 If the model remains unchanged after one normal click and one bounded
-visible-item fallback, or if the model is locked or unavailable, stop as
-`incomplete` or `blocked`. Do not use force-click loops, repeated
-resubmissions, or hidden DOM state to claim selection. Record any usage-limit
-banner separately. Only after both values are visibly verified may the review
+visible-item fallback, stop as `incomplete` unless the requested model item is
+visibly marked disabled or locked; a failed click alone is not a lock signal.
+Likewise, do not treat a generic usage-limit banner as a model failure unless
+the UI visibly associates it with that model item. Do not use force-click
+loops, repeated resubmissions, or hidden DOM state to claim selection. Record
+any unscoped banner separately from model availability. Only after both the
+model radio item and the effort control are visibly verified may the review
 request be submitted.
 
 For repeatable browser automation, use the page-bound helper at
@@ -194,6 +208,9 @@ Return findings ordered by severity and do not modify files.
 ```
 
 ### 4. Keep the request bounded
+
+Keep the browser-tab request compact and provide only the exact revision,
+read-only scope, stable context identifier, and one review question.
 
 Do not paste the current chat transcript, system or developer instructions,
 tool schemas, environment blocks, attachments, or transport wrappers. Do not
