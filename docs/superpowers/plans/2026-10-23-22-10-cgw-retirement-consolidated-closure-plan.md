@@ -117,15 +117,15 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: execute Task 2 in the isolated 9router worktree using disposable database fixtures and the frozen base revision
-- Blockers: none for Task 2 admission; the native Codex relay remains an explicit typed compatibility boundary
+- Next action: execute Task 3 in the isolated 9router worktree and record the typed Codex-relay performance decision
+- Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 0 | `completed` | current | `lead controller` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
 | Task 1 | `completed` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, exact Vitest matrix 34/34, extended image matrix 37/37 |
-| Task 2 | `active` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | admitted after Task 1 proof; in progress |
-| Task 3 | `pending` | `9router` | `unresolved` | Tasks 1-2 | relay isolation and before/after performance evidence | pending |
+| Task 2 | `completed` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
+| Task 3 | `active` | `9router` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | admitted after Task 2 proof; next sequential task |
 | Task 4 | `pending` | `project-OS-starter` | `unresolved` | Task 1 | launcher boundary and CGW-surface absence tests | pending |
 | Task 5 | `pending` | `LightRSI` | `unresolved` | Task 1 | canonical/generated profile and fixture proof | pending |
 | Task 6 | `pending` | all three repositories | `unresolved` | Tasks 2-5 | synchronized verification and rollback record | pending |
@@ -290,16 +290,21 @@ separate.
 - Stop for: any live database deletion, any stale row that cannot be listed or removed, any retired target that reaches provider dispatch, or any cancellation/replay regression.
 
 **Steps:**
-- [ ] Make row conversion preserve stale members as inspectable data with a stable invalid-member marker instead of throwing during list or delete.
-- [ ] Make `getComboById` and `deleteCombo` operate on stale rows without requiring every member to resolve to an active provider.
-- [ ] Reject retired or unresolved targets before warmup, fallback selection, provider lookup, retry, or replay; retain generic fallback only for maintained provider failures.
-- [ ] Run a lightweight retirement check on the original request identifier before `handleBypassRequest`, then keep canonical post-resolution validation before dispatch; do not add a new runtime service or lock for this ordering fix.
-- [ ] Map `RetiredModelError` consistently to `410` / `RETIRED_MODEL` on image-generation and every other model-capable public route instead of allowing a `500`.
-- [ ] Exclude retired, malformed, and unresolved combos from `/v1/models` executable catalog output while preserving administrative inspection and deletion.
-- [ ] Reject new `/api/models/alias` writes whose targets resolve, directly or transitively, to retired providers.
-- [ ] Add mixed maintained/stale/malformed fixtures that list, delete, execute, cancel, and replay deterministically.
-- [ ] Add warmup/naming bypass tests for direct retired names and aliases, image-generation boundary tests, catalog filtering tests, and alias-write rejection tests.
-- [ ] Re-run the focused combo/fallback/replay matrix and record the exact command, revision, and result.
+- [x] Make row conversion preserve stale members as inspectable data with a stable invalid-member marker instead of throwing during list or delete.
+- [x] Make `getComboById` and `deleteCombo` operate on stale rows without requiring every member to resolve to an active provider.
+- [x] Reject retired or unresolved targets before warmup, fallback selection, provider lookup, retry, or replay; retain generic fallback only for maintained provider failures.
+- [x] Run a lightweight retirement check on the original request identifier before `handleBypassRequest`, then keep canonical post-resolution validation before dispatch; do not add a new runtime service or lock for this ordering fix.
+- [x] Map `RetiredModelError` consistently to `410` / `RETIRED_MODEL` on image-generation and every other model-capable public route instead of allowing a `500`.
+- [x] Exclude retired, malformed, and unresolved combos from `/v1/models` executable catalog output while preserving administrative inspection and deletion.
+- [x] Reject new `/api/models/alias` writes whose targets resolve, directly or transitively, to retired providers.
+- [x] Add mixed maintained/stale/malformed fixtures that list, delete, execute, cancel, and replay deterministically.
+- [x] Add warmup/naming bypass tests for direct retired names and aliases, image-generation boundary tests, catalog filtering tests, and alias-write rejection tests.
+- [x] Re-run the focused combo/fallback/replay matrix and record the exact command, revision, and result.
+
+**Execution Evidence (2026-10-23):**
+- Passed: `git diff --check` and `node --check` for the changed route and handler files.
+- Passed: from the isolated `9router` worktree, `npx vitest run --config tests/vitest.config.js tests/unit/retired-combo-ownership.test.js tests/unit/model-routing.test.js tests/unit/image-provider-retirement.test.js --testTimeout=20000` with 3 files and 40 tests passed.
+- The matrix used disposable SQLite fixtures and preserved maintained routing, fallback, cancellation, replay, catalog filtering, alias-write rejection, and image-generation `410` behavior. Vitest emitted existing listener warnings only; no test failed.
 
 **Verification:**
 - From `9router/tests`, run `npx vitest run unit/retired-combo-ownership.test.js unit/account-fallback.test.js unit/combo-routing.test.js unit/executor-replay-policy.test.js unit/no-replay-routing.test.js --testTimeout=20000`.
