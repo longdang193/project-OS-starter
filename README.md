@@ -189,6 +189,12 @@ Run adapter drift checks without regenerating outputs:
 python scripts/sync_agent_adapters.py --all-platforms --check
 ```
 
+`sync_agent_adapters.py` updates only the repository's generated adapter
+mirrors under `generated_agents/`; it does not deploy skills to user-level
+paths such as `~/.agents/skills`. After regenerating adapter outputs, run
+`python scripts/deploy_agent_runtime.py --target all` to deploy shared skills
+and runtime assets to the user environment.
+
 Run repository validation once; its owned drift checks run within that command.
 Run explicit pytest modules for focused runtime and validator regressions. Run
 adapter generation only after canonical adapter-source edits. Coordinated
