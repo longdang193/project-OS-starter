@@ -131,6 +131,7 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     scripts_dir = skill_dir / "scripts"
     scripts_dir.mkdir()
     (scripts_dir / "helper.sh").write_text("#!/usr/bin/env bash\necho helper\n", encoding="utf-8")
+    (scripts_dir / "helper.mjs").write_text("export const helper = true;\n", encoding="utf-8")
 
     mapping = SYNC.Mapping(
         source=".agents/skills",
@@ -146,6 +147,8 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "SKILL.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "task-reviewer-prompt.md").exists()
     assert (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.sh").exists()
+    generated_mjs = root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "helper.mjs"
+    assert generated_mjs.read_text(encoding="utf-8").startswith("// GENERATED FILE - DO NOT EDIT\n")
 
 
 def _write_agent_role(path: Path, *, name: str = "normal", rank: int | None = 20, extra: str = "") -> None:

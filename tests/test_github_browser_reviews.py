@@ -3,6 +3,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_SKILL = ROOT / ".agents" / "skills" / "skill-github-browser-reviews" / "SKILL.md"
+MODEL_SELECTION_HELPER = (
+    ROOT
+    / ".agents"
+    / "skills"
+    / "skill-github-browser-reviews"
+    / "scripts"
+    / "select-review-model.mjs"
+)
+REVIEW_PROMPT_HELPER = (
+    ROOT
+    / ".agents"
+    / "skills"
+    / "skill-github-browser-reviews"
+    / "scripts"
+    / "run-review-prompt.mjs"
+)
 
 
 REQUIRED_BROWSER_REVIEW_RULES = (
@@ -59,6 +75,36 @@ def test_skill_allows_model_and_reasoning_selection() -> None:
 
     for rule in REQUIRED_MODEL_SELECTION_RULES:
         assert rule in content
+
+
+def test_skill_has_bounded_playwright_model_selection_helper() -> None:
+    skill = CANONICAL_SKILL.read_text(encoding="utf-8")
+    helper = MODEL_SELECTION_HELPER.read_text(encoding="utf-8")
+
+    assert "scripts/select-review-model.mjs" in skill
+    assert "selectReviewModel(page" in skill
+    assert 'getByRole("button", { name: "Select ChatGPT model" })' in helper
+    assert '[role="menuitemradio"]' in helper
+    assert 'getByRole("menuitem", { name: "Power", exact: true })' in helper
+    assert 'ArrowLeft' in helper
+    assert 'ArrowRight' in helper
+    assert "never launches a browser" in helper
+    assert "retries indefinitely" in helper
+
+
+def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
+    skill = CANONICAL_SKILL.read_text(encoding="utf-8")
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "scripts/run-review-prompt.mjs" in skill
+    assert "runReviewPrompt(page" in helper
+    assert "openReviewTab(context)" in helper
+    assert "runReviewPromptInNewTab(context, options)" in helper
+    assert 'page.goto(CHATGPT_URL)' in helper
+    assert 'getByRole("textbox", { name: "Ask ChatGPT" })' in helper
+    assert "promptSubmitted: true" in helper
+    assert "never launches a browser" in helper
+    assert "retries" in helper
 
 
 def test_skill_removes_legacy_runtime_routing() -> None:

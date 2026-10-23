@@ -1,0 +1,125 @@
+const SUPPORTED_MODELS = new Set(["GPT-5.6-Sol", "GPT-6"]);
+const SUPPORTED_EFFORTS = new Set(["Instant", "Medium", "High"]);
+const MODEL_LABELS = { "GPT-5.6-Sol": "GPT-5.6 Sol", "GPT-6": "GPT-6" };
+const EFFORT_ORDER = ["Instant", "Medium", "High"];
+
+function assertSupported(value, supported, label) {
+  if (!supported.has(value)) {
+    throw new Error(`${label} must be one of: ${[...supported].join(", ")}`);
+  }
+}
+
+function normalizeText(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+async function openModelMenu(page) {
+  const menu = page.getByRole("menu", { name: "Select ChatGPT model" }).first();
+  if (await menu.isVisible()) return menu;
+
+  const control = page.getByRole("button", { name: "Select ChatGPT model" }).first();
+  if (!(await control.isVisible())) {
+    throw new Error("Visible ChatGPT model selector was not found");
+  }
+
+  await control.click();
+  if (!(await menu.isVisible())) {
+    throw new Error("ChatGPT model menu did not open");
+  }
+  return menu;
+}
+
+async function findModelOption(menu, model) {
+  const options = menu.locator('[role="menuitemradio"]');
+  const count = await options.count();
+  const expectedLabel = MODEL_LABELS[model];
+
+  for (let index = 0; index < count; index += 1) {
+    const option = options.nth(index);
+    if (!(await option.isVisible())) continue;
+    if (normalizeText(await option.innerText()) === expectedLabel) return option;
+  }
+
+  throw new Error(`Visible model option was not found: ${expectedLabel}`);
+}
+
+async function selectModel(menu, model) {
+  const option = await findModelOption(menu, model);
+  if ((await option.getAttribute("aria-checked")) !== "true") {
+    try {
+      await option.click({ timeout: 1500 });
+    } catch {
+      await option.evaluate((element) => element.click());
+    }
+  }
+
+  if ((await option.getAttribute("aria-checked")) !== "true") {
+    throw new Error(`Selected model is not visibly confirmed: ${MODEL_LABELS[model]}`);
+  }
+}
+
+async function readEffort(menu) {
+  const status = menu.locator('[role="status"]').first();
+  if (await status.isVisible()) {
+    const statusText = normalizeText(await status.innerText());
+    const effort = EFFORT_ORDER.find((candidate) => statusText.startsWith(candidate));
+    if (effort) return effort;
+  }
+
+  const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
+  if (await modelControl.isVisible()) {
+    const modelText = normalizeText(await modelControl.innerText());
+    const effort = EFFORT_ORDER.find((candidate) => modelText.endsWith(candidate));
+    if (effort) return effort;
+  }
+
+  throw new Error("Visible thinking effort was not found");
+}
+
+async function setEffort(menu, effort) {
+  const power = menu.getByRole("menuitem", { name: "Power", exact: true }).first();
+  if (!(await power.isVisible())) {
+    throw new Error("Visible thinking-effort power control was not found");
+  }
+
+  const currentEffort = await readEffort(menu);
+  const delta = EFFORT_ORDER.indexOf(effort) - EFFORT_ORDER.indexOf(currentEffort);
+  await power.focus();
+
+  const key = delta < 0 ? "ArrowLeft" : "ArrowRight";
+  for (let index = 0; index < Math.abs(delta); index += 1) {
+    await power.press(key);
+  }
+}
+
+async function verifySelection(menu, model, effort) {
+  const option = await findModelOption(menu, model);
+  if ((await option.getAttribute("aria-checked")) !== "true") {
+    throw new Error(`Selected model is not visibly confirmed: ${MODEL_LABELS[model]}`);
+  }
+
+  if ((await readEffort(menu)) !== effort) {
+    throw new Error(`Selected reasoning effort is not visibly confirmed: ${effort}`);
+  }
+}
+
+/**
+ * Select and verify the GitHub review model and thinking effort.
+ *
+ * The caller owns the authenticated browser tab and supplies an existing
+ * Playwright Page. This helper never launches a browser, reads hidden state,
+ * retries indefinitely, or submits a review request.
+ */
+export async function selectReviewModel(page, { model, effort }) {
+  assertSupported(model, SUPPORTED_MODELS, "model");
+  assertSupported(effort, SUPPORTED_EFFORTS, "effort");
+
+  const menu = await openModelMenu(page);
+  await selectModel(menu, model);
+  await setEffort(menu, effort);
+  await verifySelection(menu, model, effort);
+
+  return { model, effort };
+}
+
+export { SUPPORTED_MODELS, SUPPORTED_EFFORTS };
