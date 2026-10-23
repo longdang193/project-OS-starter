@@ -60,6 +60,7 @@
       "scripts/herdr_attempt_contract.py",
       "scripts/deepagents_result_contract.py",
       "scripts/agent_profile_registry.py",
+      "scripts/retired-model-policy.json",
       "scripts/herdr_main_launcher.py",
       "scripts/mcp_selection.py",
       "scripts/opendesign_profile_adapter.py",

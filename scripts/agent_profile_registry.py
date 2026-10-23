@@ -24,26 +24,38 @@ REQUIRED_KEYS = {
     "developer_instructions",
 }
 ALLOWED_KEYS = REQUIRED_KEYS | {"rank", "herdr_only"}
-_RETIREMENT_POLICY_PATH = Path(__file__).resolve().parents[1] / "repo_config" / "retired-model-policy.json"
+_RETIREMENT_POLICY_PATHS = (
+    Path(__file__).resolve().parents[1] / "repo_config" / "retired-model-policy.json",
+    Path(__file__).resolve().with_name("retired-model-policy.json"),
+)
 
 
 def _load_retirement_policy() -> dict[str, object]:
+    policy_path = next(
+        (candidate for candidate in _RETIREMENT_POLICY_PATHS if candidate.is_file()),
+        _RETIREMENT_POLICY_PATHS[0],
+    )
     try:
-        payload = json.loads(_RETIREMENT_POLICY_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(policy_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Cannot read retirement policy {_RETIREMENT_POLICY_PATH}: {exc}") from exc
+        raise RuntimeError(f"Cannot read retirement policy {policy_path}: {exc}") from exc
     if not isinstance(payload, dict):
-        raise RuntimeError(f"Retirement policy {_RETIREMENT_POLICY_PATH} must be a JSON object.")
+        raise RuntimeError(f"Retirement policy {policy_path} must be a JSON object.")
     for key in ("retiredModelNames", "retiredModelPrefixes"):
         values = payload.get(key)
         if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
-            raise RuntimeError(f"Retirement policy `{key}` must be a non-empty string list.")
+            raise RuntimeError(f"Retirement policy {policy_path} `{key}` must be a non-empty string list.")
     return payload
 
 
-_RETIREMENT_POLICY = _load_retirement_policy()
-RETIRED_MODEL_NAMES = frozenset(_RETIREMENT_POLICY["retiredModelNames"])
-RETIRED_MODEL_PREFIXES = tuple(_RETIREMENT_POLICY["retiredModelPrefixes"])
+_RETIREMENT_POLICY: dict[str, object] | None = None
+
+
+def _retirement_policy() -> dict[str, object]:
+    global _RETIREMENT_POLICY
+    if _RETIREMENT_POLICY is None:
+        _RETIREMENT_POLICY = _load_retirement_policy()
+    return _RETIREMENT_POLICY
 
 
 @dataclass(frozen=True)
@@ -66,7 +78,10 @@ def _required_string(payload: dict[str, object], key: str, source: Path) -> str:
 
 
 def validate_model_reference(model: str, source: Path | str) -> None:
-    if model in RETIRED_MODEL_NAMES or model.startswith(RETIRED_MODEL_PREFIXES):
+    policy = _retirement_policy()
+    retired_names = frozenset(policy["retiredModelNames"])
+    retired_prefixes = tuple(policy["retiredModelPrefixes"])
+    if model in retired_names or model.startswith(retired_prefixes):
         raise ValueError(
             f"Agent profile {source} uses retired model `{model}`; "
             "retired CGW/web-combo aliases are unsupported."
