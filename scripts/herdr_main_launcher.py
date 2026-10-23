@@ -280,22 +280,58 @@ def _submission_gate_binding(registry_launcher: Mapping[str, Any]) -> dict[str, 
     }
 
 
-def _submission_gate_operation_id(binding: Mapping[str, str]) -> str:
-    return derive_logical_operation_id(**dict(binding))
+def _submission_gate_operation_id(
+    binding: Mapping[str, str],
+    *,
+    logical_operation_id: str | None = None,
+    secretary_task_id: str | None = None,
+    secretary_plan_revision: str | None = None,
+    secretary_run_id: str | None = None,
+) -> str:
+    if logical_operation_id is not None and logical_operation_id.strip():
+        return logical_operation_id.strip()
+    stable_identity = {
+        "task_id": secretary_task_id or binding.get("task_id", ""),
+        "plan_revision": secretary_plan_revision or binding.get("plan_revision", ""),
+        "run_id": secretary_run_id or binding.get("run_id", ""),
+    }
+    if all(isinstance(value, str) and value.strip() for value in stable_identity.values()):
+        return derive_logical_operation_id(**stable_identity)
+    raise LaunchBlocked("Submission gate requires a stable logical operation identity.")
 
 
-def _submission_gate_path(binding: Mapping[str, str]) -> Path:
-    return gate_path(_submission_gate_operation_id(binding))
+def _submission_gate_path(
+    binding: Mapping[str, str],
+    *,
+    logical_operation_id: str | None = None,
+    secretary_task_id: str | None = None,
+    secretary_plan_revision: str | None = None,
+    secretary_run_id: str | None = None,
+) -> Path:
+    return gate_path(
+        _submission_gate_operation_id(
+            binding,
+            logical_operation_id=logical_operation_id,
+            secretary_task_id=secretary_task_id,
+            secretary_plan_revision=secretary_plan_revision,
+            secretary_run_id=secretary_run_id,
+        )
+    )
 
 
 def _claim_submission_gate(
     path: Path,
     binding: Mapping[str, str],
     attempt_id: str,
+    *,
+    logical_operation_id: str | None = None,
 ) -> dict[str, Any]:
     return claim_submission(
         path,
-        operation_id=_submission_gate_operation_id(binding),
+        operation_id=_submission_gate_operation_id(
+            binding,
+            logical_operation_id=logical_operation_id,
+        ),
         attempt_id=attempt_id,
         binding=binding,
     )
@@ -947,6 +983,7 @@ def _resolve_target_selector(
 
     candidates: list[tuple[bool, str, str]] = []
     rejections: list[dict[str, str]] = []
+    source_panes: list[dict[str, Any]] = []
     for item in panes:
         workspace_id = item.get("workspace_id")
         pane_id = item.get("pane_id")
@@ -954,6 +991,7 @@ def _resolve_target_selector(
             raise LaunchBlocked("Herdr snapshot contains pane entry without workspace_id/pane_id.")
         if Path(str(item.get("cwd", ""))).resolve() != cwd.resolve():
             continue
+        source_panes.append(item)
         session_panes = [
             candidate for candidate in panes
             if candidate.get("workspace_id") == workspace_id
@@ -978,6 +1016,97 @@ def _resolve_target_selector(
 
     candidates.sort(key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
     if not candidates:
+        if source_panes:
+            source = sorted(
+                source_panes,
+                key=lambda item: (
+                    bool(item.get("focused")),
+                    str(item.get("workspace_id")),
+                    str(item.get("pane_id")),
+                ),
+            )[0]
+            split_payload = _json_command(
+                [
+                    herdr,
+                    "--session",
+                    control_session,
+                    "pane",
+                    "split",
+                    "--pane",
+                    str(source["pane_id"]),
+                    "--direction",
+                    "down",
+                    "--cwd",
+                    str(cwd),
+                    "--no-focus",
+                ],
+                env=env,
+                timeout=remaining_timeout(),
+            )
+            allocated = _result(split_payload, "pane")
+            if not isinstance(allocated, dict):
+                raise LaunchBlocked("Herdr split response is missing pane information.")
+            allocated_pane = allocated.get("pane_id")
+            if not isinstance(allocated_pane, str) or not allocated_pane:
+                raise LaunchBlocked("Herdr split response is missing pane_id.")
+            try:
+                while True:
+                    try:
+                        _herdr_pane(
+                            cwd,
+                            control_session,
+                            allocated_pane,
+                            herdr,
+                            executor=executor,
+                            env=env,
+                            panes=[allocated],
+                            timeout=remaining_timeout(),
+                            expected_profile=expected_profile,
+                            context_identity=context_identity,
+                        )
+                        break
+                    except LaunchBlocked as exc:
+                        if str(exc) != "Herdr pane process information is incomplete.":
+                            raise
+                        time.sleep(min(0.1, remaining_timeout()))
+            except TargetCandidateRejected as exc:
+                raise TargetResolutionBlocked(
+                    f"allocated pane rejected: {exc}",
+                    {
+                        "status": "blocked",
+                        "mode": "auto",
+                        "candidate_count": 0,
+                        "candidates": [],
+                        "rejections": [
+                            *rejections,
+                            {"session": control_session, "pane": allocated_pane, "reason": str(exc)},
+                        ],
+                        "allocation": {
+                            "status": "rejected",
+                            "source_pane": str(source["pane_id"]),
+                            "pane": allocated_pane,
+                        },
+                    },
+                ) from exc
+            return control_session, allocated_pane, {
+                "status": "selected",
+                "mode": "auto",
+                "candidate_count": 1,
+                "candidates": [{"session": control_session, "pane": allocated_pane}],
+                "rejections": rejections,
+                "allocation": {
+                    "status": "allocated",
+                    "source_pane": str(source["pane_id"]),
+                    "pane": allocated_pane,
+                },
+                "session": control_session,
+                "pane": allocated_pane,
+                "session_provenance": (
+                    "shared/default"
+                    if control_session == _HERDR_DEFAULT_SESSION
+                    else "pre-existing"
+                ),
+            }
         status = "blocked" if rejections else "not_found"
         raise TargetResolutionBlocked(
             f"target_resolution={status}; eligible candidates=0",
@@ -3543,6 +3672,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--secretary-task-id")
     parser.add_argument("--secretary-plan-revision")
     parser.add_argument("--secretary-run-id")
+    parser.add_argument("--logical-operation-id")
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
     parser.add_argument("--prior-attempt-known", choices=["true", "false"], default="false")
@@ -3720,11 +3850,26 @@ def _main_body(args: argparse.Namespace) -> int:
             if registry_evidence.get(key) is not None:
                 attempt_context[key] = registry_evidence[key]
         submission_gate_binding = _submission_gate_binding(registry_evidence)
-        submission_gate_file = _submission_gate_path(submission_gate_binding)
+        submission_gate_operation_id = (
+            _submission_gate_operation_id(
+                submission_gate_binding,
+                logical_operation_id=args.logical_operation_id,
+                secretary_task_id=args.secretary_task_id,
+                secretary_plan_revision=args.secretary_plan_revision,
+                secretary_run_id=args.secretary_run_id,
+            )
+            if args.executor == "deepagents" and args.assignment_id is not None
+            else args.logical_operation_id
+        )
+        submission_gate_file = (
+            gate_path(submission_gate_operation_id)
+            if submission_gate_operation_id
+            else None
+        )
         attempt_context["submission_gate_path"] = submission_gate_file
         evidence["submission_gate"] = {
-            "operation_id": _submission_gate_operation_id(submission_gate_binding),
-            "path": str(submission_gate_file),
+            "operation_id": submission_gate_operation_id,
+            "path": str(submission_gate_file) if submission_gate_file else None,
             "binding": submission_gate_binding,
             "state": "pending",
         }
@@ -3744,10 +3889,13 @@ def _main_body(args: argparse.Namespace) -> int:
         )
 
         def claim_model_submission() -> None:
+            if submission_gate_file is None or submission_gate_operation_id is None:
+                raise LaunchBlocked("Coordinated launch requires a logical operation identity.")
             gate_result = _claim_submission_gate(
                 submission_gate_file,
                 submission_gate_binding,
                 attempt_id,
+                logical_operation_id=submission_gate_operation_id,
             )
             if gate_result.get("state") == "blocked":
                 record = gate_result.get("record")
@@ -4061,7 +4209,11 @@ def _main_body(args: argparse.Namespace) -> int:
             pane_run_duration_ms: float | None = None
             pane_run_started = time.monotonic()
             try:
-                if args.executor == "deepagents" and attempt_context.get("submission_gate_state") is None:
+                if (
+                    args.executor == "deepagents"
+                    and args.assignment_id is not None
+                    and attempt_context.get("submission_gate_state") is None
+                ):
                     claim_model_submission()
                 try:
                         result = _run_with_pane_ownership(
@@ -4325,7 +4477,11 @@ def _main_body(args: argparse.Namespace) -> int:
                 agent_name,
                 delivery_task,
             )
-            if attempt_context.get("submission_gate_state") is None:
+            if (
+                args.executor == "deepagents"
+                and args.assignment_id is not None
+                and attempt_context.get("submission_gate_state") is None
+            ):
                 claim_model_submission()
             shared_web_runtime = _uses_shared_web_runtime(registry_launcher)
             timeout_policy = registry_launcher.get("timeout_policy")

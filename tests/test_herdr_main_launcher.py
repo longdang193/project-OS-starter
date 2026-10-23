@@ -739,7 +739,7 @@ def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
             "executable": "herdr.exe",
-            "agent_name": "web-high-main",
+            "agent_name": "normal-main",
             "session": "codex-probe",
             "pane": "w1:p5",
             "pre_submit_completion_seq": 11,
@@ -772,7 +772,7 @@ def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
 
     assert LAUNCHER.main(
         [
-            "--profile", "web-high", "--session", "codex-probe", "--pane", "w1:p5",
+            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 0
@@ -782,7 +782,7 @@ def test_web_prompt_waits_for_shared_runtime_turn_to_return_idle(
     assert [command[7] for command in wait_commands] == ["working", "idle"]
     assert wait_commands[0][:7] == [
         "herdr.exe", "--session", "codex-probe", "agent", "wait",
-        "web-high-main", "--until",
+        "normal-main", "--until",
     ]
     assert wait_commands[0][8] == "--timeout"
     assert int(wait_commands[0][9]) > 0
@@ -876,7 +876,7 @@ def test_web_prompt_wait_failure_is_not_reported_as_success(
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
             "executable": "herdr.exe",
-            "agent_name": "web-medium-main",
+            "agent_name": "normal-main",
             "session": "codex-probe",
             "pane": "w1:p5",
         },
@@ -897,7 +897,7 @@ def test_web_prompt_wait_failure_is_not_reported_as_success(
 
     assert LAUNCHER.main(
         [
-            "--profile", "web-medium", "--session", "codex-probe", "--pane", "w1:p5",
+            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 2
@@ -1349,7 +1349,7 @@ def test_shared_web_completion_error_is_reported_by_main_launcher(
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
             "executable": "herdr.exe",
-            "agent_name": "web-high-main",
+            "agent_name": "normal-main",
             "session": "codex-probe",
             "pane": "w1:p5",
             "pre_submit_completion_seq": 11,
@@ -1387,7 +1387,7 @@ def test_shared_web_completion_error_is_reported_by_main_launcher(
 
     assert LAUNCHER.main(
         [
-            "--profile", "web-high", "--session", "codex-probe", "--pane", "w1:p5",
+            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 2
@@ -1416,7 +1416,7 @@ def test_shared_web_completion_is_reported_without_submission_retry(
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
             "executable": "herdr.exe",
-            "agent_name": "web-high-main",
+            "agent_name": "normal-main",
             "session": "codex-probe",
             "pane": "w1:p5",
             "pre_submit_completion_seq": 11,
@@ -1454,7 +1454,7 @@ def test_shared_web_completion_is_reported_without_submission_retry(
 
     assert LAUNCHER.main(
         [
-            "--profile", "web-high", "--session", "codex-probe", "--pane", "w1:p5",
+            "--profile", "normal", "--session", "codex-probe", "--pane", "w1:p5",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
         ]
     ) == 0
@@ -2943,7 +2943,7 @@ def test_main_reused_codex_agent_submits_prompt_only_once(
         "codex": {"codex_home": str(codex_home)},
         "herdr": {
             "executable": "herdr.exe",
-            "agent_name": "web-high-probe-20261022",
+            "agent_name": "normal-probe-20261022",
             "session": "w1",
             "pane": "w1:p1",
             "reuse": True,
@@ -2955,7 +2955,7 @@ def test_main_reused_codex_agent_submits_prompt_only_once(
         LAUNCHER,
         "resolve_launch",
         lambda **kwargs: (
-            ["herdr", "--session", "w1", "agent", "prompt", "web-high-probe-20261022", task],
+            ["herdr", "--session", "w1", "agent", "prompt", "normal-probe-20261022", task],
             evidence,
         ),
     )
@@ -2969,7 +2969,7 @@ def test_main_reused_codex_agent_submits_prompt_only_once(
 
     assert LAUNCHER.main(
         [
-            "--profile", "web-high", "--session", "auto", "--pane", "auto",
+            "--profile", "normal", "--session", "auto", "--pane", "auto",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", task,
         ]
     ) == 0
@@ -3489,6 +3489,70 @@ def test_target_selector_reports_no_auto_target(
             "candidates": [],
             "rejections": [],
         }
+
+
+def test_target_selector_allocates_pane_when_all_matching_panes_are_ineligible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot_calls = 0
+    commands: list[list[str]] = []
+    source = {
+        "workspace_id": "w-project",
+        "pane_id": "w-project:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+    }
+    allocated = {
+        "workspace_id": "w-project",
+        "pane_id": "w-project:p2",
+        "cwd": str(ROOT),
+        "focused": False,
+        "agent_status": "unknown",
+    }
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        nonlocal snapshot_calls
+        commands.append(command)
+        if "api" in command and "snapshot" in command:
+            snapshot_calls += 1
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if "pane" in command and "split" in command:
+            return {"result": {"pane": allocated}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    allocated_inspections = 0
+
+    def inspect_candidate(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal allocated_inspections
+        pane = args[2]
+        if pane == source["pane_id"]:
+            raise LAUNCHER.TargetCandidateRejected("Pane context mismatch")
+        allocated_inspections += 1
+        if allocated_inspections == 1:
+            raise LAUNCHER.LaunchBlocked("Herdr pane process information is incomplete.")
+        return {"pane": allocated, "process_info": {"foreground_processes": []}}
+
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", inspect_candidate)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT,
+        "auto",
+        "auto",
+        "herdr.exe",
+        context_identity="ctx",
+    )
+
+    assert (session, pane) == ("default", "w-project:p2")
+    assert snapshot_calls == 1
+    assert allocated_inspections == 2
+    assert commands[1][3:5] == ["pane", "split"]
+    assert resolution["allocation"] == {
+        "status": "allocated",
+        "source_pane": "w-project:p1",
+        "pane": "w-project:p2",
+    }
 
 
 def test_main_target_resolution_failure_is_not_workflow_blocked(
@@ -7065,13 +7129,21 @@ def test_submission_gate_binding_is_stable_across_restart() -> None:
         "model_provider": "9router",
         "model": "combo-web-high",
         "grant_digest": "grant-digest",
+        "task_id": "task-1",
+        "plan_revision": "plan-rev-1",
+        "run_id": "run-1",
     }
 
     first = LAUNCHER._submission_gate_binding(registry)
     second = LAUNCHER._submission_gate_binding(dict(registry))
 
     assert first == second
-    assert LAUNCHER._submission_gate_operation_id(first).startswith("operation-")
+    assert LAUNCHER._submission_gate_operation_id(
+        first,
+        secretary_task_id="task-1",
+        secretary_plan_revision="plan-rev-1",
+        secretary_run_id="run-1",
+    ).startswith("operation-")
 
 
 def test_submission_gate_settlement_is_fail_closed_for_unknown_delivery() -> None:
@@ -7105,13 +7177,32 @@ def test_submission_gate_does_not_reauthorize_after_submission(tmp_path: Path, m
         "model_provider": "9router",
         "model": "combo-web-high",
         "grant_digest": "grant-digest",
+        "task_id": "task-1",
+        "plan_revision": "plan-rev-1",
+        "run_id": "run-1",
     }
     binding = LAUNCHER._submission_gate_binding(registry)
-    path = LAUNCHER._submission_gate_path(binding)
-    first = LAUNCHER._claim_submission_gate(path, binding, "attempt-1")
+    operation_id = LAUNCHER._submission_gate_operation_id(
+        binding,
+        secretary_task_id="task-1",
+        secretary_plan_revision="plan-rev-1",
+        secretary_run_id="run-1",
+    )
+    path = LAUNCHER._submission_gate_path(binding, logical_operation_id=operation_id)
+    first = LAUNCHER._claim_submission_gate(
+        path,
+        binding,
+        "attempt-1",
+        logical_operation_id=operation_id,
+    )
     assert first["state"] == "claimed"
     LAUNCHER._settle_submission_gate(path, "attempt-1", "submitted")
 
-    second = LAUNCHER._claim_submission_gate(path, binding, "attempt-2")
+    second = LAUNCHER._claim_submission_gate(
+        path,
+        binding,
+        "attempt-2",
+        logical_operation_id=operation_id,
+    )
     assert second["state"] == "blocked"
     assert second["reason"] == "submission already recorded"

@@ -18,16 +18,9 @@ The canonical profile registry is `agents/*.toml`. Ranked profiles describe
 the general capability ordering used for default selection. Specialized
 profiles omit `rank` and are explicit-only choices.
 
-`web-medium` and `web-high` use the 9router models `combo-web-medium` and
-`combo-web-high` for web-capable, long-context work. They are Herdr-only
-profiles: the repository-owned Herdr launcher may resolve them, but the native
-Codex adapter does not expose them. They do not replace the general `normal` or
-`high` profiles and are not part of the ranked ordering.
-
-When a provider exposes different protocols by model, its local Codex provider
-binding may define `wire_api_by_model`. The selected model override takes
-precedence over provider `wire_api`; the 9router web models use `chat`, while
-the general models keep the provider default.
+Profile availability is defined only by the files present in `agents/`. Remove
+profile files from that directory when retiring a profile; generated adapter
+surfaces are then updated by the synchronization script.
 
 ## Herdr pane affinity
 

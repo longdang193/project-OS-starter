@@ -198,8 +198,8 @@ def test_sync_codex_agents_tree_omits_herdr_only_profiles(tmp_path: Path) -> Non
     root = tmp_path / "repo"
     _write_agent_role(root / "agents" / "normal.toml")
     _write_agent_role(
-        root / "agents" / "web-high.toml",
-        name="web-high",
+        root / "agents" / "herdr-only.toml",
+        name="herdr-only",
         rank=None,
         extra="herdr_only = true\n",
     )
@@ -214,7 +214,7 @@ def test_sync_codex_agents_tree_omits_herdr_only_profiles(tmp_path: Path) -> Non
 
     assert SYNC._sync_codex_agents_tree(root, mapping, check=False) == []
     assert (root / "generated_agents" / "codex" / "agents" / "normal.toml").exists()
-    assert not (root / "generated_agents" / "codex" / "agents" / "web-high.toml").exists()
+    assert not (root / "generated_agents" / "codex" / "agents" / "herdr-only.toml").exists()
 
 
 @pytest.mark.parametrize(

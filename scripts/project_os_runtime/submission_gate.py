@@ -56,23 +56,15 @@ def _binding(binding: Mapping[str, object]) -> dict[str, str]:
 
 def derive_logical_operation_id(
     *,
-    task_sha256: str,
-    repository_identity: str,
-    plan_identity: str,
-    profile: str,
-    model_identity: str,
-    grant_digest: str,
+    task_id: str,
+    plan_revision: str,
+    run_id: str,
 ) -> str:
-    values = _binding(
-        {
-            "task_sha256": task_sha256,
-            "repository_identity": repository_identity,
-            "plan_identity": plan_identity,
-            "profile": profile,
-            "model_identity": model_identity,
-            "grant_digest": grant_digest,
-        }
-    )
+    values = {
+        "task_id": _text(task_id, "task_id"),
+        "plan_revision": _text(plan_revision, "plan_revision"),
+        "run_id": _text(run_id, "run_id"),
+    }
     encoded = json.dumps(values, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"operation-{hashlib.sha256(encoded).hexdigest()}"
 
