@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: active
 layer: change
 name: cgw-retirement-consolidated-closure
 targets:
@@ -103,7 +103,7 @@ separate.
 - Coordination: `git-tracked`
 - Required skills: `skill-plan-document-reviewer`, `skill-central-config-layer`, `skill-refactoring-assessment`, `skill-code-standards`, `skill-test-driven-development`, `skill-backend-verification`, `skill-performance-optimization`, `skill-verification-before-completion`
 - Isolation: clean task checkouts for `project-OS-starter`, `LightRSI`, and `9router`; preserve the current review workspace and its untracked browser/runtime artifacts
-- Commit policy: `no commits during execution`; implementation commits, pushes, pull requests, merges, package publication, and installed-state mutation remain separately authorized
+- Commit policy: `no implementation commits during execution`; coordination checkpoint commits are required by the Git-tracked rule, while implementation commits, pushes, pull requests, merges, package publication, and installed-state mutation remain separately authorized
 - Preauthorized local actions: inspect and edit named repository files, create focused tests and generated projections, run declared local checks, run disposable relay/rollback measurements, and record immutable evidence
 - User-approval actions: push, merge, publication, global package mutation, scheduled-task removal, live provider access, destructive database cleanup, and discard of preserved review artifacts
 - Complexity guard: do not add a runtime preflight service, distributed lock, or repeated full-suite gate for retirement; use one lightweight pre-bypass check, canonical post-resolution validation, and focused table-driven boundary matrices.
@@ -114,16 +114,16 @@ separate.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: create `codex/cgw-retirement-consolidated-closure` at activation
-- Base commit: `project-OS-starter@c070377776308b5e676413c05a44fceacacbfa9d` for this planning checkout; remote review evidence is pinned in Review Basis and must be refreshed for implementation heads during Task 1
-- Expected workspace: current `main` checkout with pre-existing `.playwright-mcp/` and `.runtime/` artifacts preserved; implementation uses clean checkouts for all three repositories
-- Next action: run Gate 0 with `skill-plan-document-reviewer`, then freeze the three implementation revisions and the retirement contract matrix
-- Blockers: none for drafting; activation must record whether the prior GPT-6 evidence in the completed hardening plan is sufficient for the selected implementation revisions
+- Branch: `codex/cgw-retirement-consolidated-closure`
+- Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
+- Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
+- Next action: execute Task 1 in the isolated 9router worktree using the frozen revisions and record the canonical retirement matrix
+- Blockers: none after path and workspace reconciliation; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 0 | `pending` | current | `unresolved` | none | accepted plan review | pending |
-| Task 1 | `pending` | `9router` | `unresolved` | Task 0 | canonical policy and alias matrix | pending |
+| Task 0 | `completed` | current | `lead controller` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
+| Task 1 | `active` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | in progress |
 | Task 2 | `pending` | `9router` | `unresolved` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | pending |
 | Task 3 | `pending` | `9router` | `unresolved` | Tasks 1-2 | relay isolation and before/after performance evidence | pending |
 | Task 4 | `pending` | `project-OS-starter` | `unresolved` | Task 1 | launcher boundary and CGW-surface absence tests | pending |
@@ -269,7 +269,7 @@ separate.
 - `9router/open-sse/services/accountFallback.js`.
 - `9router/open-sse/executors/base.js`.
 - `9router/src/sse/handlers/chat.js`: `handleChatInternal` and early bypass ordering.
-- `9router/src/sse/handlers/imageGeneration.js` and `9router/src/app/api/images/generations/route.js`.
+- `9router/src/sse/handlers/imageGeneration.js` and `9router/src/app/api/v1/images/generations/route.js`.
 - `9router/src/sse/handlers/bypassHandler.js`.
 - `9router/tests/unit/retired-combo-ownership.test.js`.
 - `9router/tests/unit/account-fallback.test.js`.
