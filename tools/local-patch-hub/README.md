@@ -4,30 +4,6 @@
 OpenDesign and 9router updates.
 Each overlay is keyed by exact target Git `HEAD`; unknown bases stop without changes.
 
-## CGW review source
-
-For recurring CGW plan or code reviews, stage the review input in Git first:
-commit and push the selected plan or changes to the intended branch, then use
-`@GitHub` with the repository and an exact branch or commit file URL. Prefer a
-commit-pinned URL when the review must be reproducible. This avoids copying a
-local Windows path into a Herdr request and avoids the request-size limit for
-large plans.
-
-The reviewer must confirm that it read the requested GitHub revision by citing
-a known heading, hash, or other file marker. A local URL fetch or URL presence
-alone is not proof of CGW review. Use the existing bounded local review packet
-only for uncommitted work, inaccessible private repositories, or reviews that
-explicitly require local state; do not add a filesystem service or a second
-packet scheduler.
-
-Keep the Herdr request compact: exact GitHub URL or revision, read-only scope,
-stable context identifier, requested profile, and one review question. Do not
-forward the current chat transcript, Codex instructions, tool schemas,
-environment blocks, attachments, or `codex_context_json`. Those outer transport
-envelopes are not review input and can trigger `413 Payload Too Large`. The
-launcher rejects a detected envelope before delivery; rebuild the short GitHub
-request rather than truncating or retrying it.
-
 ## OpenDesign MCP recovery
 
 Start OpenDesign through the patched launcher after installation or update:
@@ -156,197 +132,22 @@ intentional older-version installs. When upstream changes a patched file, add a
 new exact-base directory under `overlays/9router-responses/` and rebase the patch
 there. Keep old overlays for existing checkouts.
 
-## 9router + CGW runtime ownership
+## 9router runtime ownership
 
-The canonical Codex web path is:
+The patch hub owns only the local 9router transport listener on port 20128. LightRSI owns its adapter lifecycle, and provider credentials, web runtimes, and optional startup tasks remain outside this launcher.
 
-```text
-Codex -> LightRSI adapter `:17667` -> 9Router `:20128` -> CGW `:17841`
-```
-
-LightRSI owns the `:17667` adapter lifecycle, 9Router owns transport and
-provider error classification on `:20128`, and `codex-chatgpt-web` owns the
-CGW runtime on `:17841`. The patch hub does not own LightRSI or
-`codex-chatgpt-web`; it must not start a second adapter or CGW process.
-
-The `:20129` CGW Chat shim described below is a separate diagnostic and
-compatibility path. It is not the normal Codex route and is not a substitute
-for the LightRSI adapter.
-
-### `codex-chatgpt-web` takeover safety gate
-
-The browser-helper takeover defect reported in
-[codex-chatgpt-web issue #854](https://github.com/miuuyy/codex-chatgpt-web/issues/854)
-could treat an already-running browser turn as a fresh lease and press Send a
-second time. The fix is released in `codex-chatgpt-web` v6.1.12 and later: an
-ambiguous helper takeover stops for inspection instead of entering the fresh
-message path. Keep the runtime at or above v6.1.12; v6.1.13 is the current
-known-good runtime at this gate.
-
-The patch hub does not patch, install, or restart `codex-chatgpt-web`. Before a
-live probe, verify the externally owned runtime through its non-inference
-identity endpoint and fail closed if the version or ownership state is wrong:
+Start the already-installed global 9router and verify its loopback health endpoint:
 
 ```powershell
-$health = Invoke-RestMethod -Uri http://127.0.0.1:17841/healthz -TimeoutSec 5
-if ($health.service -ne "codex-chatgpt-web" -or
-    ([version]$health.version -lt [version]"6.1.12") -or
-    $health.mode -ne "browser-only" -or
-    $health.accepting_turns -ne $true) {
-  throw "codex-chatgpt-web runtime identity or takeover safety gate failed"
-}
-if ([int]$health.active_http_turns -ne 0 -or
-    [int]$health.active_browser_turns -ne 0) {
-  throw "codex-chatgpt-web has an active turn; observe and reconcile before probing"
-}
-```
-
-Do not use `/healthz` as an inference probe, and do not restart or take over a
-runtime with an active turn. If the endpoint is unavailable, the version is
-below v6.1.12, or active turns are present, stop and repair or reconcile the
-externally owned browser runtime before sending any prompt.
-
-## 9router + CGW diagnostic combo runtime
-
-At this gate, the CGW combo uses the registered `0.5.104` runtime overlay below. The overlay
-adds the CGW Chat shim, real inference-based model tests, and per-request
-`reasoning_effort` support. The shim translates the public Chat Completions
-request into a direct authenticated CGW Responses request; it does not launch
-`codex exec` and must not route `cgw/*` through the 9router Codex provider.
-Codex may include optional `tools` and `tool_choice` metadata in a text-only
-review request. The shim ignores that metadata and never executes tools. GitHub
-review must be supplied through the GitHub source workflow or delivered prompt text;
-the CGW shim does not read the local filesystem.
-
-Apply and install the pinned runtime overlay from a clean `v0.5.104` checkout:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterCgwOverlay.ps1 `
-  -TargetRoot C:\path\to\9router-v0.5.104 `
-  -InstallGlobal
-```
-
-The overlay selector reads versioned manifests under `overlays/9router-cgw/`,
-matches the target Git `HEAD` and package version, refuses unknown commits and
-versions, refuses downgrade unless `-AllowDowngrade` is explicit, and stops
-before changing files on a conflict. `-VerifyOnly` may report that a patch can
-be rebased onto an unknown future commit, but installation still requires a new
-exact-base manifest. After the package, entry point, standalone app, command
-shim, and version are verified, the installer atomically writes
-`9router-cgw-overlay.json` into the global package. `Start-9RouterCodexCombo.ps1`
-validates that receipt against the installed package version instead of
-searching compiled JavaScript for fragile source markers. If `9router.cmd` or
-`cli.js` is missing, rerun the same `Apply-9RouterCgwOverlay.ps1 -InstallGlobal`
-command; it can repair the incomplete installation without first running the
-upstream `npm install -g 9router` package.
-When the global package already matches the requested version and exact overlay
-receipt, `-InstallGlobal` verifies it and skips the rebuild, repack, and process
-replacement steps.
-
-When a future 9router release changes a patched file, add a new exact-base
-directory under `overlays/9router-cgw/` with a rebased patch and manifest. Keep
-older overlay directories for existing checkouts; do not weaken the selector to
-apply a stale patch automatically.
-
-The global installer bootstraps the source checkout's root dependencies and the
-CLI build dependencies only when their required markers are missing. This keeps
-clean exact-base checkouts installable without repeating `npm install` on every
-refresh while retaining the bounded build and verification steps.
-
-CGW-backed turns use a bounded timeout policy across the runtime layers:
-`CGW_SHIM_TIMEOUT_MS=600000` provides a 600-second provider-facing request
-budget, Herdr allows a 900-second CGW attempt budget, and the existing
-1800-second outer watchdog remains the final bound. A timeout after dispatch is
-uncertain and must be reconciled and retired before retry; do not extend it
-late, replay it, or fall back to another provider automatically.
-
-The shim marks failures that occur after CGW dispatch with
-`x-9router-no-replay: 1`. The exact-base overlay forwards that marker through
-9router and stops both account and combo fallback, so one provider failure does
-not launch another full CGW turn or create a retry storm.
-
-Keep the local environment in the target checkout at
-`C:\path\to\9router\.env`. The shim loads that file automatically; never
-commit it or print its values. Configure the dedicated shim key, stable model
-aliases, the CGW loopback base URL, and one local-only CGW bearer source:
-
-```dotenv
-CGW_SHIM_API_KEY=use-a-dedicated-local-key
-CGW_SHIM_MODEL_ALIASES_JSON={"gpt-6.1-sol":"chatgpt-web/gpt-6-sol","gpt-5.6-sol":"chatgpt-web/gpt-5.6-sol"}
-CGW_SHIM_CGW_BASE_URL=http://127.0.0.1:17841/v1
-CGW_SHIM_CGW_BEARER_FILE=C:\\Users\\me\\.codex\\cgw-bearer.env
-```
-
-CGW aliases must target `chatgpt-web/*`; raw `gpt-*` targets enter the native Codex passthrough and can consume Codex quota. A regular `sk-*` API key is not a CGW bearer. The launcher refuses to start a
-shim with no bearer source, so an incorrectly configured installation cannot
-silently consume Codex quota through a native fallback.
-
-Start 9Router and the direct diagnostic shim against the already-installed
-global 9router. This launcher does not start LightRSI or CGW:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 \
   -TargetRoot C:\path\to\9router
 ```
 
-To avoid rerunning the launcher after every Windows restart, register a
-per-user logon task once. This starts the same launcher 30 seconds after each
-Windows logon and does not store `.env` values or API keys in Task Scheduler:
+Use -InstallGlobal when the global package needs repair or refresh. The installer keeps generic version validation, downgrade protection, rollback, idempotent exact-receipt short-circuiting, and process replacement safety. Each successful install writes 9router-install.json with a schema version, package version, source Git commit, and SHA-256 digest of the verified installed package contents.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Start-9RouterCodexCombo.ps1 `
-  -TargetRoot C:\path\to\9router `
-  -InstallStartup
-```
+The launcher validates that receipt before starting 9router and does not start, authenticate, or manage any additional provider, shim, bearer source, port, or Windows scheduled task. If the receipt is missing, stale, or fails its content identity checks, rerun the installer explicitly.
 
-The launcher verifies 9router health and the diagnostic shim listener. Model tests still
-send a real `POST http://127.0.0.1:20129/v1/chat/completions` prompt; they do
-not use a catalog-only shortcut. For the canonical Codex path, `/health` is the
-ordinary non-inference preflight; use an authenticated inference request only
-for explicit installation acceptance or a diagnostic run. Restart an existing shim process
-after applying an overlay so it loads the patched validator. The shim then sends `POST
-http://127.0.0.1:17841/v1/responses` with the requested model and optional
-reasoning effort.
-
-For web-backed probes, use one submission with a 60-90 second deadline. Do not
-retry or fall back after dispatch; reconcile the original lifecycle first.
-
-Use the existing startup uninstall command to remove the automatic task:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Install-9RouterCodexComboStartup.ps1 `
-  -Uninstall
-```
-
-Keep the global runtime on the current release (`0.5.104` at this gate) before
-starting the combo. The overlay installer owns replacement and rollback; use
-`-InstallGlobal` to repair or refresh it. Do not use `-AllowDowngrade` for the
-combo.
-Apply the attribution persistence overlay separately:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterAttributionOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -InstallGlobal
-```
-
-Verify update safety without changing files:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-patch-hub/Apply-9RouterAttributionOverlay.ps1 -TargetRoot C:\path\to\9router-upstream -VerifyOnly
-```
-
-The attribution overlays target `0.5.69` (`eb712ca8`) and `0.5.99`
-(`ce4460ef`). The current `0.5.99` overlay is rebased over the newer
-`toolNameMap` and schema layout while preserving
-`x-lightrsi-request-id`, `x-lightrsi-provider-attempt-id`, and the router-owned
-immutable `routerRecordId` through usage history and request details, including
-streaming, forced-SSE, success, and failure paths. The reconciler accepts the
-exact base, an already-applied overlay, and a clean Git 3-way rebase; it stops
-on conflicts or unrelated tracked changes instead of leaving a partial patch.
-When upstream changes a patched file, add a new exact-base directory under
-`overlays/9router-attribution/` and rebase the patch there. Keep old overlays
-for existing checkouts. Live economics remain blocked until deployed,
-authenticated ID-join proof passes.
-
+The launcher does not mutate existing scheduled tasks or installed runtimes as part of retirement. Remove any old user-created startup task separately through the operating system task manager if it is still present.
 ## 9router Codex opaque relay overlay
 
 The Codex opaque relay is a separate exact-base overlay for the `0.5.99`
@@ -387,9 +188,9 @@ forward administrative or stored provider credentials. `GET` returns `426` so
 native WebSocket negotiation fails closed before the HTTP Responses fallback;
 there is no relay `/v1/models` route and no model aliasing.
 
-Keep `codex-chatgpt-web` on its own loopback port, normally
+Keep the externally owned browser-backed relay service on its own loopback port, normally
 `127.0.0.1:17841`, and verify launcher restart ownership before any live
 installation. `-InstallGlobal` remains opt-in and requires explicit approval;
 source application and verification do not alter installed 9router or stored
-credentials. Full native Codex-to-CGW proof remains a separate acceptance gate
-when the CGW launcher is browser-only.
+credentials. Full native relay proof remains a separate acceptance gate
+when the upstream relay is browser-only.

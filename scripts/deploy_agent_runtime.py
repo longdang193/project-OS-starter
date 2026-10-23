@@ -18,6 +18,11 @@ import uuid
 
 import yaml
 
+try:
+    from agent_profile_registry import validate_model_reference
+except ModuleNotFoundError:
+    from scripts.agent_profile_registry import validate_model_reference
+
 PLATFORM_TARGETS = {
     "codex": Path.home() / ".codex",
     "claude": Path.home() / ".claude",
@@ -739,8 +744,12 @@ def _codex_agent_profile_specs(generated_root: Path) -> list[tuple[str, str]]:
         payload = tomllib.loads(source.read_text(encoding="utf-8"))
         name = payload.get("name")
         description = payload.get("description")
+        model = payload.get("model")
         if name != source.stem or not isinstance(name, str) or not isinstance(description, str):
             raise ValueError(f"Invalid generated Codex agent profile: {source.as_posix()}")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError(f"Invalid generated Codex agent profile model: {source.as_posix()}")
+        validate_model_reference(model.strip(), source)
         specs.append((name, description))
     return specs
 
@@ -760,7 +769,11 @@ def _plan_codex_agent_registrations(
     sections = _codex_agent_sections(config_text)
     additions: list[str] = []
     issues: list[str] = []
-    for name, description in _codex_agent_profile_specs(generated_root):
+    try:
+        profile_specs = _codex_agent_profile_specs(generated_root)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+        return [], [str(exc)], []
+    for name, description in profile_specs:
         expected_config_file = f"agents/{name}.toml"
         body = sections.get(name)
         if body is not None:

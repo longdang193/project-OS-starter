@@ -2482,10 +2482,9 @@ def test_print_config_reports_selected_role_effective_model(
     assert payload["deepagents_model_params"] == {"use_responses_api": False}
 
 
-def test_print_config_uses_chat_transport_for_web_role(
+def test_print_config_rejects_retired_web_role(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_role(tmp_path, "web-high", model="combo-web-high", rank=50)
     config_path = tmp_path / "dcode-project.toml"
@@ -2495,36 +2494,9 @@ def test_print_config_uses_chat_transport_for_web_role(
     )
     monkeypatch.setattr(LAUNCHER, "_config_path", lambda: config_path)
     monkeypatch.setattr(LAUNCHER, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_runtime_binding",
-        lambda config: runtime_binding(
-            {
-                "model_providers": {
-                    "9router": {
-                        "wire_api": "responses",
-                        "wire_api_by_model": {"combo-web-high": "chat"},
-                    }
-                }
-            }
-        ),
-    )
-    monkeypatch.setattr(
-        LAUNCHER,
-        "_mcp_capabilities",
-        lambda config: {
-            "mcp_servers": [],
-            "mcp_tools": [],
-            "server_tools": {},
-            "mcp_capability_digest": "digest",
-        },
-    )
 
-    assert LAUNCHER.main(["--role", "web-high", "--print-config", "--no-mcp", "--json"]) == 0
-
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["deepagents_model_params"] == {"use_responses_api": False}
-
+    with pytest.raises(RuntimeError, match="retired model"):
+        LAUNCHER._load_roles(tmp_path, "9router")
 
 def test_print_config_without_role_omits_worker_binding(
     monkeypatch: pytest.MonkeyPatch,

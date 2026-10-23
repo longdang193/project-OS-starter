@@ -19,8 +19,6 @@ import sys
 import tempfile
 import time
 import tomllib
-import urllib.error
-import urllib.request
 import uuid
 from typing import Any
 
@@ -116,9 +114,6 @@ _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS = 30.0
 _CODEX_START_TIMEOUT_MS = "120000"
 _HERDR_COMMAND_TIMEOUT = 30.0
 _DEEPAGENTS_RUN_TIMEOUT = 1800.0
-_CGW_REQUEST_TIMEOUT_SECONDS = 600.0
-_CGW_ATTEMPT_TIMEOUT_SECONDS = 900.0
-_CGW_START_TIMEOUT_MS = "300000"
 _DEEPAGENTS_COMPLETION_WAIT_SECONDS = 120.0
 # ponytail: fixed 30s receipt grace; increase only with measured receipt latency.
 _DEEPAGENTS_RECEIPT_GRACE_SECONDS = 30.0
@@ -129,12 +124,8 @@ _DEEPAGENTS_DIAGNOSTIC_COMMAND_TIMEOUT = 0.5
 _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
-_CGW_ADAPTER_PREFLIGHT_URL = "http://127.0.0.1:17667/health"
-_CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS = 2.0
 _HERDR_DEFAULT_SESSION = "default"
 _PANE_LOCK_PARENT = "herdr-pane-ownership"
-_SHARED_WEB_RUNTIME_LOCK_PARENT = "herdr-shared-web-runtime"
-_SHARED_WEB_RUNTIME_LOCK_NAME = "cgw-codex-lightrsi-17667-20128.lock"
 _NATIVE_GRANT_VALUE = "native"
 _CHILD_AGENT_GRANT_VALUES = {"allow", "deny"}
 _RUNTIME_GRANT_MARKER_PATTERN = re.compile(
@@ -470,42 +461,6 @@ def _codex_environment(codex_home: Path) -> dict[str, str]:
     return environment
 
 
-def _preflight_profile_runtime(profile: AgentProfile) -> dict[str, object] | None:
-    """Verify the canonical LightRSI adapter before launching web profiles."""
-    if profile.model_provider != "9router" or not profile.model.startswith("combo-web-"):
-        return None
-    request = urllib.request.Request(
-        _CGW_ADAPTER_PREFLIGHT_URL,
-        headers={"Accept": "application/json"},
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=_CGW_SHIM_PREFLIGHT_TIMEOUT_SECONDS) as response:
-            status = int(response.status)
-    except urllib.error.HTTPError as exc:
-        status = int(exc.code)
-    except (OSError, TimeoutError) as exc:
-        raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: LightRSI CGW adapter is unavailable at "
-            f"{_CGW_ADAPTER_PREFLIGHT_URL}. Start "
-            "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 before launching "
-            f"{profile.name}; provider connection failed: {exc}"
-        ) from exc
-    if status != 200:
-        raise LaunchBlocked(
-            "BLOCKED_CAPABILITY: LightRSI CGW adapter at "
-            f"{_CGW_ADAPTER_PREFLIGHT_URL} returned HTTP {status}; start "
-            "tools/local-patch-hub/Start-9RouterCodexCombo.ps1 and retry."
-        )
-    return {
-        "provider": profile.model_provider,
-        "model": profile.model,
-        "url": _CGW_ADAPTER_PREFLIGHT_URL,
-        "port": 17667,
-        "status": status,
-    }
-
-
 def _codex_runtime_mcp_servers(
     codex: str,
     cwd: Path,
@@ -827,41 +782,7 @@ def _pane_ownership_lock(cwd: Path, session: str, pane: str):
         yield
 
 
-def _shared_web_runtime_lock_path() -> Path:
-    return (
-        Path(tempfile.gettempdir())
-        / _SHARED_WEB_RUNTIME_LOCK_PARENT
-        / _SHARED_WEB_RUNTIME_LOCK_NAME
-    )
-
-
-@contextmanager
-def _shared_web_runtime_lock(timeout_seconds: float = 0.0):
-    with _exclusive_file_lock(
-        _shared_web_runtime_lock_path(),
-        "BLOCKED_CAPABILITY: shared CGW web runtime is busy; another web profile is active.",
-        wait_timeout_seconds=timeout_seconds,
-    ):
-        yield
-
-
-def _uses_shared_web_runtime(registry_evidence: Mapping[str, Any]) -> bool:
-    return (
-        registry_evidence.get("model_provider") == "9router"
-        and str(registry_evidence.get("model", "")).startswith("combo-web-")
-    )
-
-
 def _timeout_policy(registry_evidence: Mapping[str, Any]) -> dict[str, Any]:
-    if _uses_shared_web_runtime(registry_evidence):
-        return {
-            "runtime": "cgw",
-            "startup_timeout_ms": _CGW_START_TIMEOUT_MS,
-            "request_timeout_seconds": _CGW_REQUEST_TIMEOUT_SECONDS,
-            "herdr_attempt_timeout_seconds": _CGW_ATTEMPT_TIMEOUT_SECONDS,
-            "outer_watchdog_seconds": _DEEPAGENTS_RUN_TIMEOUT,
-            "timeout_action": "reconcile_retirement_before_retry",
-        }
     return {
         "runtime": "native",
         "startup_timeout_ms": _CODEX_START_TIMEOUT_MS,
@@ -1693,91 +1614,29 @@ def _codex_assignment_command(
     ]
 
 
-def _wait_for_shared_web_runtime_turn(
-    herdr: str,
-    session: str,
-    agent_name: str,
-    *,
-    env: dict[str, str],
-    timeout_seconds: float,
-) -> subprocess.CompletedProcess[str]:
-    started = time.monotonic()
-    last_result: subprocess.CompletedProcess[str] | None = None
-    wait_states = (("working",), ("idle", "done", "blocked"))
-    for target_states in wait_states:
-        remaining_seconds = max(0.01, timeout_seconds - (time.monotonic() - started))
-        timeout_ms = max(1, int(remaining_seconds * 1000))
-        try:
-            wait_command = [
-                herdr,
-                "--session",
-                session,
-                "agent",
-                "wait",
-                agent_name,
-            ]
-            for target_state in target_states:
-                wait_command.extend(("--until", target_state))
-            wait_command.extend(("--timeout", str(timeout_ms)))
-            last_result = _run(
-                wait_command,
-                env=env,
-                timeout=max(_HERDR_COMMAND_TIMEOUT, remaining_seconds),
-            )
-        except CommandTransportTimeout as exc:
-            raise LaunchBlocked(
-                "shared CGW web runtime wait transport timed out; runtime release is uncertain"
-            ) from exc
-        if last_result.returncode:
-            detail = (
-                last_result.stderr.strip()
-                or last_result.stdout.strip()
-                or f"exit code {last_result.returncode}"
-            )
-            raise LaunchBlocked(f"shared CGW web runtime wait failed: {detail}")
-    assert last_result is not None
-    return last_result
-
-
 def _submit_codex_prompt(
     assignment: list[str],
     *,
-    herdr: str,
-    session: str,
-    agent_name: str,
     env: dict[str, str],
-    shared_web_runtime: bool,
-    timeout_seconds: float,
 ) -> tuple[
     subprocess.CompletedProcess[str] | None,
     dict[str, Any] | None,
     CommandTransportTimeout | None,
 ]:
-    lock = _shared_web_runtime_lock(timeout_seconds) if shared_web_runtime else nullcontext()
-    with lock:
-        try:
-            assignment_result = _run(
-                assignment,
-                env=env,
-                timeout=_CODEX_ASSIGNMENT_TIMEOUT,
-            )
-        except CommandTransportTimeout as exc:
-            return None, None, exc
-        prompt_result = _classify_codex_prompt_result(assignment_result)
-        if prompt_result["submission"] == "acknowledged" and shared_web_runtime:
-            _wait_for_shared_web_runtime_turn(
-                herdr,
-                session,
-                agent_name,
-                env=env,
-                timeout_seconds=timeout_seconds,
-            )
-        return assignment_result, prompt_result, None
-
-
+    try:
+        assignment_result = _run(
+            assignment,
+            env=env,
+            timeout=_CODEX_ASSIGNMENT_TIMEOUT,
+        )
+    except CommandTransportTimeout as exc:
+        return None, None, exc
+    prompt_result = _classify_codex_prompt_result(assignment_result)
+    return assignment_result, prompt_result, None
 
 
 def _confirm_codex_start(
+
     herdr: str,
     session: str,
     pane: str,
@@ -3395,7 +3254,6 @@ def resolve_launch(
         expected_grant_digest = computed_grant_digest
     lane_root = cwd.resolve()
     selected = _profile(lane_root / "agents", profile_name)
-    runtime_preflight = _preflight_profile_runtime(selected)
     timeout_policy = _timeout_policy(
         {"model_provider": selected.model_provider, "model": selected.model}
     )
@@ -3561,7 +3419,6 @@ def resolve_launch(
             "assignment_task_sha256": _sha256_text(task_text),
             "grant_digest": expected_grant_digest,
             "runtime_grant": runtime_grant,
-            "runtime_preflight": runtime_preflight,
             "timeout_policy": timeout_policy,
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
@@ -4483,50 +4340,15 @@ def _main_body(args: argparse.Namespace) -> int:
                 and attempt_context.get("submission_gate_state") is None
             ):
                 claim_model_submission()
-            shared_web_runtime = _uses_shared_web_runtime(registry_launcher)
             timeout_policy = registry_launcher.get("timeout_policy")
             if not isinstance(timeout_policy, dict):
                 timeout_policy = _timeout_policy(registry_launcher)
             assignment_result, prompt_result, transport_timeout = _submit_codex_prompt(
                 assignment,
-                herdr=herdr,
-                session=resolved_session,
-                agent_name=agent_name,
                 env=environment,
-                shared_web_runtime=shared_web_runtime,
-                timeout_seconds=(
-                    max(
-                        0.01,
-                        min(
-                            _remaining_deepagents_timeout(attempt_deadline),
-                            float(timeout_policy["herdr_attempt_timeout_seconds"]),
-                        ),
-                    )
-                    if shared_web_runtime
-                    else 0.0
-                ),
             )
             completion_snapshot = None
             completion_classification = None
-            if shared_web_runtime and prompt_result is not None and prompt_result["submission"] == "acknowledged":
-                observation_started = time.monotonic()
-                completion_snapshot = _codex_completion_snapshot(
-                    herdr,
-                    resolved_session,
-                    agent_name,
-                    env=environment,
-                    pane=resolved_pane,
-                    timeout_seconds=min(
-                        _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS,
-                        max(0.01, _remaining_deepagents_timeout(attempt_deadline)),
-                    ),
-                )
-                completion_classification = _classify_codex_completion_snapshot(
-                    completion_snapshot,
-                    pre_submit_completion_seq=evidence["herdr"].get("pre_submit_completion_seq"),
-                    pre_submit_state_change_seq=evidence["herdr"].get("pre_submit_state_change_seq"),
-                )
-                record_phase("observation", observation_started, attempt_id=attempt_id)
             if transport_timeout is not None:
                 settle_model_submission("delivery_uncertain")
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)

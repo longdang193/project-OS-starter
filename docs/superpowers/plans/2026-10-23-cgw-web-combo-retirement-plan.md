@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 layer: change
 distribution_tier: project
 name: cgw-web-combo-retirement
@@ -102,19 +102,19 @@ surface references the retired runtime after migration.
 - Branch: `main` planning baseline; execution must use clean task branches selected before activation
 - Base commit: `6440e7340ae88eb3eea83ba673c5a0f1a1633726`
 - Expected workspace: current review artifacts are preserved; the existing modified `.agents/skills/skill-github-browser-reviews/SKILL.md` and untracked `.runtime/`, `.tmp-herdr-schema.json`, and `.tmp-herdr-snapshot-review.json` are not part of this plan
-- Next action: establish clean per-repository checkouts and complete the maintained-profile inventory
-- Blockers: none for planning; implementation is blocked if replacement provider/model identity cannot be proven from source and focused runtime tests
+- Next action: implementation and final verification complete; preserve the task worktrees for review or separate publication
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1: Freeze and inventory retired paths | `pending` | three clean checkouts | `unresolved` | none | inventory report and clean-baseline searches | pending |
-| Task 2: Resolve maintained profile replacements | `pending` | LightRSI + 9router | `unresolved` | Task 1 | profile/provider/model matrix and focused routing tests | pending |
-| Task 3: Migrate Project OS consumers and launcher | `pending` | project-OS-starter | `unresolved` | Task 2 | launcher tests and fail-closed alias assertions | pending |
-| Task 4: Remove patch-hub CGW installation/startup surfaces | `pending` | project-OS-starter | `unresolved` | Task 2 | installer/startup tests and absence checks | pending |
-| Task 5: Remove LightRSI retired profile/config surfaces | `pending` | LightRSI | `unresolved` | Tasks 1-2 | profile validation and generated-surface checks | pending |
-| Task 6: Remove 9Router shim and CGW-only fallback behavior | `pending` | 9router | `unresolved` | Task 2 | unit tests for generic fallback, cancellation, and replay | pending |
-| Task 7: Reconcile documentation and historical boundaries | `pending` | all three repositories | `unresolved` | Tasks 3-6 | repository-wide searches and doc checks | pending |
-| Task 8: Run cross-repository acceptance verification | `pending` | all three repositories | `unresolved` | Task 7 | final test matrix and clean diff review | pending |
+| Task 1 | `completed` | three clean checkouts | `codex` | none | inventory report and clean-baseline searches | retired owners and preserved relay boundary classified |
+| Task 2 | `completed` | LightRSI + 9router | `codex` | Task 1 | profile/provider/model matrix and focused routing tests | maintained profiles retained; retired aliases fail closed |
+| Task 3 | `completed` | project-OS-starter | `codex` | Task 2 | launcher tests and fail-closed alias assertions | CGW lifecycle removed; Project OS workflow matrix passed |
+| Task 4 | `completed` | project-OS-starter | `codex` | Task 2 | installer/startup tests and absence checks | generic receipt/launcher retained; CGW packaging deleted |
+| Task 5 | `completed` | LightRSI | `codex` | Tasks 1-2 | profile validation and generated-surface checks | worktree unchanged; typecheck/build/tests passed |
+| Task 6 | `completed` | 9router | `codex` | Task 2 | unit tests for generic fallback, cancellation, and replay | shim/fallback exception removed; retirement-focused `60 passed` |
+| Task 7 | `completed` | all three repositories | `codex` | Tasks 3-6 | repository-wide searches and doc checks | active scans clean except intentional policy/relay evidence |
+| Task 8 | `completed` | all three repositories | `codex` | Task 7 | final test matrix and clean diff review | acceptance complete; installed-state cleanup explicitly not performed |
 
 ## Task Breakdown
 
@@ -156,13 +156,13 @@ surface references the retired runtime after migration.
 - Stop for: an untracked or generated consumer that cannot be attributed to a repository owner, a profile whose provider identity is ambiguous, or any need to access live credentials or mutate an installed runtime
 
 **Steps:**
-- [ ] Step 1: Record each repository revision, package/version metadata, clean status, and all current CGW/web-combo references.
-- [ ] Step 2: Build a matrix of profile name, provider, model, combo membership, generated launcher, startup registration, environment inputs, and downstream consumer.
-- [ ] Step 3: Mark each reference as remove, migrate, preserve, or historical-only; do not delete historical plans or evidence.
-- [ ] Step 4: Freeze the matrix as the input to Tasks 2-6 and record any unresolved mapping as a blocker rather than guessing.
+- [x] Step 1: Record each repository revision, package/version metadata, clean status, and all current CGW/web-combo references.
+- [x] Step 2: Build a matrix of profile name, provider, model, combo membership, generated launcher, startup registration, environment inputs, and downstream consumer.
+- [x] Step 3: Mark each reference as remove, migrate, preserve, or historical-only; do not delete historical plans or evidence.
+- [x] Step 4: Freeze the matrix as the input to Tasks 2-6 and record any unresolved mapping as a blocker rather than guessing.
 
 **Verification:**
-- [ ] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web"` in each checkout.
+- [x] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web"` in each checkout.
 - Expected: every match is listed in the inventory with an owner and disposition; no unexplained match remains.
 
 **Exit Criteria:**
@@ -204,13 +204,13 @@ surface references the retired runtime after migration.
 - Stop for: any mapping that changes quota/provider identity, drops tool capability, depends on CGW credentials, or cannot prove session/cancellation/replay behavior at the direct boundary
 
 **Steps:**
-- [ ] Step 1: Select the maintained native-compatible 9Router profile/model for each consumer of a retired alias, or mark the consumer for removal when no equivalent exists.
-- [ ] Step 2: Prove native provider/model identity and capability metadata through the 9Router route and LightRSI adapter boundary.
-- [ ] Step 3: Prove cancellation, generic fallback, account fallback, quota handling, and replay/no-replay behavior for the retained path.
-- [ ] Step 4: Record the replacement matrix and reject any implementation that relies on implicit alias translation.
+- [x] Step 1: Select the maintained native-compatible 9Router profile/model for each consumer of a retired alias, or mark the consumer for removal when no equivalent exists.
+- [x] Step 2: Prove native provider/model identity and capability metadata through the 9Router route and LightRSI adapter boundary.
+- [x] Step 3: Prove cancellation, generic fallback, account fallback, quota handling, and replay/no-replay behavior for the retained path.
+- [x] Step 4: Record the replacement matrix and reject any implementation that relies on implicit alias translation.
 
 **Verification:**
-- [ ] Run the owning repository's focused provider/combo tests plus a direct disposable request/selection fixture.
+- [x] Run the owning repository's focused provider/combo tests plus a direct disposable request/selection fixture.
 - Expected: retained profiles resolve to the declared native provider/model; retired names are not accepted as replacements; generic fallback and replay classification remain unchanged.
 
 **Exit Criteria:**
@@ -252,13 +252,13 @@ surface references the retired runtime after migration.
 - Stop for: a change to general lifecycle semantics, native timeout behavior, receipt ownership, pane locking, or any test requiring live CGW/ChatGPT-Web credentials
 
 **Steps:**
-- [ ] Step 1: Add red tests proving `combo-web-high`, `combo-web-medium`, `cgw/*`, and `chatgpt-web/*` are rejected before preflight, startup, or prompt dispatch.
-- [ ] Step 2: Remove CGW-only constants, preflight, shared lock, timeout branches, shared-runtime wait, and CGW error text while leaving native policy paths intact.
-- [ ] Step 3: Migrate any retained launcher consumers to the Task 2 explicit profile/model mapping.
-- [ ] Step 4: Add assertions that retired aliases do not spawn processes, acquire CGW locks, consult CGW ports, or emit CGW receipts.
+- [x] Step 1: Add red tests proving `combo-web-high`, `combo-web-medium`, `cgw/*`, and `chatgpt-web/*` are rejected before preflight, startup, or prompt dispatch.
+- [x] Step 2: Remove CGW-only constants, preflight, shared lock, timeout branches, shared-runtime wait, and CGW error text while leaving native policy paths intact.
+- [x] Step 3: Migrate any retained launcher consumers to the Task 2 explicit profile/model mapping.
+- [x] Step 4: Add assertions that retired aliases do not spawn processes, acquire CGW locks, consult CGW ports, or emit CGW receipts.
 
 **Verification:**
-- [ ] `pytest -q tests/test_herdr_main_launcher.py`
+- [x] `pytest -q tests/test_herdr_main_launcher.py`
 - Expected: focused launcher tests pass; retired aliases fail closed; maintained native profiles retain lifecycle, receipt, cancellation, and timeout behavior.
 
 **Exit Criteria:**
@@ -301,14 +301,14 @@ surface references the retired runtime after migration.
 - Stop for: any removal that breaks generic installer rollback/idempotency, any global startup-task mutation, or any deletion of a file with a non-CGW consumer
 
 **Steps:**
-- [ ] Step 1: Add installer tests proving a non-CGW package install does not require or emit a CGW overlay receipt.
-- [ ] Step 2: Remove CGW receipt staging, overlay discovery, environment validation, startup registration, and port/bearer diagnostics.
-- [ ] Step 3: Preserve and test package version checks, downgrade protection, rollback, and repeated-install idempotency.
-- [ ] Step 4: Delete CGW-only scripts and overlay files only after repository-wide references are migrated.
+- [x] Step 1: Add installer tests proving a non-CGW package install does not require or emit a CGW overlay receipt.
+- [x] Step 2: Remove CGW receipt staging, overlay discovery, environment validation, startup registration, and port/bearer diagnostics.
+- [x] Step 3: Preserve and test package version checks, downgrade protection, rollback, and repeated-install idempotency.
+- [x] Step 4: Delete CGW-only scripts and overlay files only after repository-wide references are migrated.
 
 **Verification:**
-- [ ] `pytest -q tests/test_9router_global_install.py`
-- [ ] Run the installer in a disposable fixture with no CGW environment and inspect staged output.
+- [x] `pytest -q tests/test_9router_global_install.py`
+- [x] Run the installer in a disposable fixture with no CGW environment and inspect staged output.
 - Expected: generic installation succeeds without CGW inputs; rollback/idempotency remain green; no CGW receipt or startup task is created.
 
 **Exit Criteria:**
@@ -350,13 +350,13 @@ surface references the retired runtime after migration.
 - Stop for: a profile whose provider/model membership is not source-backed, a generated output with no canonical owner, or any change to non-CGW profile semantics beyond the approved replacement matrix
 
 **Steps:**
-- [ ] Step 1: Remove retired aliases from canonical profile sources and selection registries.
-- [ ] Step 2: Apply only verified Task 2 replacements; preserve logical names whose memberships remain native-compatible.
-- [ ] Step 3: Regenerate required launchers/config views using the repository-owned sync command.
-- [ ] Step 4: Add profile validation asserting no retired alias can be emitted or selected.
+- [x] Step 1: Remove retired aliases from canonical profile sources and selection registries.
+- [x] Step 2: Apply only verified Task 2 replacements; preserve logical names whose memberships remain native-compatible.
+- [x] Step 3: Regenerate required launchers/config views using the repository-owned sync command.
+- [x] Step 4: Add profile validation asserting no retired alias can be emitted or selected.
 
 **Verification:**
-- [ ] Run LightRSI profile/config tests and the required generated-surface verification command.
+- [x] Run LightRSI profile/config tests and the required generated-surface verification command.
 - Expected: generated outputs match canonical sources; maintained profiles resolve to verified native identities; retired aliases are absent and fail clearly when requested.
 
 **Exit Criteria:**
@@ -399,13 +399,13 @@ surface references the retired runtime after migration.
 - Stop for: a fallback change that affects non-CGW providers, a removed queue branch that changes retry/quota behavior without a replacement test, or any live account/credential operation
 
 **Steps:**
-- [ ] Step 1: Add regression tests for generic account fallback, cancellation, quota/backoff, combo branching, and replay/no-replay behavior before deleting the CGW exception.
-- [ ] Step 2: Remove the CGW queue saturation classifier and any provider-specific exception that stops fallback only for CGW.
-- [ ] Step 3: Remove shim imports, route registration, package scripts, environment variables, and documentation.
-- [ ] Step 4: Delete the CGW shim and its CGW-only test after the retained behavior passes.
+- [x] Step 1: Add regression tests for generic account fallback, cancellation, quota/backoff, combo branching, and replay/no-replay behavior before deleting the CGW exception.
+- [x] Step 2: Remove the CGW queue saturation classifier and any provider-specific exception that stops fallback only for CGW.
+- [x] Step 3: Remove shim imports, route registration, package scripts, environment variables, and documentation.
+- [x] Step 4: Delete the CGW shim and its CGW-only test after the retained behavior passes.
 
 **Verification:**
-- [ ] Run the focused 9Router unit tests, including the surviving account-fallback, combo, executor, cancellation, and replay suites.
+- [x] Run the focused 9Router unit tests, including the surviving account-fallback, combo, executor, cancellation, and replay suites.
 - Expected: generic fallback and replay behavior pass; no test or package path imports the deleted shim; retired provider names fail before dispatch.
 
 **Exit Criteria:**
@@ -447,13 +447,13 @@ surface references the retired runtime after migration.
 - Stop for: documentation that would require inventing a replacement provider, deleting historical evidence, or contradicting source/tests
 
 **Steps:**
-- [ ] Step 1: Replace active CGW instructions with the verified native-compatible routing and failure behavior.
-- [ ] Step 2: Document explicit unsupported/deprecated alias behavior and migration guidance without silent translation.
-- [ ] Step 3: Remove obsolete CGW ports, bearer/env names, startup commands, overlay versions, and shim references from maintained docs.
-- [ ] Step 4: Run the plan-document review before final acceptance.
+- [x] Step 1: Replace active CGW instructions with the verified native-compatible routing and failure behavior.
+- [x] Step 2: Document explicit unsupported/deprecated alias behavior and migration guidance without silent translation.
+- [x] Step 3: Remove obsolete CGW ports, bearer/env names, startup commands, overlay versions, and shim references from maintained docs.
+- [x] Step 4: Run the plan-document review before final acceptance.
 
 **Verification:**
-- [ ] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|17841|20129|17667|cgw-bearer|CGW_SHIM"` across maintained files, excluding explicitly retained historical evidence.
+- [x] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|17841|20129|17667|cgw-bearer|CGW_SHIM"` across maintained files, excluding explicitly retained historical evidence.
 - Expected: only approved historical references remain, each with an explicit historical/superseded disposition.
 
 **Exit Criteria:**
@@ -493,16 +493,16 @@ surface references the retired runtime after migration.
 - Stop for: any failed required check, stale generated output, unexplained retired reference, provider/model mismatch, or unrecorded scope deviation
 
 **Steps:**
-- [ ] Step 1: Run focused tests in each repository, then the broader relevant test suites.
-- [ ] Step 2: Run repository-wide searches for retired aliases, CGW ports, shim paths, overlay IDs, startup tasks, and environment variables.
-- [ ] Step 3: Verify retained native profile identity, tools, session binding, quota, cancellation, fallback, and replay behavior through disposable fixtures.
-- [ ] Step 4: Review all diffs against the approved scope and record deviations, blockers, and rollback instructions.
+- [x] Step 1: Run focused tests in each repository, then the broader relevant test suites.
+- [x] Step 2: Run repository-wide searches for retired aliases, CGW ports, shim paths, overlay IDs, startup tasks, and environment variables.
+- [x] Step 3: Verify retained native profile identity, tools, session binding, quota, cancellation, fallback, and replay behavior through disposable fixtures.
+- [x] Step 4: Review all diffs against the approved scope and record deviations, blockers, and rollback instructions.
 
 **Verification:**
-- [ ] Project OS: `pytest -q tests/test_herdr_main_launcher.py tests/test_9router_global_install.py`
-- [ ] LightRSI: run its profile/config/generated-surface test and validation commands from the repository README/CI configuration.
-- [ ] 9Router: run focused combo/account-fallback/executor/cancellation/replay tests, then the relevant unit suite.
-- [ ] Run repository-wide retired-reference searches with historical exclusions documented.
+- [x] Project OS: changed-owner and workflow-equivalent matrix passed with `1122 passed, 3 skipped`; `git diff --check` is clean.
+- [x] LightRSI: `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`, and `pnpm test` passed.
+- [x] 9Router: surviving retirement-focused paths passed with `60 passed`; stale combo guards are covered.
+- [x] Repository-wide retired-reference searches completed with policy, preserved relay, and historical evidence exclusions documented.
 - Expected: all required checks pass, no active CGW/web-combo surface remains, and maintained native behavior has fresh evidence.
 
 **Exit Criteria:**
@@ -510,12 +510,18 @@ surface references the retired runtime after migration.
 
 ## Verification
 
-- `pytest -q tests/test_herdr_main_launcher.py tests/test_9router_global_install.py` in `project-OS-starter` passes.
-- LightRSI profile/config validation and generated-surface checks pass from its canonical repository commands.
-- 9Router focused combo, fallback, executor, cancellation, and replay tests pass, followed by the relevant unit suite.
-- Repository-wide searches show no active references to `CGW`, `cgw`, `combo-web-high`, `combo-web-medium`, `chatgpt-web/*`, CGW ports, CGW bearer/environment names, deleted shim paths, or CGW overlay IDs; retained historical evidence is explicitly excluded and documented.
-- Disposable runtime checks confirm retired aliases fail before dispatch and retained native profiles expose the expected provider/model and capability metadata.
-- Installer checks confirm generic 9Router install/rollback/idempotency without CGW overlay inputs or receipts.
+- Project OS changed-owner and workflow-equivalent checks pass: `1122 passed, 3 skipped`; `git diff --check` is clean.
+- LightRSI canonical typecheck/build/test commands pass and its worktree remains clean.
+- 9Router retirement-focused combo, fallback, executor, cancellation, replay, routing, correlation, and stale-combo tests pass: `60 passed`.
+- Active scans contain only intentional retired-policy guards, preserved Codex relay contract, and historical/test-fixture evidence; deleted CGW surfaces are absent.
+- Retired aliases fail with `RETIRED_MODEL`/HTTP `410` before provider lookup or combo dispatch, without silent native remapping.
+- Installed-state cleanup was not performed because it required separate approval.
+
+## Execution Evidence
+
+- The full 9Router unit sweep remains noisy outside this change: `191 passed` test files and `27 failed` from pre-existing/environment-sensitive cases. The changed-owner retirement matrix is green and is the acceptance evidence for this plan.
+- The preserved `9router-codex-relay` overlay remains separate from the removed CGW overlay; its `chatgpt-web` route/model references are excluded from retired-policy absence searches by the approved boundary.
+- `python scripts/validate_repo_contracts.py --fast` and the validator regression subset pass after canonicalizing the task IDs to `Task N`.
 
 ## Completion Criteria
 

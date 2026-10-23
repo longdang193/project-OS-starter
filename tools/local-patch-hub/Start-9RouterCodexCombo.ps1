@@ -2,8 +2,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$TargetRoot,
   [switch]$InstallGlobal,
-  [switch]$AllowDowngrade,
-  [switch]$InstallStartup
+  [switch]$AllowDowngrade
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,43 +12,12 @@ function Get-ResolvedPath {
   return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
 }
 
-function Get-DotEnvValue {
-  param(
-    [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$Name
-  )
-  foreach ($line in Get-Content -LiteralPath $Path) {
-    if ($line -match "^\s*" + [regex]::Escape($Name) + "\s*=\s*(.*)\s*$") {
-      $value = $matches[1].Trim()
-      if ($value.Length -ge 2 -and (($value[0] -eq '"' -and $value[$value.Length - 1] -eq '"') -or ($value[0] -eq "'" -and $value[$value.Length - 1] -eq "'"))) {
-        $value = $value.Substring(1, $value.Length - 2)
-      }
-      return $value
-    }
-  }
-  return $null
-}
-
-function Test-ShimApiKey {
-  param([Parameter(Mandatory = $true)][string]$ApiKey)
-  try {
-    $headers = @{ Authorization = "Bearer $ApiKey" }
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:20129/v1/models" -Headers $headers -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-    return $response.StatusCode -eq 200
-  } catch {
-    return $false
-  }
-}
-
 function Get-ListeningOwner {
   param([int]$Port)
   $connection = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1)
   if ($connection.Count -eq 0) { return $null }
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($connection[0].OwningProcess)" -ErrorAction SilentlyContinue
-  return [pscustomobject]@{
-    ProcessId = $connection[0].OwningProcess
-    CommandLine = $process.CommandLine
-  }
+  return [pscustomobject]@{ ProcessId = $connection[0].OwningProcess; CommandLine = $process.CommandLine }
 }
 
 function Wait-Http {
@@ -72,171 +40,45 @@ function Wait-Http {
   throw "Timed out waiting for $Uri."
 }
 
-function Start-ProcessHidden {
-  param(
-    [Parameter(Mandatory = $true)][string]$FilePath,
-    [Parameter(Mandatory = $true)][string[]]$ArgumentList,
-    [Parameter(Mandatory = $true)][string]$WorkingDirectory
-  )
-  Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory -WindowStyle Hidden | Out-Null
-}
-
-function Test-InstalledCgwReceipt {
-  param(
-    [Parameter(Mandatory = $true)][string]$PackageRoot,
-    [Parameter(Mandatory = $true)][string]$PackageVersion,
-    [Parameter(Mandatory = $true)][string]$ExpectedOverlayVersion
-  )
-  $receiptPath = Join-Path $PackageRoot "9router-cgw-overlay.json"
-  if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $false }
-  try {
-    $receipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json
-    $targetVersion = [Version]$receipt.targetVersion
-    $receiptPackageVersion = [Version]$receipt.packageVersion
-    return [int]$receipt.schemaVersion -eq 1 -and
-      [string]$receipt.overlayId -eq "9router-cgw-chat-runtime" -and
-      -not [string]::IsNullOrWhiteSpace([string]$receipt.overlayVersion) -and
-      [string]$receipt.overlayVersion -eq $ExpectedOverlayVersion -and
-      $targetVersion -eq $receiptPackageVersion -and
-      $receiptPackageVersion -eq [Version]$PackageVersion -and
-      [string]$receipt.sourceHead -match "^[0-9a-f]{40}$"
-  } catch {
-    return $false
-  }
-}
-
-function Get-ExpectedCgwOverlayVersion {
-  param(
-    [Parameter(Mandatory = $true)][string]$PackageVersion
-  )
-  $overlayRoot = Join-Path $PSScriptRoot "overlays\9router-cgw"
-  if (-not (Test-Path -LiteralPath $overlayRoot -PathType Container)) {
-    throw "CGW overlay registry is missing: $overlayRoot"
-  }
-  $versions = @(
-    Get-ChildItem -LiteralPath $overlayRoot -Directory | ForEach-Object {
-      $manifestPath = Join-Path $_.FullName "manifest.json"
-      if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { return }
-      $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-      if ([Version]$manifest.targetVersion -eq [Version]$PackageVersion) {
-        if ([string]::IsNullOrWhiteSpace([string]$manifest.version)) {
-          throw "CGW overlay manifest has no version: $manifestPath"
-        }
-        [string]$manifest.version
-      }
-    } | Sort-Object -Unique
-  )
-  if ($versions.Count -ne 1) {
-    throw "Expected exactly one CGW overlay version for 9router $PackageVersion; found $($versions.Count)."
-  }
-  return [string]$versions[0]
-}
-
 $targetPath = Get-ResolvedPath $TargetRoot
-$shimRunPath = Join-Path $targetPath "tools\cgw-codex-shim\run.js"
-$envPath = Join-Path $targetPath ".env"
-if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
-  throw "Missing local runtime environment: $envPath. Copy .env.example, add CGW_SHIM_API_KEY and CGW_SHIM_MODEL_ALIASES_JSON, and keep .env uncommitted."
-}
-
-$shimApiKey = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_API_KEY"
-$modelAliases = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_MODEL_ALIASES_JSON"
-if ([string]::IsNullOrWhiteSpace($modelAliases)) { throw "Missing CGW_SHIM_MODEL_ALIASES_JSON in $envPath." }
-try {
-  $parsedAliases = $modelAliases | ConvertFrom-Json
-  foreach ($property in $parsedAliases.PSObject.Properties) {
-    if ([string]$property.Value -notmatch "^chatgpt-web/") {
-      throw "CGW alias $($property.Name) targets $($property.Value), which would use the native Codex passthrough and may consume Codex quota. Use a chatgpt-web/* target."
-    }
-  }
-} catch {
-  throw "Invalid CGW_SHIM_MODEL_ALIASES_JSON in ${envPath}: $($_.Exception.Message)"
-}
-$cgwBearer = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_CGW_BEARER"
-$cgwBearerFile = Get-DotEnvValue -Path $envPath -Name "CGW_SHIM_CGW_BEARER_FILE"
-if ([string]::IsNullOrWhiteSpace($shimApiKey)) {
-  throw "Missing CGW_SHIM_API_KEY in $envPath."
-}
-if ([string]::IsNullOrWhiteSpace($cgwBearer) -and [string]::IsNullOrWhiteSpace($cgwBearerFile)) {
-  throw "Missing CGW bearer source in $envPath. Set CGW_SHIM_CGW_BEARER or CGW_SHIM_CGW_BEARER_FILE."
-}
-if (-not [string]::IsNullOrWhiteSpace($cgwBearerFile)) {
-  $resolvedBearerFile = $cgwBearerFile
-  if (-not [IO.Path]::IsPathRooted($resolvedBearerFile)) { $resolvedBearerFile = Join-Path $targetPath $resolvedBearerFile }
-  if (-not (Test-Path -LiteralPath $resolvedBearerFile -PathType Leaf)) { throw "CGW bearer file is missing: $resolvedBearerFile" }
-}
-
-$node = (Get-Command node -ErrorAction Stop).Source
-$npm = (Get-Command npm -ErrorAction Stop).Source
+$git = (Get-Command git.exe -ErrorAction Stop).Source
+$npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $globalRoot = (& $npm "root" "-g" | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Cannot resolve npm global root." }
+$sourceCommit = (& $git -C $targetPath rev-parse HEAD 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch "^[0-9a-f]{40}$") { throw "TargetRoot is not a Git checkout with a valid source commit: $targetPath" }
 $routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source
-if ([string]::IsNullOrWhiteSpace($routerCommand)) {
-  $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
-}
+if ([string]::IsNullOrWhiteSpace($routerCommand)) { $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd" }
 
 if ($InstallGlobal) {
-  $targetPackagePath = Join-Path $targetPath "cli\package.json"
-  if (-not (Test-Path -LiteralPath $targetPackagePath -PathType Leaf)) {
-    throw "TargetRoot is missing cli\package.json: $targetPath"
-  }
-  $targetPackage = Get-Content -Raw -LiteralPath $targetPackagePath | ConvertFrom-Json
-  $applyScript = Join-Path $PSScriptRoot "Apply-9RouterCgwOverlay.ps1"
-  $applyArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $applyScript, "-TargetRoot", $targetPath, "-InstallGlobal")
-  if ($AllowDowngrade) { $applyArguments += "-AllowDowngrade" }
-  & powershell.exe @applyArguments
-  if ($LASTEXITCODE -ne 0) { throw "9router installation failed with exit code $LASTEXITCODE." }
-}
-
-if (-not (Test-Path -LiteralPath $shimRunPath -PathType Leaf)) {
-  throw "CGW Chat shim is missing: $shimRunPath"
+  $installer = Join-Path $PSScriptRoot "Install-9RouterGlobal.ps1"
+  . $installer
+  $installArguments = @("-TargetPath", $targetPath)
+  if ($AllowDowngrade) { $installArguments += "-AllowDowngrade" }
+  Install-9RouterGlobal @installArguments
 }
 
 $routerCommand = (Get-Command 9router.cmd -ErrorAction SilentlyContinue).Source
-if ([string]::IsNullOrWhiteSpace($routerCommand)) {
-  $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd"
-}
-if (-not (Test-Path -LiteralPath $routerCommand -PathType Leaf)) {
-  throw "Global 9router command is missing: $routerCommand. Run with -InstallGlobal to repair it."
-}
+if ([string]::IsNullOrWhiteSpace($routerCommand)) { $routerCommand = Join-Path (Split-Path $globalRoot -Parent) "9router.cmd" }
+if (-not (Test-Path -LiteralPath $routerCommand -PathType Leaf)) { throw "Global 9router command is missing: $routerCommand. Run with -InstallGlobal to repair it." }
 $installedPackageRoot = Join-Path $globalRoot "9router"
 $installedPackageJson = Join-Path $installedPackageRoot "package.json"
-if (-not (Test-Path -LiteralPath $installedPackageJson -PathType Leaf)) {
-  throw "Global 9router package is missing: $installedPackageRoot"
-}
+$receiptPath = Join-Path $installedPackageRoot "9router-install.json"
+if (-not (Test-Path -LiteralPath $installedPackageJson -PathType Leaf)) { throw "Global 9router package is missing: $installedPackageRoot" }
+if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { throw "Global 9router install receipt is missing: $receiptPath. Run with -InstallGlobal to repair it." }
 $installedPackage = Get-Content -Raw -LiteralPath $installedPackageJson | ConvertFrom-Json
-$expectedOverlayVersion = Get-ExpectedCgwOverlayVersion -PackageVersion ([string]$installedPackage.version)
-if (-not (Test-InstalledCgwReceipt -PackageRoot $installedPackageRoot -PackageVersion ([string]$installedPackage.version) -ExpectedOverlayVersion $expectedOverlayVersion)) {
-  throw "Refusing to start a stale 9router CGW runtime receipt. Apply Apply-9RouterCgwOverlay.ps1 with -InstallGlobal first."
+try { $receipt = Get-Content -Raw -LiteralPath $receiptPath | ConvertFrom-Json } catch { throw "Global 9router install receipt is invalid JSON: $($_.Exception.Message)" }
+if ([int]$receipt.schemaVersion -ne 1 -or [string]$receipt.packageVersion -ne [string]$installedPackage.version -or [string]$receipt.sourceCommit -ne $sourceCommit -or [string]$receipt.packageContentDigest -notmatch "^[0-9a-f]{64}$") {
+  throw "Refusing to start a stale or invalid 9router install receipt. Run Install-9RouterGlobal.ps1 with -TargetPath $targetPath."
 }
 
 $routerOwner = Get-ListeningOwner 20128
 if ($null -eq $routerOwner) {
-  Start-ProcessHidden -FilePath $routerCommand -ArgumentList @("--tray", "--skip-update", "-p", "20128", "-H", "127.0.0.1") -WorkingDirectory $targetPath
+  Start-Process -FilePath $routerCommand -ArgumentList @("--tray", "--skip-update", "-p", "20128", "-H", "127.0.0.1") -WorkingDirectory $targetPath -WindowStyle Hidden | Out-Null
 } elseif ($routerOwner.CommandLine -notmatch "9router|server\.js") {
   throw "Port 20128 is already owned by PID $($routerOwner.ProcessId): $($routerOwner.CommandLine)"
 }
-Wait-Http -Uri ("http://127.0.0.1:{0}/api/health" -f 20128) -Accept { param($response) $response.StatusCode -eq 200 } | Out-Null
-
-$shimOwner = Get-ListeningOwner 20129
-if ($null -eq $shimOwner) {
-  Start-ProcessHidden -FilePath $node -ArgumentList @((Join-Path "tools" "cgw-codex-shim\run.js")) -WorkingDirectory $targetPath
-} elseif ($shimOwner.CommandLine -notmatch "cgw-codex-shim[\\/]+run\.js") {
-  throw "Port 20129 is already owned by PID $($shimOwner.ProcessId): $($shimOwner.CommandLine)"
-} elseif (-not (Test-ShimApiKey -ApiKey $shimApiKey)) {
-  throw "Existing CGW shim on port 20129 rejected the target .env key; stop PID $($shimOwner.ProcessId) and rerun."
-}
-Wait-Http -Uri ("http://127.0.0.1:{0}/v1/models" -f 20129) -Accept { param($response) $response.StatusCode -in @(200, 401) } | Out-Null
-if (-not (Test-ShimApiKey -ApiKey $shimApiKey)) {
-  throw "CGW shim started on port 20129 but rejected the target .env key."
-}
-
-if ($InstallStartup) {
-  $startupScript = Join-Path $PSScriptRoot "Install-9RouterCodexComboStartup.ps1"
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startupScript -TargetRoot $targetPath
-  if ($LASTEXITCODE -ne 0) { throw "9router startup registration failed with exit code $LASTEXITCODE." }
-}
+Wait-Http -Uri "http://127.0.0.1:20128/api/health" -Accept { param($response) $response.StatusCode -eq 200 } | Out-Null
 
 Write-Output "9router is ready at loopback port 20128."
-Write-Output "CGW Chat shim is ready at loopback port 20129."
-Write-Output "The shim loads $envPath; credentials and API keys are not printed."
+Write-Output "No optional web provider or startup task is managed by this launcher."
