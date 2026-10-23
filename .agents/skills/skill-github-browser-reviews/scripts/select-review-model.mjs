@@ -29,15 +29,20 @@ async function openModelMenu(page) {
   return menu;
 }
 
+async function openModelList(menu) {
+  const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
+  if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
+    await modelControl.click({ timeout: 1500 });
+  }
+}
+
 async function findModelOption(menu, model) {
   const options = menu.locator('[role="menuitemradio"]');
-  const count = await options.count();
   const expectedLabel = MODEL_LABELS[model];
+  const option = options.filter({ hasText: expectedLabel }).first();
 
-  for (let index = 0; index < count; index += 1) {
-    const option = options.nth(index);
-    if (!(await option.isVisible())) continue;
-    if (normalizeText(await option.innerText()) === expectedLabel) return option;
+  if ((await option.count()) > 0) {
+    return option;
   }
 
   throw new Error(`Visible model option was not found: ${expectedLabel}`);
@@ -46,11 +51,7 @@ async function findModelOption(menu, model) {
 async function selectModel(menu, model) {
   const option = await findModelOption(menu, model);
   if ((await option.getAttribute("aria-checked")) !== "true") {
-    try {
-      await option.click({ timeout: 1500 });
-    } catch {
-      await option.evaluate((element) => element.click());
-    }
+    await option.click({ position: { x: 12, y: 12 }, timeout: 1500 });
   }
 
   if ((await option.getAttribute("aria-checked")) !== "true") {
@@ -115,6 +116,7 @@ export async function selectReviewModel(page, { model, effort }) {
   assertSupported(effort, SUPPORTED_EFFORTS, "effort");
 
   const menu = await openModelMenu(page);
+  await openModelList(menu);
   await selectModel(menu, model);
   await setEffort(menu, effort);
   await verifySelection(menu, model, effort);

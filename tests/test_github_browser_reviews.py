@@ -85,11 +85,20 @@ def test_skill_has_bounded_playwright_model_selection_helper() -> None:
     assert "selectReviewModel(page" in skill
     assert 'getByRole("button", { name: "Select ChatGPT model" })' in helper
     assert '[role="menuitemradio"]' in helper
+    assert 'getByRole("menuitem", { name: "Select model", exact: true })' in helper
     assert 'getByRole("menuitem", { name: "Power", exact: true })' in helper
     assert 'ArrowLeft' in helper
     assert 'ArrowRight' in helper
     assert "never launches a browser" in helper
     assert "retries indefinitely" in helper
+
+
+def test_model_selection_avoids_overlapping_power_control_hit_target() -> None:
+    helper = MODEL_SELECTION_HELPER.read_text(encoding="utf-8")
+
+    assert "position: { x: 12, y: 12 }" in helper
+    assert "element.click()" not in helper
+    assert "filter({ hasText: expectedLabel })" in helper
 
 
 def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
