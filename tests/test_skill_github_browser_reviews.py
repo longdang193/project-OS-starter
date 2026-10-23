@@ -47,6 +47,19 @@ def test_skill_defines_model_and_reasoning_selection() -> None:
         assert text in skill
 
 
+def test_skill_disambiguates_model_access_from_unscoped_usage_banners() -> None:
+    skill = normalized_skill()
+    for text in (
+        "treat model selection and thinking effort as separate controls",
+        "a generic `locked`, `usage limit reached`, or similar banner is unscoped evidence",
+        "never attribute that banner to a model merely because it appears near the model list",
+        "a click timeout, pointer interception, unchanged page, or failure to click an overlapping control does not prove that the model is locked",
+        "record the banner as an unscoped selector warning",
+        "report it as unverified or incomplete rather than guessing the cause",
+    ):
+        assert text in skill
+
+
 def test_skill_rejects_local_only_and_legacy_runtime_review_paths() -> None:
     skill = read_skill()
     for text in (
