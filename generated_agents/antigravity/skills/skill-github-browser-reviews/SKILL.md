@@ -52,9 +52,13 @@ that the review inspected local state.
 3. **Revision invariant:** Give the reviewer an exact branch or commit and an
    exact file URL. The review request must include the file path or GitHub file URL.
    Pin URLs to a commit when reproducibility matters.
-4. **Browser invariant:** Use a normal ChatGPT browser tab and invoke `@GitHub`.
+4. **Browser invariant:** Use Playwright first to control and observe an
+   authenticated normal Chrome/Edge ChatGPT Web tab, then invoke `@GitHub`
+   through the visible UI. Use ChromeDev as the fallback for session attachment
+   or low-level browser diagnostics. Do not use the in-app Native Tab as the
+   primary interaction path when it is unreliable.
 5. **Model invariant:** Let the user select either `GPT-5.6-Sol` or `GPT-6`.
-6. **Reasoning invariant:** Let the user select `instant`, `medium`, or `high`
+6. **Reasoning invariant:** Let the user select `Instant`, `Medium`, or `High`
    and preserve that choice in the review request.
 7. **Scope invariant:** Keep the request read-only and identify the stable
    context, repository, revision, file path, and review question.
@@ -62,6 +66,24 @@ that the review inspected local state.
    or other file marker from the requested revision.
 9. **Privacy invariant:** Do not include credentials, environment values,
    private instructions, or unrelated repository contents in the request.
+10. **Rerun-authorization invariant:** Do not rerun, retry, resubmit, or open a
+    replacement for a requested GitHub review unless the user explicitly orders
+    that review to be rerun. An incomplete, stale, interrupted, or inconclusive
+    review is not permission to start another one.
+
+### ChatGPT Web selector semantics
+
+ChatGPT Web exposes a `Select ChatGPT model` button. Open it to reveal model
+radio items and a `Power` thinking-effort control. The effort is displayed as
+`Instant`, `Medium`, or `High`; use the control's left/right keys rather than
+dragging the overlapping visual thumb. Record the selected model and effort
+exactly as displayed.
+
+Use the visible selected state as the authority. A usage-limit or locked-model
+banner is separate evidence: record it when it prevents the requested model
+from being selected or leaves the selected model unverified. Do not infer that
+the requested model was selected from a click that produced no visible state
+change.
 
 ## Review Procedure
 
@@ -78,15 +100,59 @@ Before opening the review, let the user choose one model and one reasoning
 level. The supported choices are:
 
 - `GPT-5.6-Sol` or `GPT-6`;
-- `instant`, `medium`, or `high` reasoning.
+- `Instant`, `Medium`, or `High` response mode.
 
-Record the selected values and carry them into the review request unchanged.
+Use this bounded interaction sequence:
+
+1. Click the visible `Select ChatGPT model` button.
+2. Select the requested visible model radio item.
+3. Focus the visible `Power` control and press left or right until the
+   requested effort is displayed.
+4. Verify that the selected model radio item and effort label visibly match
+   the request.
+
+If the model remains unchanged after one normal click and one bounded
+visible-item fallback, or if the model is locked or unavailable, stop as
+`incomplete` or `blocked`. Do not use force-click loops, repeated
+resubmissions, or hidden DOM state to claim selection. Record any usage-limit
+banner separately. Only after both values are visibly verified may the review
+request be submitted.
+
+For repeatable browser automation, use the page-bound helper at
+`scripts/select-review-model.mjs`:
+
+```js
+import { selectReviewModel } from "./scripts/select-review-model.mjs";
+
+await selectReviewModel(page, {
+  model: "GPT-6",
+  effort: "High"
+});
+```
+
+The helper accepts an existing authenticated Playwright `page`; it does not
+launch a browser, authenticate, submit a review, inspect hidden state, or retry
+indefinitely. If it cannot visibly confirm the requested model and effort, stop
+the review as `incomplete` or `blocked`.
+
+For an explicitly authorized end-to-end prompt submission, use
+`scripts/run-review-prompt.mjs`. It navigates an existing authenticated page
+to ChatGPT, selects and verifies the model and effort, fills the prompt, and
+submits it once. `openReviewTab(context)` and
+`runReviewPromptInNewTab(context, options)` can create a tab from an existing
+authenticated Playwright context; they do not launch a browser or
+authenticate. The helpers never retry, rerun, or interpret the review response.
 
 ### 3. Open the review
 
-Open a normal ChatGPT browser tab and invoke `@GitHub`. Keep the browser-tab request compact
-and provide only the exact revision, read-only scope, stable context identifier,
-and one review question.
+Use Playwright first to open or control an authenticated normal Chrome/Edge
+ChatGPT Web tab and invoke `@GitHub` through the visible UI. If Playwright
+cannot attach to the required session or low-level diagnostics are needed, use
+ChromeDev instead. Keep the browser request compact and provide only the exact
+revision, read-only scope, stable context identifier, and one review question.
+Use visible page state as the authority for model, response mode, completion,
+and interruption status; do not infer these from hidden DOM or transport
+metadata.
 
 Use this shape:
 
@@ -129,6 +195,16 @@ Report `incomplete` or `blocked` when:
 - the reviewer cannot confirm the requested revision.
 
 State the exact missing condition and do not substitute a local-only claim.
+
+### 7. Rerun only on explicit order
+
+If the review is incomplete, interrupted, stale, inconclusive, or otherwise
+missing required evidence, stop and report the exact condition. Do not
+automatically rerun it, retry the same request, submit a replacement request,
+or open another browser review. Continue only after the user explicitly orders
+the requested GitHub review to be rerun; a general request to continue, fix,
+review, or implement is not sufficient unless it explicitly authorizes the
+rerun.
 
 ## Evidence Checklist
 

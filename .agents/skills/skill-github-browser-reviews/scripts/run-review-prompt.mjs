@@ -1,0 +1,84 @@
+import { selectReviewModel } from "./select-review-model.mjs";
+
+const CHATGPT_URL = "https://chatgpt.com/";
+
+function assertPrompt(prompt) {
+  if (typeof prompt !== "string" || prompt.trim() === "") {
+    throw new Error("prompt must be a non-empty string");
+  }
+}
+
+async function openChatGPT(page) {
+  if (!page.url().startsWith("https://chatgpt.com/")) {
+    await page.goto(CHATGPT_URL);
+  }
+
+  const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
+  if (!(await composer.isVisible())) {
+    throw new Error("Authenticated ChatGPT composer was not found");
+  }
+  return composer;
+}
+
+/**
+ * Open a new ChatGPT tab from an existing authenticated Playwright context.
+ * The context must already own the user's authenticated session.
+ */
+export async function openReviewTab(context) {
+  const page = await context.newPage();
+  await openChatGPT(page);
+  return page;
+}
+
+async function closeModelMenu(page) {
+  const menu = page.getByRole("menu", { name: "Select ChatGPT model" }).first();
+  if (!(await menu.isVisible())) return;
+
+  await page.keyboard.press("Escape");
+  if (await menu.isVisible()) {
+    throw new Error("ChatGPT model menu did not close");
+  }
+}
+
+async function submitPrompt(page, composer, prompt) {
+  await composer.fill(prompt);
+
+  const visiblePrompt = page.getByText(prompt, { exact: true }).first();
+  if (!(await visiblePrompt.isVisible())) {
+    throw new Error("Prompt was not visibly entered");
+  }
+
+  const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
+  if (await sendButton.isVisible()) {
+    await sendButton.click();
+  } else {
+    await composer.press("Enter");
+  }
+
+  await page.waitForTimeout(250);
+  if ((await composer.innerText()).trim() === prompt.trim()) {
+    throw new Error("Prompt submission was not visibly acknowledged");
+  }
+}
+
+/**
+ * Navigate an existing authenticated ChatGPT page, select the requested
+ * review model and effort, fill the prompt, and submit it exactly once.
+ *
+ * The caller owns the browser session. This helper never launches a browser,
+ * authenticates, retries, reruns, or interprets the review response.
+ */
+export async function runReviewPrompt(page, { model, effort, prompt }) {
+  assertPrompt(prompt);
+  const composer = await openChatGPT(page);
+  await selectReviewModel(page, { model, effort });
+  await closeModelMenu(page);
+  await submitPrompt(page, composer, prompt);
+
+  return { model, effort, promptSubmitted: true };
+}
+
+export async function runReviewPromptInNewTab(context, options) {
+  const page = await openReviewTab(context);
+  return { page, ...(await runReviewPrompt(page, options)) };
+}
