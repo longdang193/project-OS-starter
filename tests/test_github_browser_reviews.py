@@ -107,6 +107,21 @@ def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
     assert "retries" in helper
 
 
+def test_skill_documents_file_backed_helper_execution_boundary() -> None:
+    skill = CANONICAL_SKILL.read_text(encoding="utf-8")
+
+    for rule in (
+        "Node/Playwright runner",
+        "ChatGPT page",
+        "Do not import them from `page.evaluate`",
+        "file-backed entry point",
+        "filename",
+        "sourcePath",
+        "Prompt submission remains gated",
+    ):
+        assert rule in skill
+
+
 def test_skill_removes_legacy_runtime_routing() -> None:
     content = CANONICAL_SKILL.read_text(encoding="utf-8")
 
