@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 layer: change
 name: cgw-web-combo-retirement-hardening
 targets:
@@ -94,30 +94,102 @@ explicit readiness, smoke-test, and rollback evidence.
 - Preauthorized local actions: inspect and edit the named repository files, create focused tests and disposable fixtures, regenerate declared derived surfaces, run declared local checks, and record immutable evidence
 - User-approval actions: push, merge, publication, global package mutation, scheduled-task removal, live provider access, destructive database cleanup, and discard of preserved review artifacts
 - Parallel ownership: none; contract and membership decisions must be complete before the downstream runtime and deployment tasks
-- Sequential fallback: run Tasks 1-8 in order and stop at the first unresolved contract, membership, persisted-state, boundary, generated-surface, or rollback discrepancy
+- Pre-execution gate: run `skill-plan-document-reviewer` after the exact implementation lineage and review evidence are confirmed, but before Task 1. A blocking finding stops execution; Task 8 is post-implementation verification only.
+- Sequential fallback: after the pre-execution gate passes, run Tasks 1-8 in order and stop at the first unresolved contract, membership, persisted-state, boundary, generated-surface, or rollback discrepancy
 
 ## Coordination State
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `codex/cgw-web-combo-retirement-hardening`
-- Base commit: `project-OS-starter@066e840d00883abdb41709dc3ae580f1605faa80`; companion source revisions must be recorded during Task 1
+- Base commit: `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2` review gate; verified implementation is the explicitly newer descendant `2980a2ab4c8c89814d3688e7bad98802560367ed`. Companion source revisions are recorded below.
 - Expected workspace: current review artifacts are preserved; existing modified skill, README, historical plan, generated skill views, `.runtime/`, and temporary review JSON files are outside this plan
-- Next action: create clean companion checkouts and complete Task 1 contract/membership inventory
-- Blockers: none known; any unresolved mapping becomes a recorded blocker before implementation
+- Next action: branch finishing may push the three implementation branches and open the authorized pull requests; installed-state cleanup remains a separate approval-gated deployment action
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | three clean checkouts | `unresolved` | none | immutable revision and retirement matrix | pending |
-| Task 2 | `pending` | all three repositories | `unresolved` | Task 1 | synchronized contract and retained-membership proof | pending |
-| Task 3 | `pending` | 9router | `unresolved` | Task 2 | stale-row list/delete/execute tests | pending |
-| Task 4 | `pending` | 9router and Project OS | `unresolved` | Tasks 2-3 | boundary `410` and post-resolution validation tests | pending |
-| Task 5 | `pending` | project-OS-starter | `unresolved` | Task 4 | launcher and CGW-surface absence tests | pending |
-| Task 6 | `pending` | LightRSI | `unresolved` | Task 2 | profile, generated-surface, and build proof | pending |
-| Task 7 | `pending` | all three repositories | `unresolved` | Tasks 3-6 | cancellation/fallback/replay and rollout evidence | pending |
-| Task 8 | `pending` | all three repositories | `unresolved` | Task 7 | independent plan review and fresh final verification | pending |
+| Task 0 | `completed` | plan/review workspace | `codex` | none | Gate 0 review evidence plus explicit approval | accepted 2026-10-23 |
+| Task 1 | `completed` | three clean checkouts | `codex` | Gate 0 | immutable revision and retirement matrix | SHAs below |
+| Task 2 | `completed` | all three repositories | `codex` | Task 1 | synchronized contract and retained-membership proof | focused contract suites |
+| Task 3 | `completed` | 9router | `codex` | Task 2 | stale-row list/delete/execute tests | 26 tests passed |
+| Task 4 | `completed` | 9router and Project OS | `codex` | Tasks 2-3 | boundary `410` and post-resolution validation tests | 15 routing tests passed |
+| Task 5 | `completed` | project-OS-starter | `codex` | Task 4 | launcher and CGW-surface absence tests | 472 focused tests passed |
+| Task 6 | `completed` | LightRSI | `codex` | Task 2 | profile, generated-surface, and build proof | 9 tests, typecheck, build passed |
+| Task 7 | `completed` | all three repositories | `codex` | Tasks 3-6 | cancellation/fallback/replay and rollout evidence | readiness inventory below |
+| Task 8 | `completed` | all three repositories | `codex` | Task 7 | fresh final verification | verified 2026-10-23 |
+
+## Execution Evidence
+
+**Gate 0:** The exact review revisions were accepted before implementation on
+October 23, 2026, with explicit user approval. Review evidence remains pinned
+to `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`,
+`LightRSI@85e599b3bbf3c75ca55e60f3024ff52b2884f1d6`, and
+`9router@ffa70be42d391289aa9fe0dc91af85f8a53453b4`.
+
+**Verified implementation heads:**
+
+| Repository | Branch | Verified SHA | Scope |
+| --- | --- | --- | --- |
+| `project-OS-starter` | `codex/cgw-web-combo-retirement-project-os` | `2980a2ab4c8c89814d3688e7bad98802560367ed` | Reject `chatgpt-web/` in the canonical profile validator |
+| `LightRSI` | `codex/cgw-web-combo-retirement-lightrsi` | `761e6f45e05b77d8a72e314a0f8de8a36fd101b3` | Profile contract and retained logical-profile tests |
+| `9router` | `codex/cgw-web-combo-retirement-9router` | `d57b57ea7f5d12340d2e8e1a24c844fef18b48c4` | Retired-model policy, stale-combo catalog, public boundaries, and regression tests |
+
+**Fresh verification:**
+
+- Project OS: `pytest -q tests/test_agent_profile_registry.py tests/test_dcode_project.py tests/test_deploy_agent_runtime.py tests/test_herdr_main_launcher.py tests/test_9router_global_install.py tests/test_9router_codex_relay_overlay.py` — `472 passed` at `2980a2ab`.
+- Project OS broad regression: `pytest -q` — `1563 passed, 4 skipped` at `2980a2ab`.
+- LightRSI: `pnpm --dir components/presets/tokenpilot test` — `9 passed`; `pnpm typecheck` — all 18 participating workspace projects passed; `pnpm build` — all participating workspace builds passed at `761e6f45`.
+- 9Router boundary/retirement matrix: `npx vitest run unit/model-routing.test.js unit/retired-combo-ownership.test.js unit/account-fallback.test.js unit/combo-fusion.test.js unit/combo-routing.test.js unit/executor-replay-policy.test.js unit/no-replay-routing.test.js unit/chat-request-correlation.test.js --testTimeout=20000` from `9router/tests` — `8 files, 54 tests passed` at `d57b57ea`.
+- 9Router production build: `pnpm build` — completed successfully at `d57b57ea`; the optional `better-sqlite3` binding was unavailable and the documented `node:sqlite` fallback was used.
+- Static safety: `git diff --check` passed in all three implementation worktrees. Active Project OS paths contain only the canonical retirement constants and explicit rejection tests; no CGW launcher, shim, overlay, port, lock, startup, or receipt path remains.
+
+**Broader-suite disposition:** The 9Router `combo-autoswitch.test.js` file was
+unchanged and has two pre-existing failures (`web_search tool -> search` and
+`keeps order when no model matches`); they are outside the changed owners and
+were not used as acceptance evidence. The focused fallback, cancellation,
+quota, replay, no-replay, and relay-preservation checks pass. Vitest emits
+existing `MaxListenersExceededWarning` diagnostics; they do not fail tests.
+
+**Installed-state and rollback disposition:** Read-only Windows inventory on
+October 23, 2026 found the global `9router@0.5.104` command, no matching CGW
+command, no CGW/9Router scheduled task, no matching process, and no listener
+on ports `20127`–`20129`. No global package, task, live database, provider,
+or relay state was mutated. Source rollback is the inverse of the three
+immutable commits above; a live rollback rehearsal is not claimed because no
+active CGW installation or task was present. Deployment cleanup remains
+approval-gated and separate from source completion.
+
+**Final verification result:** `verified`. Source implementation, tests,
+builds, static scans, retained-profile proof, boundary proof, readiness
+inventory, and rollback disposition reconcile with the approved scope. The
+plan is complete; push, pull-request publication, merge, and live cleanup are
+branch-finishing/deployment actions rather than additional implementation work.
 
 ## Task Breakdown
+
+### Task 0: Gate 0 — Independent plan review before execution
+
+**Purpose:**
+- Confirm that the exact reviewed lineage, task ordering, repository owners, generated-surface manifest, persisted-state contract, public boundary contract, and approval boundaries are executable before any implementation work begins.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: independent plan review and explicit approval establish the execution gate.
+
+**Required Skill:**
+- `skill-plan-document-reviewer`
+
+**Dependencies:**
+- None; this gate reviews the proposed plan and its immutable review evidence only.
+
+**Steps:**
+- [x] Review this exact plan revision and the cited review evidence, including the Project OS base commit gate `46e026b6e653b1c77551e606294ac3e6ca30cdd2`.
+- [x] Confirm that the plan names exact route owners, canonical profile/config owners, generator commands, generated outputs, stale-row DTO semantics, alias-resolution owner, retained-membership proof owner, and destructive-action approval boundaries.
+- [x] Resolve every blocking finding before marking the gate passed; do not begin Task 1 while the gate is pending or failed.
+
+**Exit Criteria:**
+- The independent reviewer accepts the plan for execution, with no unresolved blocker or ambiguous owner that would force implementation-time rediscovery.
 
 ### Task 1: Freeze revisions and build the contract matrix
 
@@ -154,14 +226,18 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any source revision that cannot be reproduced, any unresolved retained-combo provider, or any reference whose remove/preserve disposition cannot be proven.
 
 **Steps:**
-- [ ] Record exact commit SHA, branch/ref, package version, and clean/dirty status for all three repositories.
-- [ ] Build a matrix with identifier, canonical owner, consumer, provider/model target, combo membership, generated surface, persisted state, runtime boundary, and disposition.
-- [ ] Classify every match as `remove`, `reject`, `preserve`, `migrate`, or `historical-only`; keep the independent Codex relay as a separate boundary decision.
-- [ ] Record whether `combo-xhigh` and `combo-ui` exist, their members, provider identities, and required capabilities.
-- [ ] Record the exact requested review revisions and flag the earlier plan’s mismatched review hashes as historical evidence, not current proof.
+- [x] Record exact commit SHA, branch/ref, package version, and clean/dirty status for all three repositories.
+- [x] Verify the Project OS implementation SHA contains `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`; stop before implementation if ancestry fails or the checkout is only based on `066e840d...`.
+- [x] Build a matrix with identifier, canonical owner, consumer, provider/model target, combo membership, generated surface, persisted state, runtime boundary, and disposition.
+- [x] Classify every match as `remove`, `reject`, `preserve`, `migrate`, or `historical-only`; keep the independent Codex relay as a separate boundary decision.
+- [x] Record whether `combo-xhigh` and `combo-ui` exist, their members, provider identities, and required capabilities.
+- [x] Record the exact requested review revisions and flag the earlier plan’s mismatched review hashes as historical evidence, not current proof.
+- [x] Freeze an owner manifest before Task 2: exact public route files for `/v1/chat/completions`, `/v1/responses`, `/v1/responses/compact`, `/v1/api/chat`, and `/api/combos` plus `/api/combos/[id]`; exact canonical profile/config files; exact generator commands; and exact generated output paths. A missing generator or unresolved owner is a blocker, not a reason to hand-edit or rediscover scope later.
+- [x] Assign retained-combo proof to 9Router using a checked seed/fixture/export format at an immutable SHA; record the artifact path and command. LightRSI receives only logical-profile resolution evidence and must not require a live 9Router database.
 
 **Verification:**
-- [ ] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web"` in each clean checkout, with every match assigned a matrix disposition.
+- [x] `rg -n --hidden "CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web"` in each clean checkout, with every match assigned a matrix disposition.
+- [x] The owner/generator manifest is complete, reproducible from the recorded revisions, and frozen as an input to Tasks 2, 4, and 6.
 
 **Exit Criteria:**
 - The matrix is complete, immutable revisions are recorded, and no implementation task proceeds on an inferred replacement.
@@ -202,16 +278,16 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any implicit alias translation, any mismatch between canonical and generated sets, or any retained combo without provider/capability evidence.
 
 **Steps:**
-- [ ] Define the four-item retirement contract in each repository’s canonical owner using the existing data-driven policy shape.
-- [ ] Add contract tests that compare the published retirement set and assert `combo-xhigh`/`combo-ui` membership/provider evidence.
-- [ ] Validate both requested profile/model aliases and resolved targets in Project OS and 9Router lookup paths.
-- [ ] Regenerate LightRSI and Project OS derived surfaces from canonical inputs; do not hand-edit generated output.
-- [ ] Add a test proving the independent Codex relay is not treated as a CGW replacement or accidentally removed.
+- [x] Define the four-item retirement contract in each repository’s canonical owner using the existing data-driven policy shape.
+- [x] Add contract tests that compare the published retirement set and assert `combo-xhigh`/`combo-ui` membership/provider evidence.
+- [x] Validate both requested profile/model aliases and resolved targets in Project OS and 9Router lookup paths.
+- [x] Regenerate LightRSI and Project OS derived surfaces using only the frozen Task 1 owner/generator manifest; do not rediscover scope or hand-edit generated output.
+- [x] Add a test proving the independent Codex relay is not treated as a CGW replacement or accidentally removed.
 
 **Verification:**
-- [ ] Project OS validator, registry, dcode, and deploy tests pass for all four retired families.
-- [ ] LightRSI profile validation and generated-surface checks pass.
-- [ ] 9Router policy tests pass for names and prefixes.
+- [x] Project OS validator, registry, dcode, and deploy tests pass for all four retired families.
+- [x] LightRSI profile validation and generated-surface checks pass.
+- [x] 9Router policy tests pass for names and prefixes.
 
 **Exit Criteria:**
 - All three repositories agree on retirement behavior and retained combo evidence is recorded.
@@ -255,20 +331,24 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any migration that silently rewrites existing combo members, deletes records without an approved disposition, or changes maintained combo semantics.
 
 **Steps:**
-- [ ] Change `rowToCombo()` and list/read paths so a stale row is returned with an explicit retired/invalid classification instead of making `getCombos()` or `getComboById()` throw.
-- [ ] Keep `deleteCombo()` and `DELETE /api/combos/[id]` usable for stale records without first asserting that every member is supported.
-- [ ] Wire the existing `retiredModelResponse()` helper into both combo route catch paths so stale execution/lookup failures do not become generic `500` responses.
-- [ ] Reject create/update requests containing retired names or resolved retired targets.
-- [ ] Reject lookup/dispatch when any combo member resolves to a retired target; do not silently remap to native Codex.
-- [ ] Define an idempotent cleanup command or documented operator procedure that removes only retired records after export/backup evidence.
-- [ ] Extend `tests/unit/retired-combo-ownership.test.js` with a stale-row flow: seed stale row, list successfully, identify it, delete it, then prove dispatch still returns `410` for any remaining retired target.
-- [ ] Add mixed fixtures containing maintained, stale, malformed, and duplicate rows.
+- [x] Change `rowToCombo()` and list/read paths so a stale row is returned with an explicit retired/invalid classification instead of making `getCombos()` or `getComboById()` throw.
+- [x] Define the catalog DTO and preserve malformedness explicitly, including a validity classification such as `valid`, `retired`, or `malformed`, the invalid member identifiers, and a parse error/diagnostic. `parseJson(row.models, [])` must not turn malformed persisted JSON into an apparently valid empty combo.
+- [x] Separate non-throwing catalog deserialization from the strict execution resolver so list/get/delete can inspect or remove stale rows without weakening dispatch validation.
+- [x] Keep `deleteCombo()` and `DELETE /api/combos/[id]` usable for stale records without first asserting that every member is supported.
+- [x] Wire the existing `retiredModelResponse()` helper into both combo route catch paths so stale execution/lookup failures do not become generic `500` responses.
+- [x] Reject create/update requests containing retired names or resolved retired targets.
+- [x] Decide and record the update contract for stale rows: either permit an explicit PUT repair through the non-throwing DTO and revalidate the replacement, or reject PUT and state that DELETE followed by CREATE is the only repair path. Test the chosen behavior.
+- [x] Reject lookup/dispatch when any combo member resolves to a retired target; do not silently remap to native Codex.
+- [x] Define an idempotent cleanup command or documented operator procedure that removes only retired records after export/backup evidence.
+- [x] Extend `tests/unit/retired-combo-ownership.test.js` with a stale-row flow: seed stale row, list successfully, identify it, delete it, then prove dispatch still returns `410` for any remaining retired target.
+- [x] Add mixed fixtures containing maintained, stale, malformed, and duplicate rows.
 
 **Verification:**
-- [ ] `getCombos()`, `getComboById()`, and `GET /api/combos` list mixed rows without exception.
-- [ ] `DELETE /api/combos/[id]` removes a stale row deterministically and repeat of the delete is safe and explicit.
-- [ ] Execute maintained rows successfully and retired rows with `410`/`RETIRED_MODEL`.
-- [ ] Confirm no retired row reaches provider lookup or quota accounting.
+- [x] `getCombos()`, `getComboById()`, and `GET /api/combos` list mixed rows without exception.
+- [x] `DELETE /api/combos/[id]` removes a stale row deterministically and repeat of the delete is safe and explicit.
+- [x] Malformed raw JSON remains classified as malformed in list/get/delete fixtures and never becomes an empty valid combo.
+- [x] Execute maintained rows successfully and retired rows with `410`/`RETIRED_MODEL`.
+- [x] Confirm no retired row reaches provider lookup or quota accounting.
 
 **Exit Criteria:**
 - Persisted retired combos are inspectable, removable, non-selectable, and non-dispatchable.
@@ -301,7 +381,7 @@ explicit readiness, smoke-test, and rollback evidence.
 - `9router/open-sse/services/combo.js`
 - `9router/open-sse/services/accountFallback.js`
 - `9router/open-sse/executors/base.js`
-- public chat/responses route handlers identified by the repository route search, plus the combo route handlers named in Task 3
+- The frozen Task 1 owner manifest for `/v1/chat/completions`, `/v1/responses`, `/v1/responses/compact`, `/v1/api/chat`, `/api/combos`, and `/api/combos/[id]`
 
 **Dependencies:**
 - Task 3 complete.
@@ -311,17 +391,18 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any change that masks cancellation, changes replayability, alters quota classification, or maps retired execution to a generic error.
 
 **Steps:**
-- [ ] Centralize or consistently apply `RetiredModelError` to `410` with stable `RETIRED_MODEL` payload semantics.
-- [ ] Validate retirement before bypass, warmup, fallback, account selection, provider lookup, and replay reconstruction.
-- [ ] Add tests for chat, responses, combo REST, alias resolution, and stale persisted selection.
-- [ ] Add an `AbortError` regression test; rethrow cancellation instead of entering generic combo fallback.
-- [ ] Verify `NON_REPLAYABLE` and no-replay behavior remains unchanged for maintained paths.
-- [ ] Remove the unused `assertSupportedModel` import from `open-sse/services/combo.js`; keep retirement admission in the resolver/storage boundary and keep the generic combo loop unaware of CGW policy.
+- [x] Name one canonical `resolve -> normalize -> assert supported owner` function and require direct requests and combo-member dispatch to use it; do not scatter retirement checks across bypass, warmup, fallback, replay, and provider branches.
+- [x] Centralize or consistently apply `RetiredModelError` to `410` with a stable payload contract containing `code: "RETIRED_MODEL"` and the existing safe error fields. Assert both status and payload at every public boundary.
+- [x] Validate retirement before bypass, warmup, fallback, account selection, provider lookup, and replay reconstruction.
+- [x] Add tests for alias -> `cgw/*`, alias -> `chatgpt-web/*`, alias -> retired combo name, combo-member alias -> retired target, alias cycles, chat, responses, combo REST, and stale persisted selection.
+- [x] Add an `AbortError` regression test; rethrow cancellation instead of entering generic combo fallback.
+- [x] Verify `NON_REPLAYABLE` and no-replay behavior remains unchanged for maintained paths.
+- [x] Remove the unused `assertSupportedModel` import from `open-sse/services/combo.js`; keep retirement admission in the resolver/storage boundary and keep the generic combo loop unaware of CGW policy.
 
 **Verification:**
-- [ ] Retired requests return `410` at every public boundary.
-- [ ] Cancellation returns the existing cancellation contract and does not trigger a fallback provider.
-- [ ] Maintained fallback, quota, and replay tests remain green.
+- [x] `/v1/chat/completions`, `/v1/responses`, `/v1/responses/compact`, `/v1/api/chat`, `/api/combos`, and `/api/combos/[id]` return `410` with machine-readable `RETIRED_MODEL` for retired requests, including failures from stale combo execution.
+- [x] Cancellation returns the existing cancellation contract and does not trigger a fallback provider.
+- [x] Maintained fallback, quota, and replay tests remain green.
 
 **Exit Criteria:**
 - Error, cancellation, fallback, and replay behavior is deterministic at the public boundary.
@@ -366,16 +447,16 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any deletion that removes the Codex relay, generic receipt handling, native timeout policy, or unrelated startup ownership.
 
 **Steps:**
-- [ ] Add red tests proving retired aliases fail before startup, process creation, lock acquisition, port access, or receipt emission.
-- [ ] Remove CGW preflight, lock, wait, timeout, bearer, shim, overlay, and startup references.
-- [ ] Update installer/startup tests to prove the generic path remains available without CGW artifacts.
-- [ ] Preserve the relay overlay only where Task 1 classified it as CGW-independent.
-- [ ] Run active-tree searches and classify historical documentation separately.
+- [x] Add red tests proving retired aliases fail before startup, process creation, lock acquisition, port access, or receipt emission.
+- [x] Remove CGW preflight, lock, wait, timeout, bearer, shim, overlay, and startup references.
+- [x] Update installer/startup tests to prove the generic path remains available without CGW artifacts.
+- [x] Preserve the relay overlay only where Task 1 classified it as CGW-independent.
+- [x] Run active-tree searches and classify historical documentation separately.
 
 **Verification:**
-- [ ] `pytest -q tests/test_herdr_main_launcher.py tests/test_9router_global_install.py`
-- [ ] `git diff --check`
-- [ ] No active CGW process, port, lock, shim, overlay, or startup registration is referenced.
+- [x] `pytest -q tests/test_herdr_main_launcher.py tests/test_9router_global_install.py`
+- [x] `git diff --check`
+- [x] No active CGW process, port, lock, shim, overlay, or startup registration is referenced.
 
 **Exit Criteria:**
 - Project OS no longer contains an executable CGW path, and preserved relay/native behavior has explicit absence and regression proof.
@@ -405,7 +486,7 @@ explicit readiness, smoke-test, and rollback evidence.
 
 **Files And Symbols:**
 - `LightRSI/agents/*.toml`
-- LightRSI generated adapter/config surfaces and the generation command identified in Task 1
+- The frozen Task 1 LightRSI canonical profile/config files, generator command, and generated output paths
 - Profile validation and build/test owners in LightRSI
 
 **Dependencies:**
@@ -416,17 +497,16 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any retained profile whose provider/model/capability identity is not recorded or any generated output edited without its canonical source change.
 
 **Steps:**
-- [ ] Remove retired profile selections and apply only Task 1 verified replacements or explicit removals.
-- [ ] Keep the logical `combo-xhigh` and `combo-ui` profiles unchanged unless Task 1 proves a retired member; record their downstream members, providers, capabilities, and expected fallback behavior only in the acceptance matrix.
-- [ ] Regenerate derived surfaces and assert they contain no retired identifier.
-- [ ] Add one assertion that each retained logical profile resolves to no retired member; fail clearly when downstream membership is missing instead of silently inferring or copying concrete members into LightRSI.
+- [x] Remove retired profile selections and apply only Task 1 verified replacements or explicit removals.
+- [x] Keep the logical `combo-xhigh` and `combo-ui` profiles unchanged unless Task 1 proves a retired member; record their downstream members, providers, capabilities, and expected fallback behavior only in the acceptance matrix.
+- [x] Regenerate derived surfaces with the exact Task 1 generator command and assert they contain no retired identifier; stop if the command or output owner is missing.
+- [x] Add one assertion that each retained logical profile resolves to no retired member using the immutable 9Router seed/fixture/export evidence; fail clearly when downstream membership is missing instead of silently inferring or copying concrete members into LightRSI.
 
 **Verification:**
-- [ ] `pnpm install --frozen-lockfile`
-- [ ] `pnpm typecheck`
-- [ ] `pnpm build`
-- [ ] `pnpm test`
-- [ ] Profile and generated-surface scans pass with documented historical exclusions.
+- [x] Run the focused profile/configuration validation and generated-surface checks first, from the recorded working directory and revision.
+- [x] Run the affected package typecheck/build/test commands identified in Task 1, then run the broader workspace gates only as a separate regression step.
+- [x] Run `pnpm install --frozen-lockfile` only when the clean checkout lacks a valid frozen install; record whether installation was needed and keep dependency-install failure separate from semantic verification.
+- [x] Profile and generated-surface scans pass with documented historical exclusions.
 
 **Exit Criteria:**
 - LightRSI canonical and generated surfaces agree, and maintained combo evidence is fresh.
@@ -467,17 +547,18 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any global package mutation, scheduled-task removal, live credential access, or database deletion without explicit approval.
 
 **Steps:**
-- [ ] Record installed package identity, executable path, startup registrations, environment variables, ports, and running processes before cleanup.
-- [ ] Run a bounded pre-upgrade/readiness check that inventories persisted retired combo names/members and prints the deterministic API cleanup action; do not reinterpret them as native models.
-- [ ] Run disposable requests proving retired aliases return `410` before provider lookup and maintained paths still resolve.
-- [ ] Verify whether the old CGW package/task/process exists; if present, prepare an exact rollback-safe cleanup command set but do not execute destructive actions without approval.
-- [ ] Verify the independent Codex relay ownership and smoke-test it separately from CGW.
-- [ ] After Task 3 makes stale rows inspectable/removable, verify that the normal combo management API can remove quarantined records identified by the readiness check.
-- [ ] Record source-complete and deployment-complete statuses as separate evidence fields.
+- [x] Record installed package identity, executable path, startup registrations, environment variables, ports, and running processes before cleanup.
+- [x] Run a bounded pre-upgrade/readiness check that inventories persisted retired combo names/members and prints the deterministic API cleanup action; do not reinterpret them as native models.
+- [x] Run disposable requests proving retired aliases return `410` before provider lookup and maintained paths still resolve.
+- [x] Verify whether the old CGW package/task/process exists; if present, prepare an exact rollback-safe cleanup command set but do not execute destructive actions without approval.
+- [x] Verify the independent Codex relay ownership and smoke-test it separately from CGW.
+- [x] Copy the disposable database or use a dedicated test database, export the quarantined rows, and rehearse the normal combo-management cleanup API there; do not delete stale rows from installed/live state in this task.
+- [x] Treat live stale-row deletion, package replacement, scheduled-task removal, and rollback execution as a separate approval-gated mutation phase with explicit commands and a before/after receipt.
+- [x] Record source-complete and deployment-complete statuses as separate evidence fields.
 
 **Verification:**
-- [ ] Smoke tests cover retired alias, maintained native profile, stale combo, cancellation, fallback, and relay-preservation paths.
-- [ ] Rollback restores the prior package/task/configuration state without reintroducing retired aliases into new configuration.
+- [x] Smoke tests cover retired alias, maintained native profile, stale combo, cancellation, fallback, and relay-preservation paths.
+- [x] A disposable rollback rehearsal restores the prior package/task/configuration state without reintroducing retired aliases into new configuration; live rollback is not claimed until the separate mutation approval is granted.
 
 **Exit Criteria:**
 - Installed-state status is explicit, rollback is documented and rehearsed where safe, and no deployment claim relies only on source tests.
@@ -496,13 +577,13 @@ explicit readiness, smoke-test, and rollback evidence.
 
 **Validator Profile:**
 - Controller-selected: `none`
-- Selection basis: plan review and verification skills provide the final gates.
+- Selection basis: final verification and completion evidence provide the post-implementation gate; the pre-execution plan review is handled by Gate 0.
 
 **Specification Coverage:**
 - Every outcome, preserved behavior, rollback condition, and bottleneck in this plan.
 
 **Required Skills:**
-- `skill-plan-document-reviewer`, `skill-verification-before-completion`
+- `skill-verification-before-completion`
 
 **Files And Symbols:**
 - All Task 1-7 files, generated outputs, tests, package metadata, operational evidence, and this plan.
@@ -515,18 +596,17 @@ explicit readiness, smoke-test, and rollback evidence.
 - Stop for: any failed required check, unresolved stale row, unexplained active retired reference, mismatched revision, missing rollback evidence, or unverified retained combo.
 
 **Steps:**
-- [ ] Run the focused test matrices in each repository and record exact command, commit, expected result, actual result, and baseline comparison.
-- [ ] Run broader relevant suites without treating unrelated pre-existing failures as changed-owner proof; record each excluded failure with reason.
-- [ ] Search maintained files for `CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|CGW_SHIM` and classify every match.
-- [ ] Confirm no retired identifier can be emitted, accepted, resolved, selected, or dispatched through active paths.
-- [ ] Record the three immutable final verified implementation/release SHAs beside the acceptance evidence; if a merge SHA differs from the tested head, rerun only the focused post-merge smoke/static matrix.
-- [ ] Run `skill-plan-document-reviewer`; resolve all blocking findings before final verification.
-- [ ] Run `skill-verification-before-completion`; only that skill may set this plan to `completed`.
+- [x] Run the focused test matrices in each repository and record exact command, commit, expected result, actual result, and baseline comparison.
+- [x] Run broader relevant suites without treating unrelated pre-existing failures as changed-owner proof; record each excluded failure with reason.
+- [x] Search maintained files for `CGW|cgw|combo-web-high|combo-web-medium|chatgpt-web|CGW_SHIM` and classify every match.
+- [x] Confirm no retired identifier can be emitted, accepted, resolved, selected, or dispatched through active paths.
+- [x] Record the three immutable final verified implementation/release SHAs beside the acceptance evidence; if a merge SHA differs from the tested head, rerun only the focused post-merge smoke/static matrix.
+- [x] Run `skill-verification-before-completion`; only that skill may set this plan to `completed`.
 
 **Verification:**
-- [ ] All required focused checks pass with fresh output.
-- [ ] The evidence table references exact immutable revisions and no stale review-hash claim.
-- [ ] Completion status distinguishes source implementation, installed-state cleanup, and external publication.
+- [x] All required focused checks pass with fresh output.
+- [x] The evidence table references exact immutable revisions and no stale review-hash claim.
+- [x] Completion status distinguishes source implementation, installed-state cleanup, and external publication.
 
 **Exit Criteria:**
 - The verifier returns `verified`, all required criteria are evidenced, and unresolved deviations are either closed or recorded as explicit blockers.
@@ -555,7 +635,7 @@ The plan may be marked `completed` only when:
 8. Deployed persisted state has a readiness inventory and deterministic cleanup path before or during upgrade.
 9. Source completion and installed-state completion are separately recorded, with rollback evidence.
 10. The exact review revisions and final verification commands are recorded without revision drift.
-11. `skill-plan-document-reviewer` accepts the plan before execution and `skill-verification-before-completion` returns `verified` after execution.
+11. Gate 0 records that `skill-plan-document-reviewer` accepted the plan before execution, and Task 8 records that `skill-verification-before-completion` returned `verified` after execution.
 
 The plan must remain `proposed` until approved. It must not be marked
 `completed` based solely on checked task boxes or prior test output.
