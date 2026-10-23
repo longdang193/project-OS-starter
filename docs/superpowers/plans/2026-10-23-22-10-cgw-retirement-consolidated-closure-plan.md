@@ -117,7 +117,7 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: activate Task 6 and reconcile cross-repository evidence, installed-state inventory, and rollback proof
+- Next action: activate Task 7 for fresh final verification; keep deployment completion separate because installed startup cleanup remains approval-gated
 - Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -128,8 +128,8 @@ separate.
 | Task 3 | `completed` | `9router` + `LightRSI` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
 | Task 4 | `completed` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | current equivalents: 279 passed; adapter drift check passed; historical filenames `tests/test_9router_global_install.py` and `tests/test_9router_codex_relay_overlay.py` are absent and were not substituted as failures |
 | Task 5 | `completed` | `LightRSI` | `lead controller` | Task 1 | canonical/generated profile and fixture proof | generated policy projection consumed; retained-combo contract fixture and provider/capability assertions passed; focused and full workspace checks passed |
-| Task 6 | `active` | all three repositories | `lead controller` | Tasks 2-5 | synchronized verification and rollback record | activated after Task 5 full-suite proof |
-| Task 7 | `pending` | all three repositories | `unresolved` | Task 6 | fresh final verification and handoff evidence | pending |
+| Task 6 | `completed` | all three repositories | `lead controller` | Tasks 2-5 | synchronized verification and rollback record | evidence reconciled; source-complete is distinct from deployment-complete; startup cleanup remains approval-gated |
+| Task 7 | `active` | all three repositories | `lead controller` | Task 6 | fresh final verification and handoff evidence | activated after Task 6 evidence reconciliation; final status cannot be `verified` while installed startup cleanup is unresolved |
 
 ## Task Breakdown
 
@@ -528,14 +528,14 @@ separate.
 - Stop for: global package mutation, scheduled-task removal, live credentials, live database deletion, or rollback execution without explicit approval.
 
 **Steps:**
-- [ ] Record one row per repository with baseline SHA, implementation SHA, release merge SHA, branch, exact focused commands, result, and generated-surface status.
-- [ ] Record the relay benchmark workload and metrics beside the relay disposition; do not use aggregate suite pass counts without command and scope.
-- [ ] Search all maintained files and classify every remaining retired identifier as policy definition, historical evidence, explicitly typed transport boundary, or unexpected active behavior.
-- [ ] Classify every remaining `chatgpt-web` occurrence as public selection, live executor/provider, typed native relay transport, historical evidence, or documentation; any typed relay exception must name its owner and test.
-- [ ] Record warmup bypass, image-boundary, catalog-filtering, alias-write, cross-repository combo, and cold-catalog findings in the same evidence record rather than splitting them across plans.
-- [ ] Inventory installed package identity, executable paths, startup registrations, environment variables, ports, processes, and persisted combo rows before any cleanup.
-- [ ] Export stale rows and rehearse list/delete/rollback against a disposable database or fixture; leave live deletion, package replacement, and scheduled-task removal approval-gated.
-- [ ] Record source-complete and deployment-complete statuses separately.
+- [x] Record one row per repository with baseline SHA, implementation SHA, release merge SHA, branch, exact focused commands, result, and generated-surface status.
+- [x] Record the relay benchmark workload and metrics beside the relay disposition; do not use aggregate suite pass counts without command and scope.
+- [x] Search all maintained files and classify every remaining retired identifier as policy definition, historical evidence, explicitly typed transport boundary, or unexpected active behavior.
+- [x] Classify every remaining `chatgpt-web` occurrence as public selection, live executor/provider, typed native relay transport, historical evidence, or documentation; any typed relay exception must name its owner and test.
+- [x] Record warmup bypass, image-boundary, catalog-filtering, alias-write, cross-repository combo, and cold-catalog findings in the same evidence record rather than splitting them across plans.
+- [x] Inventory installed package identity, executable paths, startup registrations, environment variables, ports, processes, and persisted combo rows before any cleanup.
+- [x] Export stale rows and rehearse list/delete/rollback against a disposable database or fixture; leave live deletion, package replacement, and scheduled-task removal approval-gated.
+- [x] Record source-complete and deployment-complete statuses separately.
 
 **Verification:**
 - The evidence table is reproducible from immutable SHAs and exact commands, and every approved exception has a named owner and test.
@@ -543,6 +543,16 @@ separate.
 
 **Exit Criteria:**
 - No completion claim depends on a split plan, a stale revision, an unexplained exception, or source tests standing in for installed-state proof.
+
+**Execution Evidence (2026-10-23):**
+- Repository reconciliation (detached clean implementation worktrees; implementation commits remain prohibited): `project-OS-starter` baseline `4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, worktree diff digest `8b979a6d76248a42c63e306d2dc06ef83a06b45d`, 4 modified files plus generated `repo_config/retired-model-policy.json`; `LightRSI` baseline `ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, diff digest `55993c08083e8137ce9f3eda89b93eac6d71f43a`, 4 modified files plus 2 generated/fixture entries; `9router` baseline `ac10953d5e1c6f2acfb3c6d8515371e220c446d6`, diff digest `48bb20f8f7c3486d7ba8d03c0f058e34c5a4a0a8`, 30 modified files plus 5 generated/new entries. Release merge SHAs are intentionally unavailable until implementation commits are separately authorized.
+- Focused proof: 9Router retirement/combo/relay/image matrix `4 files, 51 passed`; Project OS current-equivalent Task 4 matrix `279 passed` plus adapter drift check; LightRSI focused matrices `9/9` and `48/48`, typechecks/builds passed, and the full workspace rerun passed including Codex `606/606`, CLI `38/38`, MCP `17/17`, and TokenPilot `9/9`.
+- Relay evidence retained beside the disposition: two identical 100-request-per-path runs on Node `v24.15.0`; relay P95 TTFT `5.070/5.051 ms`, direct `2.510/1.741 ms`; relay CPU `375/406 ms`, direct `78/79 ms`; relay RSS delta `12.9/20.9 MB`, direct `0.87/3.27 MB`; retries, disconnects, and errors were zero. The typed native relay is retained; general CGW provider/executor registration is removed.
+- Reference classification: generated retirement policy and rejection tests are intentional; old plans/baselines/changelog entries are historical; `src/app/api/v1/chatgpt-web/responses/relay.mjs` and `tests/unit/chatgpt-web-responses-relay.test.js` are the named typed native relay exception; Project OS documentation names the rejection boundary. No unexpected active source path was found in the maintained non-historical scan.
+- Boundary findings consolidated: warmup/naming, image `410`, catalog filtering, alias-write rejection, stale-combo list/delete/repair, fallback/cancellation/replay, and LightRSI cold-catalog bypass all have focused proof. The 9Router focused run emitted `MaxListenersExceededWarning` from repeated disposable DB setup; it did not fail tests and is recorded as test-harness hygiene overhead, not a runtime retirement defect.
+- Installed-state inventory (read-only, no secrets): package identities were `9router-app@0.5.109` and `lightrsi@0.1.0-beta.1`; no matching runtime process or selected listening port was present; no persisted `data.sqlite` was found in the implementation worktrees; user startup inventory still contains `9router.vbs` targeting `C:\Users\HOANG PHI LONG DANG\repos\9router\cli\cli.js` and `ProjectOS-LightMem2-Codex-Overlay.cmd` targeting `tools/open-design-local-patch/Apply-LightMem2CodexOverlay.ps1`. These are deployment-state findings requiring explicit approval before removal and are not changed by source execution.
+- Rollback rehearsal: a disposable combo fixture exported 1 stale row, reduced from 2 rows to 1 after deletion, then restored the backup to 2 rows with `cgw/gpt-5.6-sol` intact; the actual 9Router `retired-combo-ownership.test.js` also passed list/delete/repair against temporary SQLite databases. No live database, package, scheduled task, or startup entry was mutated.
+- Status split: source-complete for the reviewed worktrees subject to separately authorized implementation commits; deployment-complete `false` pending explicit approval to remove the two discovered startup entries and any associated live installation state.
 
 ### Task 7: Final verification and handoff gate
 
