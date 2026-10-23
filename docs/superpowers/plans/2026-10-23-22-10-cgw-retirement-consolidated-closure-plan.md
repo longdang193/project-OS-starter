@@ -117,13 +117,13 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: execute Task 1 in the isolated 9router worktree using the frozen revisions and record the canonical retirement matrix
-- Blockers: none after path and workspace reconciliation; the native Codex relay remains an explicit typed compatibility boundary
+- Next action: restore or explicitly authorize the 9router test dependency, then rerun the Task 1 focused Vitest matrix before advancing to Task 2
+- Blockers: required 9router Vitest runner is unavailable in the frozen worktree and available local dependency trees; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Task 0 | `completed` | current | `lead controller` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
-| Task 1 | `active` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | in progress |
+| Task 1 | `active` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, and diff checks pass; required Vitest matrix blocked by missing `vitest` package |
 | Task 2 | `pending` | `9router` | `unresolved` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | pending |
 | Task 3 | `pending` | `9router` | `unresolved` | Tasks 1-2 | relay isolation and before/after performance evidence | pending |
 | Task 4 | `pending` | `project-OS-starter` | `unresolved` | Task 1 | launcher boundary and CGW-surface absence tests | pending |
@@ -222,18 +222,23 @@ separate.
 - Stop for: any route that validates only the raw alias, any maintained model that changes provider resolution, or any public retired request that does not return `410` / `RETIRED_MODEL`.
 
 **Steps:**
-- [ ] Add a canonical policy function that accepts normalized `{ provider, model }` and returns the stable retired error contract.
-- [ ] Add `scripts/export-retired-model-policy.mjs` to emit the canonical policy projection to `open-sse/config/retired-model-policy.json`, `project-OS-starter/repo_config/retired-model-policy.json`, and `LightRSI/components/presets/tokenpilot/retired-model-policy.json` from one source.
-- [ ] Call the policy after `resolveProviderAlias` in direct routing and after every alias-map resolution in `getModelInfoCore`.
-- [ ] Apply the same canonical check to combo members, fallback candidates, and persisted alias values before provider lookup, warmup, retry, or dispatch.
-- [ ] Ensure the `cg` alias cannot resolve to an active chat/code executor; remove the ChatGPT-Web image executor and registration unless a separately typed non-CGW capability is explicitly approved and tested.
-- [ ] Add tests for direct `cg/gpt-5-6`, direct `chatgpt-web/gpt-5-6`, `cgw/gpt-5-6`, retired combo members using `cg/`, stored aliases resolving to `cg/`, and maintained native models.
-- [ ] Add provider-level tests for `cg/gpt-image-2` and normalized image-provider targets so a retained alias cannot reach `ChatGptWebExecutor` or `imageProviders/chatgpt-web.js`.
-- [ ] Remove any unused retirement-validation import or duplicate raw-string guard left behind by the canonical gate.
+- [x] Add a canonical policy function that accepts normalized `{ provider, model }` and returns the stable retired error contract.
+- [x] Add `scripts/export-retired-model-policy.mjs` to emit the canonical policy projection to `open-sse/config/retired-model-policy.json`, `project-OS-starter/repo_config/retired-model-policy.json`, and `LightRSI/components/presets/tokenpilot/retired-model-policy.json` from one source.
+- [x] Call the policy after `resolveProviderAlias` in direct routing and after every alias-map resolution in `getModelInfoCore`.
+- [x] Apply the same canonical check to combo members, fallback candidates, and persisted alias values before provider lookup, warmup, retry, or dispatch.
+- [x] Ensure the `cg` alias cannot resolve to an active chat/code executor; remove the ChatGPT-Web image executor and registration unless a separately typed non-CGW capability is explicitly approved and tested.
+- [x] Add tests for direct `cg/gpt-5-6`, direct `chatgpt-web/gpt-5-6`, `cgw/gpt-5-6`, retired combo members using `cg/`, stored aliases resolving to `cg/`, and maintained native models.
+- [x] Add provider-level tests for `cg/gpt-image-2` and normalized image-provider targets so a retained alias cannot reach `ChatGptWebExecutor` or `imageProviders/chatgpt-web.js`.
+- [x] Remove any unused retirement-validation import or duplicate raw-string guard left behind by the canonical gate.
 
 **Verification:**
-- From `9router/tests`, run `npx vitest run unit/model-routing.test.js unit/retired-combo-ownership.test.js --testTimeout=20000`.
-- Assert that every retired request returns `410`, error code `RETIRED_MODEL`, zero provider-dispatch calls, and zero generic-fallback attempts.
+- [ ] From `9router/tests`, run `npx vitest run unit/model-routing.test.js unit/retired-combo-ownership.test.js --testTimeout=20000`.
+- [ ] Assert that every retired request returns `410`, error code `RETIRED_MODEL`, zero provider-dispatch calls, and zero generic-fallback attempts.
+
+**Execution Evidence (2026-10-23):**
+- Source revision: isolated `9router` worktree at frozen base `ac10953d5e1c6f2acfb3c6d8515371e220c446d6` with uncommitted Task 1 changes; no implementation commit created.
+- Passed: `node --check` for all changed JavaScript files, direct `parseModel` smoke (`cg/gpt-image-2` → `RETIRED_MODEL/410`; `codex/gpt-5.6` remains routed to `codex`), identical generated policy projections, and `git diff --check`.
+- Blocked: `npx vitest run unit/model-routing.test.js unit/retired-combo-ownership.test.js unit/image-provider-retirement.test.js --testTimeout=20000` fails during startup because `vitest/config` cannot be resolved; no local `vitest` binary or package is available without installing dependencies.
 
 **Exit Criteria:**
 - All raw and normalized paths share one canonical retirement decision, and the alias matrix passes without changing maintained provider routing.
