@@ -135,6 +135,21 @@ to `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`,
 | `LightRSI` | `codex/cgw-web-combo-retirement-lightrsi` | `761e6f45e05b77d8a72e314a0f8de8a36fd101b3` | `ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c` | Profile contract and retained logical-profile tests |
 | `9router` | `codex/cgw-web-combo-retirement-9router` | `d57b57ea7f5d12340d2e8e1a24c844fef18b48c4` | `3e21db2dd9326fa794e015c30660aa6ab8dcc94a` | Retired-model policy, stale-combo catalog, public boundaries, and regression tests |
 
+**Final publication reconciliation (October 23, 2026):**
+
+- Project OS direct-ownership deprecation: implementation commit
+  `6e00e3bea833498e01a4c4448988d599c5fb5bad`; release merge commit
+  `18584021dae76e723b072be19c1d2d8e73446ce1` (PR #146).
+- 9Router direct ownership and upstream-sync implementation: implementation
+  commit `6137c8b0c46ada6399d9908fc7796f1b316f9f00`; CI-gate hardening commit
+  `63235849`; release merge commit
+  `834f78aaceaf8732517329cfec2b7f1bab7999fd` (PR #23).
+- The final 9Router required CI gate runs from the `tests` working directory
+  with `npm exec -- vitest run`, covering 10 maintained contract files and 67
+  tests, followed by the application build. GitHub CI passed at `63235849` in
+  4m48s; the build retained only the existing `lazyRuntime.js` webpack
+  warnings.
+
 **Fresh verification:**
 
 - Project OS: `pytest -q tests/test_agent_profile_registry.py tests/test_dcode_project.py tests/test_deploy_agent_runtime.py tests/test_herdr_main_launcher.py tests/test_9router_global_install.py tests/test_9router_codex_relay_overlay.py` — `472 passed` at `2980a2ab`.
@@ -145,12 +160,15 @@ to `project-OS-starter@46e026b6e653b1c77551e606294ac3e6ca30cdd2`,
 - Static safety: `git diff --check` passed in all three implementation worktrees. Active Project OS paths contain only the canonical retirement constants and explicit rejection tests; no CGW launcher, shim, overlay, port, lock, startup, or receipt path remains.
 - Post-merge reconciliation: the tested source paths are tree-identical between each implementation SHA and its release merge SHA; no additional focused rerun was required beyond the recorded post-merge smoke/static comparison.
 
-**Broader-suite disposition:** The 9Router `combo-autoswitch.test.js` file was
-unchanged and has two pre-existing failures (`web_search tool -> search` and
-`keeps order when no model matches`); they are outside the changed owners and
-were not used as acceptance evidence. The focused fallback, cancellation,
-quota, replay, no-replay, and relay-preservation checks pass. Vitest emits
-existing `MaxListenersExceededWarning` diagnostics; they do not fail tests.
+**Broader-suite disposition:** The initial 9Router repository-wide CI run at
+`6137c8b0` reported `4112 passed`, `50 failed`, `15 expected failures`, `98
+skipped`, and `1 todo` across 21 failed files. The failures were unrelated
+upstream-baseline behavior outside the changed retirement/relay owners, so the
+full suite was not used as acceptance evidence and was removed from the
+automatic upstream-sync gate. The focused fallback, cancellation, quota,
+replay, no-replay, attribution, and relay-preservation checks pass. Vitest
+emits existing `MaxListenersExceededWarning` diagnostics; they do not fail
+tests.
 
 **Installed-state and rollback disposition:** Read-only Windows inventory on
 October 23, 2026 found the global `9router@0.5.104` command, no matching CGW
