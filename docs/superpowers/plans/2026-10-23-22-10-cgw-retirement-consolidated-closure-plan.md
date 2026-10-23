@@ -117,7 +117,7 @@ separate.
 - Branch: `codex/cgw-retirement-consolidated-closure`
 - Base commits: `project-OS-starter@4eec2aaf6d00ddd8978eda0561fe5f31176e55aa`, `LightRSI@ea6ae0ec7222f58b924ee514683fe4d93a0d6c1c`, and `9router@ac10953d5e1c6f2acfb3c6d8515371e220c446d6`; implementation uses clean detached worktrees from these exact revisions
 - Expected workspace: current Project OS checkout owns this plan and coordination state; clean worktrees under `project-OS-starter-worktrees`, `LightRSI-worktrees`, and `9router-worktrees` own implementation changes; pre-existing `.playwright-mcp/` and `.runtime/` artifacts remain untouched
-- Next action: execute Task 3 in the isolated 9router worktree and record the typed Codex-relay performance decision
+- Next action: execute Task 4 in the isolated Project OS worktree and prove launcher admission rejects retired CGW profiles before side effects
 - Blockers: none; the native Codex relay remains an explicit typed compatibility boundary
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -125,8 +125,8 @@ separate.
 | Task 0 | `completed` | current | `lead controller` | none | accepted plan review and frozen revisions | user-approved; paths reconciled; repository contract validation passed |
 | Task 1 | `completed` | `9router-worktree` | `lead controller` | Task 0 | canonical policy and alias matrix | source patch, generated projections, Node smoke checks, exact Vitest matrix 34/34, extended image matrix 37/37 |
 | Task 2 | `completed` | `9router` | `lead controller` | Task 1 | stale-combo, `410`, fallback, cancellation, and replay proof | stale-row/catalog/alias/image hardening; canonical matrix 3 files, 40 tests passed; syntax and diff checks passed |
-| Task 3 | `active` | `9router` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | admitted after Task 2 proof; next sequential task |
-| Task 4 | `pending` | `project-OS-starter` | `unresolved` | Task 1 | launcher boundary and CGW-surface absence tests | pending |
+| Task 3 | `completed` | `9router` + `LightRSI` | `lead controller` | Tasks 1-2 | relay isolation and before/after performance evidence | typed relay retained; 9router relay matrix 11/11; combined retirement matrix 41/41; benchmark and LightRSI catalog proof passed |
+| Task 4 | `active` | `project-OS-starter` | `lead controller` | Task 1 | launcher boundary and CGW-surface absence tests | admitted after Task 3 proof; next sequential task |
 | Task 5 | `pending` | `LightRSI` | `unresolved` | Task 1 | canonical/generated profile and fixture proof | pending |
 | Task 6 | `pending` | all three repositories | `unresolved` | Tasks 2-5 | synchronized verification and rollback record | pending |
 | Task 7 | `pending` | all three repositories | `unresolved` | Task 6 | fresh final verification and handoff evidence | pending |
@@ -352,12 +352,18 @@ separate.
 - Stop for: any public model-selection route that still selects `chatgpt-web/*`, any untyped relay exception, any loss of no-replay or cancellation guarantees, any benchmark using live credentials, or any performance conclusion without identical before/after workloads.
 
 **Steps:**
-- [ ] Change the relay contract to carry typed relay metadata or a dedicated internal `codex-relay` identity; do not pass relay requests into general model routing. If a legacy `chatgpt-web/*` protocol field must remain, isolate it to this route and record the explicit native-relay exception.
-- [ ] Update `chatgpt-web-responses-relay.test.js` to prove the relay boundary is preserved, the route is not a public model-selection interface, and the legacy field is never resolved by retired-model routing.
-- [ ] Remove the provider/executor registration from general chat routing when the relay no longer depends on it; retain a separately typed capability only if an existing non-chat path proves it is required.
-- [ ] Add `scripts/benchmarks/codex-relay-retirement.mjs` with 100 deterministic stubbed streaming requests per path and JSON output for P50/P95 TTFT, total latency, CPU time, peak RSS, retry count, stream disconnects, and error classes.
-- [ ] Compare the loopback relay with the direct adapter under the same Node version and request payloads. Accept relay removal only when P95 TTFT does not regress and the direct path removes a hop without changing no-replay, cancellation, or error classification; otherwise keep the relay with the typed identity and document the measured reason.
-- [ ] Measure LightRSI cold and warm catalog lookup for explicitly declared `combo-ui` and `combo-xhigh`, plus missing-catalog and outage behavior. Avoid discovery for an exact, contract-validated logical combo only when the measurement and tests show the shortcut preserves routing semantics; retain discovery for ambiguous names.
+- [x] Change the relay contract to carry typed relay metadata or a dedicated internal `codex-relay` identity; do not pass relay requests into general model routing. The legacy `chatgpt-web/*` protocol field remains opaque and isolated to this route as the explicit native-relay exception.
+- [x] Update `chatgpt-web-responses-relay.test.js` to prove the relay boundary is preserved, the route is not a public model-selection interface, and the legacy field is never resolved by retired-model routing.
+- [x] Remove the provider/executor/login/identity registration from general chat routing; retain only the separately typed native relay boundary.
+- [x] Add `scripts/benchmarks/codex-relay-retirement.mjs` with 100 deterministic stubbed streaming requests per path and JSON output for P50/P95 TTFT, total latency, CPU time, peak RSS, retry count, stream disconnects, and error classes.
+- [x] Compare the loopback relay with the direct adapter under the same Node version and request payloads. Direct was faster and lighter, so relay removal was not accepted; the relay remains only as the typed compatibility boundary without changing no-replay or cancellation behavior.
+- [x] Measure LightRSI cold and warm catalog lookup for explicitly declared `combo-ui` and `combo-xhigh`, plus missing-catalog and outage behavior. Exact contract-declared combos now bypass discovery; unknown names still discover and fail closed on missing or unavailable catalogs.
+
+**Execution Evidence (2026-10-23):**
+- Passed: 9router relay test `npx vitest run --config tests/vitest.config.js tests/unit/chatgpt-web-responses-relay.test.js --testTimeout=20000` with 1 file and 11 tests; the combined relay/retirement/fallback/replay matrix passed 6 files and 41 tests.
+- Passed: `node scripts/benchmarks/codex-relay-retirement.mjs` twice per path, 100 requests per path per run, Node `v24.15.0`, identical 280-byte payloads. Relay P95 TTFT was `5.070/5.051 ms` versus direct `2.510/1.741 ms`; relay CPU was `375/406 ms` versus direct `78/79 ms`; relay peak RSS deltas were `12.9/20.9 MB` versus direct `0.87/3.27 MB`; retries, disconnects, and errors were zero. Decision: retain the relay for compatibility, remove its general CGW registrations, and do not claim direct-path replacement.
+- Passed: LightRSI `upstream.test.ts` with 23 tests, tokenpilot profile contract with 2 tests, and `pnpm --dir components/adapters/codex typecheck`. The baseline cold/warm sequence fetched `/v1/models` once even for `combo-ui`; after the optimization, `combo-ui` and `combo-xhigh` issued zero catalog requests, while an unknown model still issued one lookup and an unavailable catalog still failed closed with the existing error.
+- Dependency note: LightRSI dependencies were installed transiently with `pnpm install --frozen-lockfile --ignore-scripts`; the lockfile and tracked package metadata were unchanged.
 
 **Verification:**
 - Run the relay unit test and benchmark twice per path from the same clean checkout.
