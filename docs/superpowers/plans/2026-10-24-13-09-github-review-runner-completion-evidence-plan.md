@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 name: github-review-runner-completion-evidence
 targets:
@@ -26,14 +26,16 @@ targets:
 Make one normal `run-review-prompt-cli.mjs` invocation a bounded review transaction. The
 invocation selects and visibly verifies the requested model and effort, submits exactly
 once, waits for bounded visible completion, writes the response and a small result record,
-and cleans up the runner-owned browser state. It returns a predictable `verified`,
-`incomplete`, or `blocked` result without adding a scheduler, retry service, Git
-publisher, model orchestrator, audit mode, or second lifecycle store.
+and cleans up the runner-owned browser state. It returns a predictable
+`completed`, `incomplete`, or `blocked` result without adding a scheduler, retry
+service, Git publisher, model orchestrator, or second lifecycle store. The
+controller performs final revision-evidence validation and owns the workflow-level
+`verified` classification.
 
 ## Review Basis
 
-- The current CLI parses only browser attachment, model, effort, prompt, context, and
-  `--probe-only` arguments; it has no output artifact or completion contract.
+- The current CLI parses browser attachment, model, effort, prompt, context, and
+  output arguments but has no durable completion contract.
 - `runReviewPromptInNewTab()` returns immediately after `submitPrompt()` observes a
   changed composer. There is no completion wait, final assistant-response extraction,
   interruption check, conversation capture, or evidence validation.
@@ -55,20 +57,20 @@ publisher, model orchestrator, audit mode, or second lifecycle store.
 ### Atomic review transaction
 
 Normal submission performs `model/effort verification -> submission -> bounded completion
-wait -> artifact persistence -> cleanup` in one process. `--probe-only` remains a
-diagnostic mode and is not a mandatory precursor to normal submission. The helper still
-submits at most once and ambiguous submission acknowledgement stops the transaction
-without an automatic retry.
+wait -> artifact persistence -> cleanup` in one process. The helper still submits at
+most once and ambiguous submission acknowledgement stops the transaction without an
+automatic retry.
 
 ### Durable result and response artifacts
 
 Each normal invocation writes `result.json` and `response.md` beneath `--output-dir`,
 which defaults to `review-output`. `result.json` records the requested and visibly
 verified model/effort, submission/completion states, conversation URL and assistant-turn
-identity, response path, failure stage, and failure reason. A successful result is
-`verified` when the submission is acknowledged and the newly associated visible
-assistant turn completes without interruption. The caller evaluates revision-specific
-GitHub evidence from the saved response.
+identity, response path, failure stage, and failure reason. A successful runner result
+is `completed` when the submission is acknowledged and the newly associated visible
+assistant turn completes without interruption. The controller evaluates
+revision-specific GitHub evidence from the saved response and owns the workflow-level
+`verified` result.
 
 ### Bounded visible completion and evidence proof
 
@@ -90,14 +92,19 @@ canonical skill.
 
 ### Canonical skill and generated adapter consistency
 
-The canonical browser-review skill documents the atomic normal path, diagnostic probe
-boundary, dedicated profile/CDP ownership, exact result artifacts, and no-rerun rule.
-Generated Codex, Claude, and Antigravity skill surfaces are regenerated from the
-canonical source and checked for drift.
+The canonical browser-review skill documents the atomic normal path, dedicated
+profile/CDP ownership, exact result artifacts, controller-owned evidence validation,
+and the no-rerun rule. Generated Codex, Claude, and Antigravity skill surfaces are
+regenerated from the canonical source and checked for drift.
 
 The completion fallback excludes ChatGPT user-turn markdown (`rich-text-user-turn`).
 Without that exclusion, the submitted prompt can be counted as a new assistant turn and
-the runner can persist the prompt as `response.md` while incorrectly reporting verified.
+the runner can persist the prompt as `response.md` while incorrectly reporting completed.
+
+The lifecycle hardening also keeps interruption matching specific to known failure
+phrases, closes a newly opened tab when setup or submission fails before the caller
+receives it, and restricts model selection to visible radio options so stale hidden
+rows cannot be selected.
 
 ## Execution Approach
 
@@ -117,17 +124,17 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - Coordination schema: `2`
 - Branch: `codex/cgw-pane-lifecycle-plan-review`
 - Base commit: `e978292`
-- Expected workspace: `preserved untracked local artifacts only: .playwright-mcp/, .runtime/, node_modules/, and GPT review output files; task-owned .review-profile/ may remain from the focused probe test`
-- Next action: `run focused local verification; authenticated browser smoke remains optional external evidence`
+- Expected workspace: `preserved untracked local artifacts only: .playwright-mcp/, .runtime/, node_modules/, and GPT review output files; task-owned .review-profile/ may remain from local browser tests`
+- Next action: `none; authenticated browser smoke remains optional external evidence`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `codex` | none | focused CLI contract tests | `tests/test_github_browser_review_runner.py`: 9 passed |
-| Task 2 | `completed` | current | `codex` | Task 1 | lifecycle harness tests | `tests/test_github_browser_review_lifecycle.mjs`: 5 passed |
+| Task 1 | `completed` | current | `codex` | none | focused CLI contract tests | `tests/test_github_browser_review_runner.py`: 7 passed |
+| Task 2 | `completed` | current | `codex` | Task 1 | lifecycle harness tests | `tests/test_github_browser_review_lifecycle.mjs`: 12 passed |
 | Task 3 | `completed` | current | `codex` | Tasks 1-2 | artifact assertions | lifecycle completion and atomic result/response writes pass |
 | Task 4 | `completed` | current | `codex` | Tasks 1-3 | canonical/generated skill checks | adapter sync `--check` passed; 19 focused Python tests passed |
-| Task 5 | `active` | current | `codex` | Tasks 1-4 | focused and final repository checks | local checks pass; authenticated smoke is optional and unverified |
+| Task 5 | `completed` | current | `codex` | Tasks 1-4 | focused and final repository checks | local checks pass; authenticated smoke is explicitly deferred and optional |
 
 ## Task Breakdown
 
@@ -151,7 +158,7 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 
 **Specification Coverage:**
 - Optional `--output-dir` with a stable default, one normal invocation, terminal
-  `verified|incomplete|blocked` status, an internal `running` state, and failure
+  `completed|incomplete|blocked` runner status, an internal `running` state, and failure
   artifacts.
 
 **Required Skills:**
@@ -171,14 +178,14 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - Stop for: a request to change Git publication, model orchestration, retry policy, or browser attachment ownership
 
 **Steps:**
-- [x] Step 1: Parse the browser attachment, model, effort, prompt, optional output directory, and diagnostic probe arguments; keep the output directory defaultable for ordinary use.
-- [x] Step 2: Define one result object with `status` (`running|verified|incomplete|blocked`), requested/verified model and effort, `submission_attempted`, submission/completion states, conversation/turn identity, response path, failure stage, and failure reason.
+- [x] Step 1: Parse the browser attachment, model, effort, prompt, and optional output directory; keep the output directory defaultable for ordinary use.
+- [x] Step 2: Define one result object with runner `status` (`running|completed|incomplete|blocked`), requested/verified model and effort, `submission_attempted`, submission/completion states, conversation/turn identity, response path, failure stage, and failure reason.
 - [x] Step 3: Create the output directory and atomically write `status: running` `result.json` before browser submission; update it for each terminal path without adding locks or recovery state.
 - [x] Step 4: Keep stdout concise and machine-readable while retaining `response.md` and `result.json` as the durable runner output.
 
 **Verification:**
 - [x] `py -3 -m pytest tests/test_github_browser_review_runner.py -q`
-- Expected: parser/help tests cover the small argument contract, probe-only exception, result fields, and nonzero incomplete/blocked contract without launching a browser.
+- Expected: parser/help tests cover the small argument contract, result fields, and nonzero incomplete/blocked contract without launching a browser.
 
 **Exit Criteria:**
 - The CLI has a documented, test-covered result schema and can persist a staged result before any send action.
@@ -290,12 +297,12 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - Expected: CLI contract tests verify the small argument contract, optional `--output-dir`, atomic-write behavior, stderr fallback, and artifact names.
 
 **Exit Criteria:**
-- The runner produces durable artifacts and cannot claim `verified` without submission acknowledgement and completion proof for a newly associated assistant turn.
+- The runner produces durable artifacts and cannot claim `completed` without submission acknowledgement and completion proof for a newly associated assistant turn.
 
 ### Task 4: Align the canonical skill and generated runtime surfaces
 
 **Purpose:**
-- Remove the mandatory two-process probe/submission race and make documentation match the
+- Remove the mandatory two-process preflight/submission race and make documentation match the
   implemented runner boundary.
 
 **Task Function:**
@@ -311,9 +318,9 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - Selection basis: existing generated-surface tests and sync check
 
 **Specification Coverage:**
-- Atomic normal path; diagnostic-only `--probe-only`; dedicated profile; explicit CDP;
-  Node/Playwright runner; precise `verified`, `incomplete`, and `blocked` meanings; no
-  rerun without explicit authorization.
+- Atomic normal path; dedicated profile; explicit CDP; Node/Playwright runner; precise
+  `completed`, `incomplete`, and `blocked` runner meanings plus controller-owned
+  `verified` workflow meaning; no rerun without explicit authorization.
 
 **Required Skills:**
 - `skill-code-standards`
@@ -332,9 +339,9 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - Stop for: generated drift not attributable to the canonical skill/helper changes, or a request to hand-edit generated files
 
 **Steps:**
-- [x] Step 1: Replace the mandatory probe-before-submit wording with atomic normal preflight and diagnostic-only probe wording.
+- [x] Step 1: Replace the mandatory preflight-before-submit wording with one atomic normal submission path.
 - [x] Step 2: Document the normal CLI invocation with optional `--output-dir`, terminal statuses, and artifact paths.
-- [x] Step 3: Define `verified` as submission acknowledged and completion associated with the submitted conversation/assistant turn; define `incomplete` as an unproven or timed-out transaction; define `blocked` as browser-access or artifact-initialization refusal.
+- [x] Step 3: Define `completed` as submission acknowledged and completion associated with the submitted conversation/assistant turn; define `incomplete` as an unproven or timed-out transaction; define `blocked` as browser-access or artifact-initialization refusal. The controller owns final `verified` classification.
 - [x] Step 4: Retain the dedicated authenticated profile, explicit CDP-only attachment, pipe-browser restriction, visible model/effort verification, and no-rerun authorization rules.
 - [x] Step 5: Regenerate all maintained adapters from the canonical source and do not edit generated files directly.
 
@@ -386,7 +393,7 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - [x] Step 1: Run the lifecycle Node tests and focused Python tests.
 - [x] Step 2: Run generated adapter synchronization/check and `git diff --check`.
 - [ ] Step 3: If separately authorized, run one real-browser smoke test through the Node/Playwright runner with explicit profile, prompt, and output paths; verify model/effort selection, one submission, completion association, and artifact persistence.
-- [x] Step 4: Inspect that no new scheduler, retry loop, GitHub API client, profile-copy path, CDP discovery path, audit mode, lock, or second result store was introduced.
+- [x] Step 4: Inspect that no new scheduler, retry loop, GitHub API client, profile-copy path, CDP discovery path, lock, or second result store was introduced.
 - [x] Step 5: Record local verification evidence; authenticated browser smoke remains optional external evidence.
 
 **Verification:**
@@ -395,10 +402,10 @@ the runner can persist the prompt as `response.md` while incorrectly reporting v
 - [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - [x] `git diff --check`
 - [ ] Optional smoke command: `node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs --user-data-dir <authenticated-profile> --model GPT-5.6-Sol --effort High --prompt-file <review-prompt.txt> --output-dir <review-output>`
-- Expected: all declared focused checks pass, generated outputs are clean, and any explicitly authorized smoke test either produces `verified` artifacts or records explicit `incomplete/blocked` browser evidence without retry.
+- Expected: all declared focused checks pass, generated outputs are clean, and any explicitly authorized smoke test either produces `completed` artifacts or records explicit `incomplete/blocked` browser evidence without retry.
 
 **Exit Criteria:**
-- The plan contains no unresolved required task, unsupported claim, or unrecorded scope deviation; implementation remains gated on explicit approval.
+- The plan contains no unresolved required task, unsupported claim, or unrecorded scope deviation; the implementation is verified locally, with authenticated smoke explicitly deferred as optional external evidence.
 
 ## Verification
 
@@ -408,13 +415,13 @@ Final artifact-level verification after implementation:
 - `py -3 -m pytest tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py -q`
 - `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - `git diff --check`
-- Inspect `result.json` and `response.md` fixtures for `verified`, `incomplete`, and `blocked` paths, including preserved failure evidence.
+- Inspect `result.json` and `response.md` fixtures for `completed`, `incomplete`, and `blocked` runner paths, including preserved failure evidence.
 - When explicitly authorized, inspect the real-browser smoke output; source and tests remain authoritative when no smoke run is available.
 
 Local evidence recorded for this execution:
 
-- `node --test tests/test_github_browser_review_lifecycle.mjs`: 5 passed.
-- `py -3 -m pytest tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py -q`: focused tests passed.
+- `node --test tests/test_github_browser_review_lifecycle.mjs`: 12 passed.
+- `py -3 -m pytest tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py -q`: 24 passed.
 - `py -3 scripts/sync_agent_adapters.py --all-platforms --check`: passed.
 - `git diff --check`: passed.
 - Authenticated smoke test: not run; no authenticated browser submission was authorized
@@ -426,14 +433,13 @@ The implementation is ready for completion verification when:
 
 1. one normal CLI invocation performs the complete bounded transaction and submits at most once
 2. owned browser cleanup occurs only after completion and artifact handling
-3. `verified` requires submission acknowledgement and completion of the newly submitted conversation/assistant turn
+3. `completed` requires submission acknowledgement and completion of the newly submitted conversation/assistant turn; the controller owns final `verified` classification
 4. timeout, interruption, ambiguous submission, selection failure, and artifact-write failure produce explicit nonzero terminal results with preserved evidence where writable; unwritable output emits structured stderr failure
-7. `--probe-only` remains diagnostic and is not required before normal submission
-8. dedicated profile and explicit CDP boundaries remain intact; no profile copying or endpoint discovery is added
-9. Git publication, model orchestration, scheduling, retries, and task interpretation remain outside the CLI
-10. canonical skill documentation and all generated adapters are synchronized
-11. focused lifecycle, contract, generated-surface, and diff checks pass with fresh output
-12. any explicitly authorized real-browser smoke test is supplemental and never required for the normal local contract
+7. dedicated profile and explicit CDP boundaries remain intact; no profile copying or endpoint discovery is added
+8. Git publication, model orchestration, scheduling, retries, and task interpretation remain outside the CLI
+9. canonical skill documentation and all generated adapters are synchronized
+10. focused lifecycle, contract, generated-surface, and diff checks pass with fresh output
+11. any explicitly authorized real-browser smoke test is supplemental and never required for the normal local contract
 
 The plan may be marked `completed` only after `skill-verification-before-completion`
 returns `verified` against implementation evidence.

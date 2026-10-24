@@ -8,6 +8,7 @@ import { selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible, main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
+export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
 const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;
@@ -15,7 +16,6 @@ const COMPLETION_MAX_BACKOFF_MS = 1000;
 function normalizeComposerText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
-
 function assertPrompt(prompt) {
   if (typeof prompt !== "string" || prompt.trim() === "") {
     throw new Error("prompt must be a non-empty string");
@@ -40,8 +40,13 @@ async function openChatGPT(page) {
  */
 export async function openReviewTab(context) {
   const page = await context.newPage();
-  await openChatGPT(page);
-  return page;
+  try {
+    await openChatGPT(page);
+    return page;
+  } catch (error) {
+    await page.close().catch(() => {});
+    throw error;
+  }
 }
 
 async function closeModelMenu(page) {
@@ -71,7 +76,7 @@ async function readVisibleAssistantText(page) {
 }
 
 async function readVisibleInterruption(page) {
-  const interruption = page.getByText(/(?:something went wrong|network error|try again|response interrupted|stopped responding)/i).first();
+  const interruption = page.getByText(INTERRUPTION_PATTERN).first();
   return await interruption.isVisible();
 }
 
@@ -157,18 +162,6 @@ async function prepareReviewPrompt(page, { model, effort }) {
 }
 
 /**
- * Navigate an existing authenticated ChatGPT page, select and verify the
- * requested review model and thinking effort, and stop before prompt entry.
- *
- * The caller owns the browser session. This helper never launches a browser,
- * authenticates, retries, reruns, or submits a review request.
- */
-export async function probeReviewModel(page, options) {
-  const { effort, model } = await prepareReviewPrompt(page, options);
-  return { effort, model, promptSubmitted: false };
-}
-
-/**
  * Navigate an existing authenticated ChatGPT page, select the requested
  * review model and effort, fill the prompt, and submit it exactly once.
  *
@@ -237,10 +230,10 @@ export async function runReviewPrompt(page, { beforeSubmit, model, effort, promp
 
 export async function runReviewPromptInNewTab(context, options) {
   const page = await openReviewTab(context);
-  return { page, ...(await runReviewPrompt(page, options)) };
-}
-
-export async function probeReviewModelInNewTab(context, options) {
-  const page = await openReviewTab(context);
-  return { page, ...(await probeReviewModel(page, options)) };
+  try {
+    return { page, ...(await runReviewPrompt(page, options)) };
+  } catch (error) {
+    await page.close().catch(() => {});
+    throw error;
+  }
 }

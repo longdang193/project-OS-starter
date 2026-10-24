@@ -33,12 +33,12 @@ def test_review_runner_is_a_real_node_entrypoint() -> None:
     assert "response.md" in content
 
 
-def test_review_runner_supports_a_non_submitting_probe_mode() -> None:
+def test_review_runner_has_no_probe_or_audit_mode() -> None:
     content = RUNNER.read_text(encoding="utf-8")
 
-    assert "--probe-only" in content
-    assert "probeReviewModelInNewTab" in content
-    assert "result.promptSubmitted !== false" in content
+    assert "--probe-only" not in content
+    assert "probeReviewModelInNewTab" not in content
+    assert "expectedSha" not in content
 
 
 def test_review_runner_requires_a_supported_browser_attachment_mode() -> None:
@@ -71,12 +71,13 @@ def test_review_runner_reports_missing_endpoint_before_loading_browser_runtime()
     assert "Missing one of: --cdp-endpoint or --user-data-dir" in result.stderr
 
 
-def test_probe_only_mode_does_not_require_prompt_file() -> None:
+def test_review_runner_requires_prompt_file_for_normal_submission() -> None:
     result = subprocess.run(
         [
             "node",
             str(RUNNER),
-            "--probe-only",
+            "--user-data-dir",
+            "profile",
             "--model",
             "GPT-6",
             "--effort",
@@ -88,8 +89,7 @@ def test_probe_only_mode_does_not_require_prompt_file() -> None:
     )
 
     assert result.returncode != 0
-    assert "Missing one of: --cdp-endpoint or --user-data-dir" in result.stderr
-    assert "Missing required argument: --prompt-file" not in result.stderr
+    assert "Missing required argument: --prompt-file" in result.stderr
 
 
 def test_review_runner_does_not_require_release_audit_arguments() -> None:

@@ -170,13 +170,6 @@ authenticate. The submission helper never retries or reruns a review request;
 the completion helper only observes visible completion signals and returns the
   final visible assistant turn for the caller to record.
 
-For a non-submitting validation, use `probeReviewModelInNewTab(context,
-options)` or the CLI's `--probe-only` mode. It opens a fresh authenticated tab,
-selects and verifies the requested model and effort, closes the selector, and
-  returns `promptSubmitted: false`; it never submits a prompt. The probe is
-  diagnostic only; normal submission performs the same selection checks in one
-  bounded invocation.
-
 ### Helper execution boundary
 
 These `.mjs` helpers run in the Node/Playwright runner, not in the ChatGPT page
@@ -219,24 +212,16 @@ node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.m
 One normal invocation is one bounded review transaction. It selects and visibly
 verifies the requested model and effort, submits at most once, waits for a new
 stable visible assistant turn, writes `response.md` and a small `result.json`,
-and only then closes the owned browser context. Terminal results are
-`verified`, `incomplete`, or `blocked`; a nonzero exit code accompanies the last
-two. The runner never retries or silently recovers a failed submission.
-
-To verify model and effort without entering or submitting prompt content:
-
-```bash
-node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
-  --user-data-dir <authenticated-playwright-profile> \
-  --model GPT-6 \
-  --effort High \
-  --probe-only
-```
+and only then closes the owned browser context. Terminal runner results are
+`completed`, `incomplete`, or `blocked`; a nonzero exit code accompanies the
+last two. The controller, not the runner, validates revision-specific review
+evidence and may classify the overall workflow as `verified`. The runner never
+retries or silently recovers a failed submission.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The
-CLI imports `run-review-prompt.mjs` through Node's ESM loader and either
-performs the non-submitting probe or submits exactly once. It never authenticates
+CLI imports `run-review-prompt.mjs` through Node's ESM loader and submits
+exactly once. It never authenticates
 a profile for the user. A pipe-backed Playwright MCP browser cannot be used
 with `--cdp-endpoint`; use the owned-profile mode or MCP directly.
 `browser_run_code_unsafe` is not an ESM module runner; do not pass this CLI or

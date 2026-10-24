@@ -45,7 +45,7 @@ export async function openModelList(menu) {
 }
 
 async function findModelOption(menu, model) {
-  const options = menu.locator('[role="menuitemradio"]');
+  const options = menu.locator('[role="menuitemradio"]:visible');
   const expectedLabel = MODEL_LABELS[model];
   const option = options.filter({ hasText: expectedLabel }).first();
 

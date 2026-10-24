@@ -6,8 +6,10 @@ import test from "node:test";
 
 import {
   ASSISTANT_TURN_SELECTOR,
+  INTERRUPTION_PATTERN,
   evaluateReviewCompletion,
   isPromptVisibleInComposer,
+  openReviewTab,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
   atomicWrite,
@@ -35,18 +37,28 @@ test("normal CLI arguments keep the runner contract small", () => {
   assert.equal(parsed.expectedMarker, undefined);
 });
 
-test("output directory remains optional and probe-only stays prompt independent", () => {
+test("output directory remains optional for controller-allocated review artifacts", () => {
   const parsed = parseArguments([
-    "--probe-only",
     "--cdp-endpoint", "http://127.0.0.1:1",
     "--model", "GPT-6",
     "--effort", "High",
-    "--output-dir", "probe-output",
+    "--prompt-file", "review.md",
+    "--output-dir", "review-output",
   ]);
 
-  assert.equal(parsed.probeOnly, true);
-  assert.equal(parsed.promptFile, undefined);
-  assert.equal(parsed.outputDir, "probe-output");
+  assert.equal(parsed.promptFile, "review.md");
+  assert.equal(parsed.outputDir, "review-output");
+});
+
+test("runner contract uses completed as its successful terminal state", async () => {
+  const runner = await readFile(
+    new URL("../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(runner, /result\.status = "completed"/);
+  assert.match(runner, /return result\.status === "completed" \? 0 : 1/);
+  assert.doesNotMatch(runner, /result\.status = "verified"/);
 });
 
 test("model selection keeps the simple picker view when model radios are visible", async () => {
@@ -118,6 +130,37 @@ test("assistant fallback excludes rich-text user turns", () => {
   assert.match(ASSISTANT_TURN_SELECTOR, /:not\(\.rich-text-user-turn\)/);
 });
 
+test("interruption detection ignores ordinary assistant text containing try again", () => {
+  assert.equal(INTERRUPTION_PATTERN.test("You can try again with a narrower question."), false);
+  assert.equal(INTERRUPTION_PATTERN.test("Something went wrong. Please try again."), true);
+});
+
+test("review tab closes when authenticated composer setup fails", async () => {
+  let closed = false;
+  const page = {
+    url: () => "https://chatgpt.com/",
+    getByRole() {
+      return {
+        first() {
+          return this;
+        },
+        async isVisible() {
+          return false;
+        },
+      };
+    },
+    async close() {
+      closed = true;
+    },
+  };
+
+  await assert.rejects(
+    openReviewTab({ newPage: async () => page }),
+    /Authenticated ChatGPT composer was not found/,
+  );
+  assert.equal(closed, true);
+});
+
 test("prompt entry validation reads the composer value", async () => {
   const prompt = "@GitHub Review https://github.com/longdang193/project-OS-starter";
   const composer = {
@@ -171,14 +214,14 @@ test("result and response writes are atomic and preserve final evidence", async 
   const outputDir = await mkdtemp(join(tmpdir(), "github-review-runner-"));
   try {
     const result = createResult({ model: "GPT-6", effort: "High" });
-    result.status = "verified";
+    result.status = "completed";
     result.submission = "acknowledged";
     result.completion = "confirmed";
 
     await writeResult(outputDir, result);
     await atomicWrite(join(outputDir, "response.md"), "Finding at line 12.\n");
 
-    assert.equal(JSON.parse(await readFile(join(outputDir, "result.json"), "utf8")).status, "verified");
+    assert.equal(JSON.parse(await readFile(join(outputDir, "result.json"), "utf8")).status, "completed");
     assert.equal(await readFile(join(outputDir, "response.md"), "utf8"), "Finding at line 12.\n");
   } finally {
     await rm(outputDir, { recursive: true, force: true });

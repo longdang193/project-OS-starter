@@ -104,6 +104,7 @@ def test_model_selection_avoids_overlapping_power_control_hit_target() -> None:
     assert "position: { x: 12, y: 12 }" in helper
     assert "element.click()" not in helper
     assert "filter({ hasText: expectedLabel })" in helper
+    assert '[role="menuitemradio"]:visible' in helper
 
 
 def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
@@ -133,13 +134,15 @@ def test_completion_selector_supports_current_markdown_response_surface() -> Non
     assert "main [class*=\"MarkdownRoot-\"]:visible" in helper
 
 
-def test_skill_documents_non_submitting_probe_boundary() -> None:
+def test_skill_documents_controller_owned_evidence_boundary() -> None:
     skill = CANONICAL_SKILL.read_text(encoding="utf-8")
     helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
 
-    assert "probe-only" in skill
-    assert "probeReviewModelInNewTab(context, options)" in helper
-    assert "submits a review request" in helper
+    assert "Terminal runner results are" in skill
+    assert "`completed`, `incomplete`, or `blocked`" in skill
+    assert "controller" in skill
+    assert "probe-only" not in skill
+    assert "probeReviewModelInNewTab" not in helper
 
 
 def test_skill_documents_file_backed_helper_execution_boundary() -> None:

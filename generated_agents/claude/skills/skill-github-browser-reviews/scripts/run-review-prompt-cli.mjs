@@ -12,7 +12,6 @@ import { pathToFileURL } from "node:url";
 import { join, relative, resolve } from "node:path";
 
 import {
-  probeReviewModelInNewTab,
   runReviewPromptInNewTab,
   waitForReviewCompletion,
 } from "./run-review-prompt.mjs";
@@ -23,8 +22,8 @@ import {
 
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> [--probe-only] [--prompt-file <path>] [--output-dir <path>] [--context-index <number>]";
-const FLAG_ARGUMENTS = new Set(["--probe-only"]);
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> [--output-dir <path>] [--context-index <number>]";
+const FLAG_ARGUMENTS = new Set();
 
 function usageError(message) {
   throw new Error(`${message}\n${USAGE}`);
@@ -53,7 +52,6 @@ export function parseArguments(argv) {
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
-  const probeOnly = argumentsByName.has("--probe-only");
   const contextIndexValue = argumentsByName.get("--context-index");
   const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
@@ -62,7 +60,7 @@ export function parseArguments(argv) {
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
   if (!model) usageError("Missing required argument: --model");
   if (!effort) usageError("Missing required argument: --effort");
-  if (!probeOnly && !promptFile) usageError("Missing required argument: --prompt-file");
+  if (!promptFile) usageError("Missing required argument: --prompt-file");
   if (!SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
   if (!SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
 
@@ -75,7 +73,6 @@ export function parseArguments(argv) {
     effort,
     model,
     outputDir,
-    probeOnly,
     promptFile,
     userDataDir,
   };
@@ -165,27 +162,8 @@ export async function main(argv) {
   }
 
   const options = parseArguments(argv);
-  const prompt = options.probeOnly ? undefined : await readFile(options.promptFile, "utf8");
-  if (!options.probeOnly && !prompt.trim()) usageError("Prompt file must not be empty");
-
-  if (options.probeOnly) {
-    const chromium = await loadPlaywright();
-    const attached = await openContext(chromium, options);
-    let page;
-    try {
-      const probe = await probeReviewModelInNewTab(attached.context, {
-        effort: options.effort,
-        model: options.model,
-      });
-      page = probe.page;
-      const { page: ignoredPage, ...result } = probe;
-      if (result.promptSubmitted !== false) throw new Error("Model and effort probe was not confirmed by the helper");
-      console.log(JSON.stringify({ ...result, pageUrl: page.url() }));
-      return 0;
-    } finally {
-      await closeContext({ ...attached, page });
-    }
-  }
+  const prompt = await readFile(options.promptFile, "utf8");
+  if (!prompt.trim()) usageError("Prompt file must not be empty");
 
   const outputDir = resolve(options.outputDir);
   let result = createResult(options);
@@ -226,7 +204,7 @@ export async function main(argv) {
 
     if (completion.response) await atomicWrite(join(outputDir, "response.md"), `${completion.response}\n`);
     if (completion.status === "confirmed") {
-      result.status = "verified";
+      result.status = "completed";
     } else {
       result.status = "incomplete";
       result.failure_stage = "completion";
@@ -267,7 +245,7 @@ export async function main(argv) {
   }
 
   console.log(JSON.stringify({ ...result, output_dir: relative(process.cwd(), outputDir) }));
-  return result.status === "verified" ? 0 : 1;
+  return result.status === "completed" ? 0 : 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
