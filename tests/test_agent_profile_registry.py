@@ -168,6 +168,11 @@ def test_retirement_policy_validates_provider_fields_and_uses_fallback(
     with pytest.raises(RuntimeError, match="retiredProviderIds"):
         REGISTRY._load_retirement_policy()
 
+    for key in ("retiredModelNames", "retiredModelPrefixes", "retiredProviderIds"):
+        primary.write_text(json.dumps({**valid_policy, key: []}), encoding="utf-8")
+        with pytest.raises(RuntimeError, match=key):
+            REGISTRY._load_retirement_policy()
+
     primary.write_text(json.dumps({**valid_policy, "providerAliases": []}), encoding="utf-8")
     with pytest.raises(RuntimeError, match="providerAliases"):
         REGISTRY._load_retirement_policy()

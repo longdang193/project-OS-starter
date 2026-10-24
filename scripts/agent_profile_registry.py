@@ -43,7 +43,9 @@ def _load_retirement_policy() -> dict[str, object]:
         raise RuntimeError(f"Retirement policy {policy_path} must be a JSON object.")
     for key in ("retiredModelNames", "retiredModelPrefixes", "retiredProviderIds"):
         values = payload.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+        if not isinstance(values, list) or not values or not all(
+            isinstance(value, str) and value for value in values
+        ):
             raise RuntimeError(f"Retirement policy {policy_path} `{key}` must be a non-empty string list.")
     aliases = payload.get("providerAliases")
     if not isinstance(aliases, dict) or not aliases or not all(
