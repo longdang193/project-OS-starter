@@ -170,8 +170,8 @@ retirement guards plus the candidate-local versus global-failure distinction.
 - Reconcile the pane ownership critical section with the existing auto-selector and allocation lock.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: resolve from the task's race-safety and implementation-risk requirements before activation.
+- Controller-selected: `none (lead controller)`
+- Selection basis: execute inline in the lead Codex controller; the approved lane is already active and does not require delegated implementation.
 
 **Validator Profile:**
 - Controller-selected: `review-1`
@@ -217,8 +217,8 @@ retirement guards plus the candidate-local versus global-failure distinction.
 - Replace repeated work with bounded reuse and simplify only branches proven redundant by the existing tests and evidence contract.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: resolve from the explicit latency/resource-efficiency requirement and the complexity risk of the state machine.
+- Controller-selected: `none (lead controller)`
+- Selection basis: execute inline in the lead Codex controller; the optimization changes share the launcher lifecycle contract and are not separable without duplicating state-machine reasoning.
 
 **Validator Profile:**
 - Controller-selected: `review-1`
@@ -266,8 +266,8 @@ retirement guards plus the candidate-local versus global-failure distinction.
 - Reconcile canonical policy, runtime documentation, and regression evidence after launcher behavior changes.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: resolve from the policy/documentation ownership and generated-surface constraints.
+- Controller-selected: `none (lead controller)`
+- Selection basis: execute inline in the lead Codex controller because policy, documentation, and generated-surface checks must be reconciled as one contract.
 
 **Validator Profile:**
 - Controller-selected: `review-1`
@@ -313,8 +313,8 @@ retirement guards plus the candidate-local versus global-failure distinction.
 - Run fresh cross-surface verification and reconcile the plan ledger with repository evidence.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
-- Selection basis: final verification requires repository-wide reasoning and fresh evidence after all implementation tasks.
+- Controller-selected: `none (lead controller)`
+- Selection basis: final verification is owned by the lead controller and requires repository-wide reconciliation after all implementation tasks.
 
 **Validator Profile:**
 - Controller-selected: `review-1`
