@@ -34,14 +34,16 @@ async function openModelMenu(page) {
   return menu;
 }
 
-export async function openModelList(menu) {
+export async function openModelList(menu, { reopen } = {}) {
   const visibleModelOptions = menu.locator('[role="menuitemradio"]:visible');
   if (await visibleModelOptions.count()) {
     try {
       await visibleModelOptions.first().click({ trial: true, timeout: 1500 });
-      return;
+      return menu;
     } catch {
       // A visible but covered option means the effort subview is still active.
+      if (reopen) return reopen();
+      throw new Error("Visible model options are covered and no reopen handler was provided");
     }
   }
 
@@ -49,15 +51,18 @@ export async function openModelList(menu) {
   if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
     await modelControl.click({ timeout: 1500 });
   }
+
+  return menu;
 }
 
-async function findModelOption(menu, model) {
+export async function findModelOption(menu, model) {
   const options = menu.locator('[role="menuitemradio"]:visible');
   const expectedLabel = MODEL_LABELS[model];
-  const option = options.filter({ hasText: expectedLabel }).first();
-
-  if ((await option.count()) > 0) {
-    return option;
+  for (let index = 0; index < await options.count(); index += 1) {
+    const option = options.nth(index);
+    if (normalizeText(await option.innerText()) === expectedLabel) {
+      return option;
+    }
   }
 
   throw new Error(`Visible model option was not found: ${expectedLabel}`);
@@ -69,7 +74,8 @@ async function selectModel(menu, model) {
     await option.click({ position: { x: 12, y: 12 }, timeout: 1500 });
   }
 
-  if ((await option.getAttribute("aria-checked")) !== "true") {
+  const selectedOption = await findModelOption(menu, model);
+  if ((await selectedOption.getAttribute("aria-checked")) !== "true") {
     throw new Error(`Selected model is not visibly confirmed: ${MODEL_LABELS[model]}`);
   }
 }
@@ -130,8 +136,14 @@ export async function selectReviewModel(page, { model, effort }) {
   assertSupported(model, SUPPORTED_MODELS, "model");
   assertSupported(effort, SUPPORTED_EFFORTS, "effort");
 
-  const menu = await openModelMenu(page);
-  await openModelList(menu);
+  let menu = await openModelMenu(page);
+  menu = await openModelList(menu, {
+    reopen: async () => {
+      await page.keyboard.press("Escape");
+      await menu.waitFor({ state: "hidden", timeout: 1500 });
+      return openModelMenu(page);
+    },
+  });
   await selectModel(menu, model);
   await setEffort(menu, effort);
   await verifySelection(menu, model, effort);

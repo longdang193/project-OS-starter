@@ -97,7 +97,7 @@ test("model selection keeps the simple picker view when model radios are visible
 });
 
 test("model selection opens the model view when visible radios are covered", async () => {
-  let modelControlClicked = false;
+  let reopened = false;
   const modelOptions = {
     count: async () => 2,
     first() {
@@ -114,27 +114,18 @@ test("model selection opens the model view when visible radios are covered", asy
       assert.equal(selector, '[role="menuitemradio"]:visible');
       return modelOptions;
     },
-    getByRole() {
-      return {
-        first() {
-          return this;
-        },
-        async count() {
-          return 1;
-        },
-        async isVisible() {
-          return true;
-        },
-        async click() {
-          modelControlClicked = true;
-        },
-      };
-    },
   };
+  const reopenedMenu = { reopened: true };
 
-  await openModelList(menu);
+  const result = await openModelList(menu, {
+    reopen: async () => {
+      reopened = true;
+      return reopenedMenu;
+    },
+  });
 
-  assert.equal(modelControlClicked, true);
+  assert.equal(reopened, true);
+  assert.equal(result, reopenedMenu);
 });
 
 test("completion requires a new stable visible assistant turn and conversation", () => {
