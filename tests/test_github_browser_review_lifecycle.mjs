@@ -34,6 +34,7 @@ import {
   findModelOption,
   openModelList,
   selectReviewModel,
+  setEffort,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
 
 test("normal CLI arguments keep the runner contract small", () => {
@@ -216,6 +217,54 @@ test("model selection opens the model view when visible radios are covered", asy
   assert.equal(result, reopenedMenu);
 });
 
+test("model selection keeps the effort view when a covered row is already selected", async () => {
+  let reopened = false;
+  const modelOptions = {
+    count: async () => 2,
+    nth(index) {
+      return {
+        async innerText() {
+          return index === 0 ? "GPT-6" : "GPT-5.6 Sol";
+        },
+        async click(options) {
+          assert.equal(options.trial, true);
+          throw new Error("effort view intercepts selected row");
+        },
+      };
+    },
+    first() {
+      return this.nth(0);
+    },
+  };
+  const menu = {
+    locator(selector) {
+      if (selector === '[role="menuitemradio"]:visible') return modelOptions;
+      if (selector === '[role="menuitem"][aria-label="Power"]:visible') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+  };
+
+  const result = await openModelList(menu, {
+    model: "GPT-6",
+    reopen: async () => {
+      reopened = true;
+      return { reopened: true };
+    },
+  });
+
+  assert.equal(reopened, false);
+  assert.equal(result, menu);
+});
 test("model selection reopens when the requested model row is covered", async () => {
   let reopened = false;
   const modelOptions = {
@@ -369,6 +418,235 @@ test("model selection reopens when the real requested-row click is intercepted",
   assert.equal(selected, true);
 });
 
+test("model selection adjusts effort when the UI labels the control by its current level", async () => {
+  let menuVisible = false;
+  let currentEffort = "Medium";
+  const pressedKeys = [];
+  const radioOptions = {
+    count: async () => 2,
+    nth(index) {
+      return {
+        async innerText() {
+          return index === 0 ? "GPT-6" : "GPT-5.6 Sol";
+        },
+        async getAttribute(name) {
+          assert.equal(name, "aria-checked");
+          return index === 0 ? "true" : "false";
+        },
+        async click() {},
+      };
+    },
+  };
+  const effortControl = {
+    async isVisible() {
+      return true;
+    },
+    async focus() {},
+    async press(key) {
+      pressedKeys.push(key);
+      currentEffort = "High";
+    },
+  };
+  const menu = {
+    async isVisible() {
+      return menuVisible;
+    },
+    async waitFor({ state }) {
+      if (state === "hidden") menuVisible = false;
+      if (state === "visible") menuVisible = true;
+    },
+    locator(selector) {
+      if (selector === '[role="menuitemradio"]:visible') return radioOptions;
+      if (selector === '[role="status"]') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async innerText() {
+                return `${currentEffort}, 2 of 3.`;
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options = {}) {
+      if (role !== "menuitem") throw new Error(`Unexpected menu role lookup: ${role}`);
+      if (options.name === "Select model") {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return false;
+              },
+            };
+          },
+        };
+      }
+      if (options.name === "Power") {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return false;
+              },
+            };
+          },
+        };
+      }
+      if (options.name === "Medium") {
+        return {
+          first() {
+            return effortControl;
+          },
+        };
+      }
+      throw new Error(`Unexpected effort control lookup: ${options.name}`);
+    },
+  };
+  const page = {
+    getByRole(role, options = {}) {
+      if (role === "menu") return { first: () => menu };
+      if (role === "button" && options.name === "Select ChatGPT model") {
+        return {
+          first() {
+            return {
+              async waitFor() {},
+              async click() {
+                menuVisible = true;
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected page role lookup: ${role}`);
+    },
+    keyboard: {
+      async press(key) {
+        assert.equal(key, "Escape");
+        menuVisible = false;
+      },
+    },
+  };
+
+  await selectReviewModel(page, { model: "GPT-6", effort: "High" });
+  assert.deepEqual(pressedKeys, ["ArrowRight"]);
+});
+test("effort selection uses the visible Power control when its accessible name is only an aria label", async () => {
+  let currentEffort = "Medium";
+  const pressedKeys = [];
+  const powerControl = {
+    async isVisible() {
+      return true;
+    },
+    async focus() {},
+    async press(key) {
+      pressedKeys.push(key);
+      currentEffort = "High";
+    },
+  };
+  const menu = {
+    locator(selector) {
+      if (selector === '[role="status"]') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async innerText() {
+                return `${currentEffort}, 2 of 3.`;
+              },
+            };
+          },
+        };
+      }
+      if (selector === '[role="menuitem"][aria-label="Power"]:visible') {
+        return {
+          first() {
+            return powerControl;
+          },
+        };
+      }
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role) {
+      assert.equal(role, "menuitem");
+      return {
+        first() {
+          return {
+            async isVisible() {
+              return false;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  await setEffort(menu, "High");
+  assert.equal(currentEffort, "High");
+  assert.deepEqual(pressedKeys, ["ArrowRight"]);
+});
+test("effort selection falls back to the visible slider when named controls are not exposed", async () => {
+  let currentEffort = "Medium";
+  const pressedKeys = [];
+  const slider = {
+    async isVisible() {
+      return true;
+    },
+    async focus() {},
+    async press(key) {
+      pressedKeys.push(key);
+      currentEffort = "High";
+    },
+  };
+  const menu = {
+    locator(selector) {
+      if (selector === '[role="status"]') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async innerText() {
+                return `${currentEffort}, 2 of 3.`;
+              },
+            };
+          },
+        };
+      }
+      if (selector === '[role="slider"]:visible') {
+        return {
+          first() {
+            return slider;
+          },
+        };
+      }
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options = {}) {
+      assert.equal(role, "menuitem");
+      return {
+        first() {
+          return {
+            async isVisible() {
+              return false;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  await setEffort(menu, "High");
+  assert.equal(currentEffort, "High");
+  assert.deepEqual(pressedKeys, ["ArrowRight"]);
+});
 test("completion requires a new stable visible assistant turn and conversation", () => {
   assert.equal(evaluateReviewCompletion({
     assistantText: "Finding: src/example.js:12 uses the requested revision.",
