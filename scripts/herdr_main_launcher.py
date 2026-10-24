@@ -635,6 +635,7 @@ def _herdr_pane(
     candidate_local: bool = False,
     candidate_deadline: float | None = None,
     agent_cache: dict[str, list[Any]] | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     def command_timeout() -> float:
         if candidate_deadline is None:
@@ -733,6 +734,10 @@ def _herdr_pane(
                 str(process.get("name", "")).lower() in _SHELL_PROCESS_NAMES
                 for process in processes
             ):
+                if dry_run:
+                    raise TargetCandidateRejected(
+                        "Dry-run suppressed stale idle-agent release."
+                    )
                 _release_stale_idle_agent(
                     herdr,
                     session,
@@ -774,6 +779,7 @@ def _inspect_auto_candidate(
     context_identity: str | None,
     candidate_deadline: float | None,
     agent_cache: dict[str, list[Any]] | None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     return _herdr_pane(
         cwd,
@@ -789,6 +795,7 @@ def _inspect_auto_candidate(
         candidate_local=True,
         candidate_deadline=candidate_deadline,
         agent_cache=agent_cache,
+        dry_run=dry_run,
     )
 
 
@@ -891,11 +898,12 @@ def _run_with_pane_ownership(
     execute_command: bool = True,
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
-    callback: Callable[[], Any] | None = None,
+    callback: Callable[[dict[str, Any] | None], Any] | None = None,
 ) -> Any:
     with _pane_ownership_lock(cwd, session, pane):
+        pane_state: dict[str, Any] | None = None
         if verify:
-            _herdr_pane(
+            pane_state = _herdr_pane(
                 cwd,
                 session,
                 pane,
@@ -906,7 +914,7 @@ def _run_with_pane_ownership(
                 context_identity=context_identity,
             )
         if callback is not None:
-            return callback()
+            return callback(pane_state)
         if not execute_command:
             return subprocess.CompletedProcess(command, 0, "", "")
         return _run(command, env=env, timeout=timeout)
@@ -924,7 +932,7 @@ def _allocation_lock(cwd: Path, session: str, workspace_id: str):
     with _exclusive_file_lock(
         path,
         f"Another launch is allocating a pane for `{session}:{workspace_id}`.",
-        wait_timeout_seconds=0.0,
+        wait_timeout_seconds=_TARGET_ALLOCATION_RESERVE_SECONDS,
     ):
         yield
 
@@ -1087,6 +1095,7 @@ def _resolve_target_selector(
                 context_identity=context_identity,
                 candidate_deadline=deadline - _TARGET_ALLOCATION_RESERVE_SECONDS,
                 agent_cache=candidate_agents,
+                dry_run=dry_run,
             )
         except TargetCandidateRejected as exc:
             rejections.append({
@@ -1141,6 +1150,76 @@ def _resolve_target_selector(
                     ),
                 }
             allocation_deadline = time.monotonic() + _TARGET_ALLOCATION_RESERVE_SECONDS
+
+            def split_and_validate(source_pane: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+                split_payload = _json_command(
+                    [
+                        herdr,
+                        "--session",
+                        control_session,
+                        "pane",
+                        "split",
+                        "--pane",
+                        str(source_pane["pane_id"]),
+                        "--direction",
+                        "down",
+                        "--cwd",
+                        str(cwd),
+                        "--no-focus",
+                    ],
+                    env=env,
+                    timeout=allocation_timeout(allocation_deadline),
+                )
+                allocated = _result(split_payload, "pane")
+                if not isinstance(allocated, dict):
+                    raise LaunchBlocked("Herdr split response is missing pane information.")
+                allocated_pane = allocated.get("pane_id")
+                if not isinstance(allocated_pane, str) or not allocated_pane:
+                    raise LaunchBlocked("Herdr split response is missing pane_id.")
+                try:
+                    while True:
+                        try:
+                            _herdr_pane(
+                                cwd,
+                                control_session,
+                                allocated_pane,
+                                herdr,
+                                executor=executor,
+                                env=env,
+                                panes=[allocated],
+                                timeout=allocation_timeout(allocation_deadline),
+                                expected_profile=expected_profile,
+                                context_identity=context_identity,
+                            )
+                            break
+                        except PaneProcessInfoIncomplete:
+                            time.sleep(min(0.1, allocation_timeout(allocation_deadline)))
+                except TargetCandidateRejected as exc:
+                    raise TargetResolutionBlocked(
+                        f"allocated pane rejected: {exc}",
+                        {
+                            "status": "blocked",
+                            "mode": "auto",
+                            "candidate_count": 0,
+                            "candidates": [],
+                            "rejections": [
+                                *rejections,
+                                {
+                                    "session": control_session,
+                                    "pane": allocated_pane,
+                                    "failure_kind": "candidate_rejected",
+                                    "reason": str(exc),
+                                },
+                            ],
+                            "allocation": {
+                                "status": "rejected",
+                                "source_pane": str(source_pane["pane_id"]),
+                                "pane": allocated_pane,
+                            },
+                        },
+                    ) from exc
+                return allocated_pane, allocated
+
             with _allocation_lock(cwd, control_session, str(source["workspace_id"])):
                 refresh_command = (
                     [herdr, "api", "snapshot"]
@@ -1179,9 +1258,41 @@ def _resolve_target_selector(
                         },
                     ) from exc
                 if session == "auto":
-                    refreshed = refreshed.get("panes") if isinstance(refreshed, dict) else None
+                    if not isinstance(refreshed, dict):
+                        raise global_snapshot_block(
+                            "snapshot_envelope_invalid",
+                            "allocation refresh snapshot is not an object",
+                        )
+                    refreshed = refreshed.get("panes")
                 if not isinstance(refreshed, list):
+                    if session == "auto":
+                        raise global_snapshot_block(
+                            "panes_not_list",
+                            "allocation refresh snapshot panes is not an array",
+                        )
                     raise LaunchBlocked("Herdr allocation refresh did not return pane data.")
+                if session == "auto":
+                    for raw_item in refreshed:
+                        if not isinstance(raw_item, dict):
+                            raise global_snapshot_block(
+                                "pane_entry_not_object",
+                                "allocation refresh snapshot contains a non-object pane entry",
+                            )
+                        item_cwd = raw_item.get("cwd")
+                        if not isinstance(item_cwd, str) or not item_cwd:
+                            raise global_snapshot_block(
+                                "pane_cwd_missing",
+                                "allocation refresh snapshot pane entry is missing cwd",
+                            )
+                        if Path(item_cwd).resolve() == cwd.resolve() and (
+                            not isinstance(raw_item.get("workspace_id"), str)
+                            or not isinstance(raw_item.get("pane_id"), str)
+                        ):
+                            raise global_snapshot_block(
+                                "pane_identity_missing",
+                                "allocation refresh current-workspace pane entry is missing workspace_id or pane_id",
+                            )
+                refresh_agent_cache: dict[str, list[Any]] = {}
                 current_candidates = [
                     item for item in refreshed
                     if isinstance(item, dict)
@@ -1213,7 +1324,8 @@ def _resolve_target_selector(
                             expected_profile=expected_profile,
                             context_identity=context_identity,
                             candidate_deadline=allocation_deadline,
-                            agent_cache={},
+                            agent_cache=refresh_agent_cache,
+                            dry_run=dry_run,
                         )
                     except TargetCandidateRejected as exc:
                         rejections.append({
@@ -1260,72 +1372,7 @@ def _resolve_target_selector(
                         },
                     )
                 source = current_candidates[0]
-                split_payload = _json_command(
-                    [
-                        herdr,
-                        "--session",
-                        control_session,
-                        "pane",
-                        "split",
-                        "--pane",
-                        str(source["pane_id"]),
-                        "--direction",
-                        "down",
-                        "--cwd",
-                        str(cwd),
-                        "--no-focus",
-                    ],
-                    env=env,
-                    timeout=allocation_timeout(allocation_deadline),
-                )
-            allocated = _result(split_payload, "pane")
-            if not isinstance(allocated, dict):
-                raise LaunchBlocked("Herdr split response is missing pane information.")
-            allocated_pane = allocated.get("pane_id")
-            if not isinstance(allocated_pane, str) or not allocated_pane:
-                raise LaunchBlocked("Herdr split response is missing pane_id.")
-            try:
-                while True:
-                    try:
-                        _herdr_pane(
-                            cwd,
-                            control_session,
-                            allocated_pane,
-                            herdr,
-                            executor=executor,
-                            env=env,
-                            panes=[allocated],
-                            timeout=allocation_timeout(allocation_deadline),
-                            expected_profile=expected_profile,
-                            context_identity=context_identity,
-                        )
-                        break
-                    except PaneProcessInfoIncomplete:
-                        time.sleep(min(0.1, allocation_timeout(allocation_deadline)))
-            except TargetCandidateRejected as exc:
-                raise TargetResolutionBlocked(
-                    f"allocated pane rejected: {exc}",
-                    {
-                        "status": "blocked",
-                        "mode": "auto",
-                        "candidate_count": 0,
-                        "candidates": [],
-                        "rejections": [
-                            *rejections,
-                            {
-                                "session": control_session,
-                                "pane": allocated_pane,
-                                "failure_kind": "candidate_rejected",
-                                "reason": str(exc),
-                            },
-                        ],
-                        "allocation": {
-                            "status": "rejected",
-                            "source_pane": str(source["pane_id"]),
-                            "pane": allocated_pane,
-                        },
-                    },
-                ) from exc
+                allocated_pane, allocated = split_and_validate(source)
             return control_session, allocated_pane, {
                 "status": "selected",
                 "mode": "auto",
@@ -3638,6 +3685,7 @@ def resolve_launch(
             env=environment,
             expected_profile=selected,
             context_identity=context_identity,
+            dry_run=dry_run,
         )
     elif not dry_run:
         raise LaunchBlocked("Target resolution returned no pane outside dry-run mode.")
@@ -4427,26 +4475,62 @@ def _main_body(args: argparse.Namespace) -> int:
                 ):
                     claim_model_submission()
                 try:
-                        result = _run_with_pane_ownership(
-                            args.cwd,
-                            resolved_session,
-                            resolved_pane,
-                            str(evidence["herdr"].get("executable", "")),
-                            args.executor,
-                            command,
-                            environment,
-                        (
-                            max(0.01, _remaining_deepagents_timeout(attempt_deadline))
-                            if args.executor == "deepagents"
-                            else (float(timeout_policy["startup_timeout_ms"]) / 1000) + 5.0
-                        ),
+                    dispatch_timeout = (
+                        max(0.01, _remaining_deepagents_timeout(attempt_deadline))
+                        if args.executor == "deepagents"
+                        else (float(timeout_policy["startup_timeout_ms"]) / 1000) + 5.0
+                    )
+
+                    def dispatch_verified(pane_state: dict[str, Any] | None):
+                        nonlocal agent_name, command
+                        dispatch_command = command
+                        if args.executor == "codex" and (
+                            evidence["herdr"].get("reuse") is True
+                            or (
+                                isinstance(pane_state, dict)
+                                and pane_state.get("reuse") is True
+                            )
+                        ):
+                            if not isinstance(pane_state, dict):
+                                return subprocess.CompletedProcess(
+                                    dispatch_command, 0, "", ""
+                                )
+                            existing_agent = pane_state.get("agent")
+                            existing_name = (
+                                existing_agent.get("name")
+                                if isinstance(existing_agent, dict)
+                                else None
+                            )
+                            if not isinstance(existing_name, str) or not existing_name:
+                                raise LaunchBlocked("Reused pane is missing agent identity.")
+                            agent_name = existing_name
+                            evidence["herdr"]["reuse"] = True
+                            evidence["herdr"]["agent_name"] = existing_name
+                            evidence["observation"]["agent_name"] = existing_name
+                            dispatch_command = _codex_assignment_command(
+                                str(evidence["herdr"].get("executable", "")),
+                                resolved_session,
+                                existing_name,
+                                delivery_task,
+                            )
+                            command = dispatch_command
+                            return subprocess.CompletedProcess(dispatch_command, 0, "", "")
+                        return _run(dispatch_command, env=environment, timeout=dispatch_timeout)
+
+                    result = _run_with_pane_ownership(
+                        args.cwd,
+                        resolved_session,
+                        resolved_pane,
+                        str(evidence["herdr"].get("executable", "")),
+                        args.executor,
+                        command,
+                        environment,
+                        dispatch_timeout,
                         verify=bool(evidence["herdr"].get("pane_cwd")),
-                        execute_command=not (
-                            args.executor == "codex"
-                            and evidence["herdr"].get("reuse") is True
-                        ),
+                        execute_command=False,
                         expected_profile=dispatch_profile,
                         context_identity=dispatch_context_identity,
+                        callback=dispatch_verified,
                     )
                 finally:
                     if args.executor == "deepagents":
@@ -4716,7 +4800,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     execute_command=False,
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
-                    callback=submit_prompt,
+                    callback=lambda _pane_state: submit_prompt(),
                 )
             else:
                 assignment_result, prompt_result, transport_timeout = submit_prompt()

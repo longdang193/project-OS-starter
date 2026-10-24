@@ -82,6 +82,10 @@ retry framework, persistent pane registry, or scheduler is added.
   policy error normalization.
 - Conditional optimizations: duplicate pane inspection and snapshot indexing;
   implement only after baseline measurement confirms material cost.
+- Post-review corrections: allocation readiness now remains lock-held, refresh
+  snapshots reuse the initial global validation contract, allocation lock
+  contention waits within the existing reserve, dry-run suppresses stale-agent
+  release, and lock-held dispatch selects the verified start/reuse action.
 
 ## Execution Approach
 
@@ -112,7 +116,7 @@ retry framework, persistent pane registry, or scheduler is added.
 | Task 3 | `completed` | current | `codex` | Task 1 | dry-run, gate, and dispatch-ownership tests | dry-run proposal and lock-held callback tests pass; Codex gate claim is identity-gated |
 | Task 4 | `completed` | current | `codex` | Task 1 | retry, marker, and structured-policy-error tests | marker, retry constraint plumbing, and RuntimeError normalization are covered |
 | Task 5 | `completed` | current | `codex` | Tasks 2–4 | measured inspection/allocation baseline and targeted optimization proof | no speculative optimization merged; existing performance evidence retained and lock/recheck bounded |
-| Task 6 | `completed` | current | `codex` | Tasks 2–5 | docs, focused suite, validators, and final diff proof | 297 tests pass; planning, contract, config, runtime-drift, adapter-sync, compile, and diff checks pass |
+| Task 6 | `completed` | current | `codex` | Tasks 2–5 | docs, focused suite, validators, and final diff proof | 300 tests pass; planning, contract, config, runtime-drift, adapter-sync, compile, and diff checks pass; post-review race and dry-run fixes covered |
 
 ## Task Breakdown
 
