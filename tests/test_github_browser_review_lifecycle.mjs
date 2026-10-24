@@ -1236,15 +1236,15 @@ test("batch context cleanup failure retains completed review results", async () 
     }),
     (error) => {
       assert.equal(error.message, "Batch context cleanup failed: context close failed");
-       assert.deepEqual(error.results, [{
-         status: "incomplete",
-         output_dir: "run-a",
-         cleanup_status: "failed",
-         cleanup_warning: "context close failed",
-         failure_scope: "shared_context",
-         failure_stage: "cleanup",
-         failure_reason: "context close failed",
-       }]);
+      assert.deepEqual(error.results, [{
+        status: "incomplete",
+        output_dir: "run-a",
+        cleanup_status: "failed",
+        cleanup_warning: "context close failed",
+        failure_scope: "shared_context",
+        failure_stage: "cleanup",
+        failure_reason: "context close failed",
+      }]);
       return true;
     },
   );
