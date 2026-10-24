@@ -662,6 +662,85 @@ test("completion polling avoids full assistant text reads while generating", asy
   assert.equal(innerTextReads, 3);
 });
 
+test("completion timeout preserves visible partial assistant text", async () => {
+  const assistantTurn = {
+    async getAttribute(attribute) {
+      return attribute === "data-message-id" ? "assistant-1" : null;
+    },
+    async innerText() {
+      return "Partial finding before timeout.";
+    },
+  };
+  const assistantTurns = {
+    async count() {
+      return 1;
+    },
+    nth() {
+      return assistantTurn;
+    },
+  };
+  const interruption = {
+    first() {
+      return this;
+    },
+    async count() {
+      return 0;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const stopButton = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const responseAction = {
+    last() {
+      return this;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const composer = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const page = {
+    locator(selector) {
+      if (selector.includes("data-message-author-role")) return assistantTurns;
+      if (selector.includes("[role=\"alert\"]")) return interruption;
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options) {
+      if (role === "button" && options.name.source.includes("Stop generating")) return stopButton;
+      if (role === "button" && options.name.source.includes("Regenerate response")) return responseAction;
+      if (role === "textbox") return composer;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() {
+      return "https://chatgpt.com/c/probe";
+    },
+    async waitForTimeout() {},
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: { assistantTurnCount: 0 },
+    timeoutMs: 0,
+  });
+
+  assert.equal(result.status, "incomplete");
+  assert.equal(result.response, "Partial finding before timeout.");
+});
+
 test("result records the requested and observed lifecycle state", () => {
   const result = createResult({ model: "GPT-5.6-Sol", effort: "High" });
 

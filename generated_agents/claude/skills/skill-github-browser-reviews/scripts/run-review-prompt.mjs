@@ -117,10 +117,12 @@ export async function isPromptVisibleInComposer(composer, prompt) {
   return normalizeComposerText(await composer.innerText()) === expectedPrompt;
 }
 
-async function readCompletionSnapshot(page) {
+async function readCompletionSnapshot(page, { includeText } = {}) {
   const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
   const generating = await stopButton.isVisible();
-  const assistantMessage = await readVisibleAssistantMessage(page, { includeText: !generating });
+  const assistantMessage = await readVisibleAssistantMessage(page, {
+    includeText: includeText ?? !generating,
+  });
   const responseAction = page.getByRole("button", { name: /^(Regenerate response|Rate response)$/i }).last();
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
   const currentUrl = page.url();
@@ -238,7 +240,7 @@ export async function waitForReviewCompletion(page, {
     backoffMs = Math.min(backoffMs * 2, COMPLETION_MAX_BACKOFF_MS);
   }
 
-  const finalSnapshot = snapshot || await readCompletionSnapshot(page);
+  const finalSnapshot = await readCompletionSnapshot(page, { includeText: true });
   return {
     ...finalSnapshot,
     response: finalSnapshot.assistantText,
