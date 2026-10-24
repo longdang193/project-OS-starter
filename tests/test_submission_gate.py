@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from scripts.project_os_runtime.submission_gate import (
     claim_submission,
     derive_logical_operation_id,
     gate_path,
+    prepare_submission,
     settle_submission,
 )
 
@@ -65,6 +67,61 @@ def test_claim_persists_intent_and_blocks_restart_after_submission(tmp_path: Pat
     assert blocked["state"] == "blocked"
     assert blocked["reason"] == "submission already recorded"
     assert blocked["record"]["attempt_id"] == "attempt-1"
+
+
+def test_admission_phase_can_be_reclaimed_after_lease_expiry(tmp_path: Path) -> None:
+    operation_id = derive_logical_operation_id(**operation_identity())
+    path = gate_path(operation_id, root=tmp_path)
+    claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["lease_expires_at"] = "2000-01-01T00:00:00+00:00"
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    recovered = claim_submission(
+        path,
+        operation_id=operation_id,
+        attempt_id="attempt-2",
+        binding=binding(),
+    )
+
+    assert recovered["state"] == "claimed"
+    assert recovered["record"]["attempt_id"] == "attempt-2"
+    assert recovered["record"]["phase"] == "admission"
+    assert recovered["record"]["generation"] == 2
+
+
+def test_delivery_phase_expiry_remains_blocked_for_reconciliation(tmp_path: Path) -> None:
+    operation_id = derive_logical_operation_id(**operation_identity())
+    path = gate_path(operation_id, root=tmp_path)
+    claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
+    prepare_submission(path, attempt_id="attempt-1")
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["lease_expires_at"] = "2000-01-01T00:00:00+00:00"
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    blocked = claim_submission(
+        path,
+        operation_id=operation_id,
+        attempt_id="attempt-2",
+        binding=binding(),
+    )
+
+    assert blocked["state"] == "blocked"
+    assert blocked["reason"] == "delivery is uncertain"
+
+
+def test_prepare_submission_persists_delivery_phase(tmp_path: Path) -> None:
+    operation_id = derive_logical_operation_id(**operation_identity())
+    path = gate_path(operation_id, root=tmp_path)
+    claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
+
+    prepared = prepare_submission(path, attempt_id="attempt-1")
+
+    assert prepared["phase"] == "delivery"
+    assert prepared["lease_owner"] == "attempt-1"
+    assert prepared["lease_expires_at"]
 
 
 def test_uncertain_submission_blocks_retry_until_reconciled(tmp_path: Path) -> None:

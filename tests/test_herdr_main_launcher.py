@@ -4751,8 +4751,8 @@ def test_deepagents_completion_allows_report_after_ninety_seconds(
     )
 
     assert evidence["state"] == "completed"
-    assert len(sleeps) >= 1000
-    assert max(sleeps) <= 0.1
+    assert sleeps[:3] == [0.1, 0.25, 0.5]
+    assert max(sleeps) <= 0.5
 
 
 def test_deepagents_completion_uses_receipt_before_first_pane_command(
@@ -4989,6 +4989,55 @@ def test_deepagents_completion_deadline_receipt_does_not_read_pane_after_confirm
     assert evidence["receipt_authoritative"] is True
     assert evidence["report_present"] is False
     assert evidence["diagnostic_observation"]["state"] == "no-report"
+
+
+def test_deepagents_completion_reads_receipt_at_grace_deadline_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    clock = [0.0]
+    receipts = iter([
+        {"state": "unknown", "detail": "receipt unavailable"},
+        _confirmed_success_receipt(),
+    ])
+
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_COMPLETION_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_GRACE_SECONDS", 0.25)
+    monkeypatch.setattr(LAUNCHER, "_DEEPAGENTS_RECEIPT_POLL_SECONDS", 0.25)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: next(receipts),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_snapshot",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "report_present": True,
+            "observation_error": None,
+        },
+    )
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        LAUNCHER.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    evidence = LAUNCHER._deepagents_completion_evidence(
+        "herdr.exe",
+        "session",
+        "pane",
+        env={},
+        expected_marker="MARKER",
+        receipt_file=tmp_path / "result.json",
+        attempt_id="attempt-1",
+    )
+
+    assert evidence["receipt_authoritative"] is True
+    assert evidence["lifecycle_receipt"] == _confirmed_success_receipt()
+    assert evidence["monitoring"]["receipt_checks"] == 2
 
 
 def test_deepagents_classification_keeps_missing_managed_task_result_unverified() -> None:
@@ -5453,8 +5502,8 @@ def test_deepagents_completion_records_receipt_detection_delay(
         attempt_id="attempt-1",
     )
 
-    assert evidence["monitoring"]["receipt_observed_at"] == 0.2
-    assert evidence["monitoring"]["time_to_receipt_ms"] == 200.0
+    assert evidence["monitoring"]["receipt_observed_at"] == 0.35
+    assert evidence["monitoring"]["time_to_receipt_ms"] == 350.0
     assert evidence["monitoring"]["receipt_to_completion_return_ms"] == 0.0
 
 

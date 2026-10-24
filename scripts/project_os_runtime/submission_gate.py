@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -14,8 +14,11 @@ from typing import Any
 
 from .results import evidence_path_lock
 
-_GATE_SCHEMA = "project-os.submission-gate.v1"
+_GATE_SCHEMA = "project-os.submission-gate.v2"
+_LEGACY_GATE_SCHEMAS = {"project-os.submission-gate.v1"}
 _GATE_MAX_BYTES = 16 * 1024
+_ADMISSION_LEASE_SECONDS = 30.0
+_DELIVERY_LEASE_SECONDS = 120.0
 _BINDING_FIELDS = (
     "task_sha256",
     "repository_identity",
@@ -105,7 +108,7 @@ def _read(path: Path) -> dict[str, Any] | None:
         return None
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SubmissionGateConflict("submission gate is unreadable") from exc
-    if not isinstance(payload, dict) or payload.get("schema") != _GATE_SCHEMA:
+    if not isinstance(payload, dict) or payload.get("schema") not in ({_GATE_SCHEMA} | _LEGACY_GATE_SCHEMAS):
         raise SubmissionGateConflict("submission gate schema mismatch")
     if payload.get("state") not in _BLOCKING_STATES and payload.get("state") != "not_delivered":
         raise SubmissionGateConflict("submission gate state is invalid")
@@ -132,6 +135,32 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _lease_expiry(seconds: float) -> str:
+    if not isinstance(seconds, (int, float)) or seconds <= 0:
+        raise SubmissionGateConflict("submission gate lease duration is invalid")
+    return (datetime.now(timezone.utc) + timedelta(seconds=float(seconds))).isoformat()
+
+
+def _phase(record: Mapping[str, Any]) -> str:
+    value = record.get("phase")
+    if value in {"admission", "delivery", "settled"}:
+        return str(value)
+    return "delivery" if record.get("state") == "prepared" else "settled"
+
+
+def _lease_expired(record: Mapping[str, Any]) -> bool:
+    value = record.get("lease_expires_at")
+    if not isinstance(value, str) or not value:
+        return True
+    try:
+        expires_at = datetime.fromisoformat(value)
+    except ValueError:
+        return True
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= datetime.now(timezone.utc)
+
+
 def claim_submission(
     path: Path,
     *,
@@ -151,8 +180,15 @@ def claim_submission(
                 raise SubmissionGateConflict("submission gate binding mismatch")
             state = existing["state"]
             if state in _BLOCKING_STATES:
-                return {"state": "blocked", "reason": _BLOCKING_STATES[state], "record": existing}
-            generation = int(existing.get("generation", 1)) + 1
+                if state == "prepared" and _phase(existing) == "admission" and _lease_expired(existing):
+                    generation = int(existing.get("generation", 1)) + 1
+                else:
+                    reason = _BLOCKING_STATES[state]
+                    if state == "prepared" and _phase(existing) == "delivery" and _lease_expired(existing):
+                        reason = "delivery is uncertain"
+                    return {"state": "blocked", "reason": reason, "record": existing}
+            else:
+                generation = int(existing.get("generation", 1)) + 1
         else:
             generation = 1
         record = {
@@ -161,12 +197,41 @@ def claim_submission(
             "attempt_id": attempt_id,
             "binding": normalized_binding,
             "state": "prepared",
+            "phase": "admission",
+            "lease_owner": attempt_id,
+            "lease_expires_at": _lease_expiry(_ADMISSION_LEASE_SECONDS),
             "generation": generation,
             "created_at": existing.get("created_at", _now()) if existing else _now(),
             "updated_at": _now(),
         }
         _write(path, record)
         return {"state": "claimed", "record": record}
+
+
+def prepare_submission(
+    path: Path,
+    *,
+    attempt_id: str,
+    lease_seconds: float = _DELIVERY_LEASE_SECONDS,
+) -> dict[str, Any]:
+    attempt_id = _text(attempt_id, "attempt_id")
+    with _gate_lock(path):
+        record = _read(path)
+        if record is None:
+            raise SubmissionGateConflict("submission gate intent is missing")
+        if record.get("attempt_id") != attempt_id:
+            raise SubmissionGateConflict("submission gate attempt mismatch")
+        if record.get("state") != "prepared":
+            raise SubmissionGateConflict("submission gate is already settled")
+        updated = {
+            **record,
+            "phase": "delivery",
+            "lease_owner": attempt_id,
+            "lease_expires_at": _lease_expiry(lease_seconds),
+            "updated_at": _now(),
+        }
+        _write(path, updated)
+        return updated
 
 
 def settle_submission(path: Path, *, attempt_id: str, state: str) -> dict[str, Any]:
@@ -179,7 +244,14 @@ def settle_submission(path: Path, *, attempt_id: str, state: str) -> dict[str, A
             raise SubmissionGateConflict("submission gate intent is missing")
         if record.get("attempt_id") != attempt_id:
             raise SubmissionGateConflict("submission gate attempt mismatch")
-        updated = {**record, "state": state, "updated_at": _now()}
+        updated = {
+            **record,
+            "state": state,
+            "phase": "settled",
+            "lease_owner": None,
+            "lease_expires_at": None,
+            "updated_at": _now(),
+        }
         _write(path, updated)
         return updated
 
@@ -189,5 +261,6 @@ __all__ = [
     "claim_submission",
     "derive_logical_operation_id",
     "gate_path",
+    "prepare_submission",
     "settle_submission",
 ]

@@ -189,9 +189,12 @@ compatibility fallback during rollout; missing app-server or LightRSI capability
 blocks before prompt delivery rather than polling an unrelated session.
 Retired CGW and web-combo aliases are rejected before provider dispatch and do
 not acquire a runtime lock, perform a preflight, or enter the attempt lifecycle.
-Maintained native requests continue through the normal admission and settlement
-path; missing or stale evidence remains blocked or uncertain and is never
-promoted to successful admission.
+Maintained native requests continue through the normal durable admission and
+settlement path. Admission is claimed before expensive pane allocation, then
+promoted to delivery preparation only after ownership and context verification;
+pre-dispatch failures settle as `not_delivered`, while post-dispatch ambiguity
+remains `delivery_uncertain`. Missing or stale evidence remains blocked or
+uncertain and is never promoted to successful admission.
 Normalize evidence fields, not transport internals. For coordinated DeepAgents, `assignment_id` binds
 repository identity, canonical plan identity, and stable lane identity across
 retries; `dcode-project` claims before worker spawn and settles only after

@@ -80,6 +80,7 @@ try:
         claim_submission,
         derive_logical_operation_id,
         gate_path,
+        prepare_submission,
         settle_submission,
     )
 except ModuleNotFoundError:
@@ -88,6 +89,7 @@ except ModuleNotFoundError:
         claim_submission,
         derive_logical_operation_id,
         gate_path,
+        prepare_submission,
         settle_submission,
     )
 class LaunchBlocked(RuntimeError):
@@ -1047,6 +1049,7 @@ def _resolve_target_selector(
         raise global_snapshot_block("snapshot_envelope_invalid", str(exc)) from exc
     candidates: list[tuple[bool, str, str]] = []
     source_panes: list[dict[str, Any]] = []
+    workspace_panes: dict[str, list[dict[str, Any]]] = {}
     agent_cache: dict[str, list[Any]] = {}
     if not isinstance(panes, list):
         raise global_snapshot_block("panes_not_list", "snapshot panes is not an array")
@@ -1067,14 +1070,12 @@ def _resolve_target_selector(
                 "current-workspace pane entry is missing workspace_id or pane_id",
             )
         source_panes.append(item)
-        session_panes = [
-            candidate for candidate in panes
-            if isinstance(candidate, dict)
-            and isinstance(candidate.get("cwd"), str)
-            and candidate.get("cwd")
-            and Path(candidate["cwd"]).resolve() == cwd.resolve()
-            and candidate.get("workspace_id") == workspace_id
-        ]
+        workspace_panes.setdefault(workspace_id, []).append(item)
+
+    for item in source_panes:
+        workspace_id = str(item["workspace_id"])
+        pane_id = str(item["pane_id"])
+        session_panes = workspace_panes[workspace_id]
         candidate_budget = candidate_timeout()
         if candidate_budget <= 0:
             break
@@ -3057,6 +3058,8 @@ def _deepagents_completion_evidence(
         "receipt_to_completion_return_ms": None,
     }
     receipt_observed_monotonic: float | None = None
+    receipt_poll_delay = max(0.0, _DEEPAGENTS_RECEIPT_POLL_SECONDS)
+    receipt_poll_cap = max(receipt_poll_delay, 0.5)
 
     def read_receipt() -> dict[str, Any]:
         nonlocal receipt_observed_monotonic
@@ -3086,7 +3089,7 @@ def _deepagents_completion_evidence(
     terminal_observed_at: float | None = None
 
     def wait_for_receipt() -> dict[str, Any]:
-        nonlocal receipt
+        nonlocal receipt, receipt_poll_delay
         while receipt.get("state") != "confirmed":
             terminal_deadline = (
                 min(terminal_observed_at + _DEEPAGENTS_RECEIPT_GRACE_SECONDS, settlement_deadline)
@@ -3095,10 +3098,13 @@ def _deepagents_completion_evidence(
             )
             remaining = terminal_deadline - time.monotonic()
             if remaining <= 0:
+                receipt = read_receipt()
                 return receipt
-            time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, remaining))
-            if time.monotonic() >= terminal_deadline:
-                return receipt
+            time.sleep(min(receipt_poll_delay, remaining))
+            receipt_poll_delay = min(
+                receipt_poll_cap,
+                max(0.25, receipt_poll_delay * 2),
+            )
             receipt = read_receipt()
         return receipt
 
@@ -3154,8 +3160,15 @@ def _deepagents_completion_evidence(
             if receipt_file is not None:
                 evidence["lifecycle_receipt"] = receipt
             return finish(evidence)
-        until_diagnostic = max(0.0, next_diagnostic_at - time.monotonic())
-        time.sleep(min(_DEEPAGENTS_RECEIPT_POLL_SECONDS, until_diagnostic, remaining))
+        poll_deadline = min(
+            observation_deadline,
+            next_diagnostic_at,
+        )
+        time.sleep(min(receipt_poll_delay, max(0.0, poll_deadline - time.monotonic())))
+        receipt_poll_delay = min(
+            receipt_poll_cap,
+            max(0.25, receipt_poll_delay * 2),
+        )
         receipt = read_receipt()
 
 
@@ -3581,6 +3594,7 @@ def resolve_launch(
     remaining_authorized_task_allowance: int | float | None = None,
     attempt_deadline: float | None = None,
     dry_run: bool = False,
+    submission_gate_callback: Callable[[Mapping[str, str]], None] | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     launch_started = time.monotonic()
     attempt_deadline = attempt_deadline or launch_started + _DEEPAGENTS_RUN_TIMEOUT
@@ -3646,6 +3660,19 @@ def resolve_launch(
         plan_identity=plan_identity,
         assignment_id=assignment_id,
     )
+    submission_gate_binding = _submission_gate_binding(
+        {
+            "assignment_task_sha256": _sha256_text(task_text),
+            "repository_identity": repository_identity or "",
+            "plan_identity": plan_identity or "",
+            "profile": selected.name,
+            "model_provider": selected.model_provider,
+            "model": selected.model,
+            "grant_digest": expected_grant_digest,
+        }
+    )
+    if submission_gate_callback is not None:
+        submission_gate_callback(submission_gate_binding)
     if name is not None:
         _validate_agent_name(name)
     runtime = _codex_runtime(cwd, codex_home) if executor == "codex" else None
@@ -3963,6 +3990,7 @@ def _main_body(args: argparse.Namespace) -> int:
         "submission_gate_path": None,
         "submission_gate_state": None,
         "submission_gate_phase": "pre_dispatch",
+        "submission_gate_attempt_id": uuid.uuid4().hex,
         "assignment_id": args.assignment_id,
         "repository_identity": args.repository_identity,
         "plan_identity": args.plan_identity,
@@ -3989,7 +4017,7 @@ def _main_body(args: argparse.Namespace) -> int:
         if not isinstance(execution, dict):
             execution = (
                 {"state": "unknown", "worker_exit_code": None}
-                if started
+                if started or has_attempt
                 else {"state": "not_started", "worker_exit_code": None}
             )
         if not isinstance(observation, dict):
@@ -3997,16 +4025,17 @@ def _main_body(args: argparse.Namespace) -> int:
         if not isinstance(task_result, dict):
             task_result = (
                 {"state": "unverified"}
-                if started
+                if started or has_attempt
                 else {"state": "not_attempted"}
             )
         if not isinstance(cleanup, dict):
             cleanup = {"state": "unknown" if started else "not_attempted"}
         gate_path_value = attempt_context.get("submission_gate_path")
         gate_state = attempt_context.get("submission_gate_state")
+        gate_attempt_id = attempt_context.get("submission_gate_attempt_id") or current_attempt_id
         if (
             isinstance(gate_path_value, Path)
-            and isinstance(current_attempt_id, str)
+            and isinstance(gate_attempt_id, str)
             and gate_state == "prepared"
         ):
             fallback_state = (
@@ -4015,7 +4044,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 else "delivery_uncertain"
             )
             try:
-                _settle_submission_gate(gate_path_value, current_attempt_id, fallback_state)
+                _settle_submission_gate(gate_path_value, gate_attempt_id, fallback_state)
                 attempt_context["submission_gate_state"] = fallback_state
             except SubmissionGateConflict as exc:
                 message = f"{message}; submission gate settlement failed: {exc}"
@@ -4025,14 +4054,16 @@ def _main_body(args: argparse.Namespace) -> int:
                 if isinstance(phase, dict) and phase.get("status") == "not_attempted":
                     phase["status"] = "unavailable"
         performance = _finalize_performance(preparation_performance, invocation_started)
+        reconciliation_required = bool(attempt_context.get("reconciliation_required"))
+        if has_attempt and (
+            execution.get("state") == "unknown"
+            or task_result.get("state") == "unverified"
+        ):
+            reconciliation_required = True
         legacy = {
             "failure_kind": message,
             "status": "blocked",
-            "reconciliation_required": (
-                bool(attempt_context.get("reconciliation_required"))
-                if started
-                else False
-            ),
+            "reconciliation_required": reconciliation_required,
         }
         for key in ("assignment_id", "repository_identity", "plan_identity"):
             value = attempt_context.get(key)
@@ -4069,6 +4100,75 @@ def _main_body(args: argparse.Namespace) -> int:
         print(json.dumps(result, sort_keys=True))
         return 2
 
+    submission_gate_binding: dict[str, str] | None = None
+    submission_gate_operation_id: str | None = None
+    submission_gate_file: Path | None = None
+
+    def claim_model_submission(binding: Mapping[str, str]) -> None:
+        nonlocal submission_gate_binding, submission_gate_operation_id, submission_gate_file
+        if args.executor == "deepagents" and args.assignment_id is not None:
+            operation_id = _submission_gate_operation_id(
+                binding,
+                logical_operation_id=args.logical_operation_id,
+                secretary_task_id=args.secretary_task_id,
+                secretary_plan_revision=args.secretary_plan_revision,
+                secretary_run_id=args.secretary_run_id,
+            )
+        else:
+            operation_id = args.logical_operation_id
+        if not operation_id:
+            raise LaunchBlocked("Coordinated launch requires a logical operation identity.")
+        path = gate_path(operation_id)
+        gate_result = _claim_submission_gate(
+            path,
+            binding,
+            str(attempt_context["submission_gate_attempt_id"]),
+            logical_operation_id=operation_id,
+        )
+        if gate_result.get("state") == "blocked":
+            record = gate_result.get("record")
+            prior_attempt = record.get("attempt_id") if isinstance(record, dict) else None
+            raise LaunchBlocked(
+                "logical operation submission blocked; "
+                f"prior attempt {prior_attempt or 'unknown'} already owns delivery"
+            )
+        submission_gate_binding = dict(binding)
+        submission_gate_operation_id = operation_id
+        submission_gate_file = path
+        attempt_context["submission_gate_path"] = path
+        attempt_context["submission_gate_state"] = "prepared"
+        attempt_context["submission_gate_phase"] = "admission"
+
+    def prepare_model_submission() -> None:
+        if attempt_context.get("submission_gate_state") != "prepared":
+            return
+        if submission_gate_file is None:
+            raise LaunchBlocked("Submission gate path is missing before delivery.")
+        prepare_submission(
+            submission_gate_file,
+            attempt_id=str(attempt_context["submission_gate_attempt_id"]),
+        )
+        attempt_context["submission_gate_phase"] = "delivery"
+        gate_evidence = evidence.get("submission_gate")
+        if isinstance(gate_evidence, dict):
+            gate_evidence.update({"phase": "delivery", "state": "prepared"})
+
+    def settle_model_submission(state: str) -> None:
+        if attempt_context.get("submission_gate_state") != "prepared":
+            return
+        if submission_gate_file is None:
+            raise SubmissionGateConflict("Submission gate path is missing during settlement.")
+        _settle_submission_gate(
+            submission_gate_file,
+            str(attempt_context["submission_gate_attempt_id"]),
+            state,
+        )
+        attempt_context["submission_gate_state"] = state
+        gate_evidence = evidence.get("submission_gate")
+        if isinstance(gate_evidence, dict):
+            gate_evidence.update({"phase": "settled", "state": state})
+
+    attempt_id: str | None = None
     try:
         command, evidence = resolve_launch(
             profile_name=args.profile,
@@ -4094,7 +4194,18 @@ def _main_body(args: argparse.Namespace) -> int:
             remaining_authorized_task_allowance=args.remaining_authorized_task_allowance,
             attempt_deadline=attempt_deadline,
             dry_run=args.dry_run,
+            submission_gate_callback=(
+                claim_model_submission
+                if not args.dry_run
+                and (
+                    args.logical_operation_id is not None
+                    or (args.executor == "deepagents" and args.assignment_id is not None)
+                )
+                else None
+            ),
         )
+        attempt_id = str(attempt_context["submission_gate_attempt_id"])
+        attempt_context["attempt_id"] = attempt_id
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")
         registry_evidence = evidence.setdefault("registry_launcher", {})
@@ -4108,29 +4219,29 @@ def _main_body(args: argparse.Namespace) -> int:
         for key in ("assignment_id", "repository_identity", "plan_identity"):
             if registry_evidence.get(key) is not None:
                 attempt_context[key] = registry_evidence[key]
-        submission_gate_binding = _submission_gate_binding(registry_evidence)
-        submission_gate_operation_id = (
-            _submission_gate_operation_id(
-                submission_gate_binding,
-                logical_operation_id=args.logical_operation_id,
-                secretary_task_id=args.secretary_task_id,
-                secretary_plan_revision=args.secretary_plan_revision,
-                secretary_run_id=args.secretary_run_id,
+        if submission_gate_binding is None:
+            submission_gate_binding = _submission_gate_binding(registry_evidence)
+        if submission_gate_operation_id is None:
+            submission_gate_operation_id = (
+                _submission_gate_operation_id(
+                    submission_gate_binding,
+                    logical_operation_id=args.logical_operation_id,
+                    secretary_task_id=args.secretary_task_id,
+                    secretary_plan_revision=args.secretary_plan_revision,
+                    secretary_run_id=args.secretary_run_id,
+                )
+                if args.executor == "deepagents" and args.assignment_id is not None
+                else args.logical_operation_id
             )
-            if args.executor == "deepagents" and args.assignment_id is not None
-            else args.logical_operation_id
-        )
-        submission_gate_file = (
-            gate_path(submission_gate_operation_id)
-            if submission_gate_operation_id
-            else None
-        )
+        if submission_gate_file is None and submission_gate_operation_id:
+            submission_gate_file = gate_path(submission_gate_operation_id)
         attempt_context["submission_gate_path"] = submission_gate_file
         evidence["submission_gate"] = {
             "operation_id": submission_gate_operation_id,
             "path": str(submission_gate_file) if submission_gate_file else None,
             "binding": submission_gate_binding,
-            "state": "pending",
+            "phase": attempt_context.get("submission_gate_phase"),
+            "state": attempt_context.get("submission_gate_state") or "pending",
         }
 
         if args.dry_run:
@@ -4139,45 +4250,13 @@ def _main_body(args: argparse.Namespace) -> int:
             print(json.dumps(evidence, sort_keys=True), flush=True)
             return 0
 
-        attempt_id = uuid.uuid4().hex
         attempt_context.update(
             {
                 "attempt_id": attempt_id,
                 "agent_name": evidence.get("herdr", {}).get("agent_name", args.profile + "-main"),
             }
         )
-
-        def claim_model_submission() -> None:
-            if submission_gate_file is None or submission_gate_operation_id is None:
-                raise LaunchBlocked("Coordinated launch requires a logical operation identity.")
-            gate_result = _claim_submission_gate(
-                submission_gate_file,
-                submission_gate_binding,
-                attempt_id,
-                logical_operation_id=submission_gate_operation_id,
-            )
-            if gate_result.get("state") == "blocked":
-                record = gate_result.get("record")
-                prior_attempt = record.get("attempt_id") if isinstance(record, dict) else None
-                raise LaunchBlocked(
-                    "logical operation submission blocked; "
-                    f"prior attempt {prior_attempt or 'unknown'} already owns delivery"
-                )
-            attempt_context["submission_gate_state"] = "prepared"
-            attempt_context["submission_gate_phase"] = "delivery"
-            evidence["submission_gate"].update(
-                {
-                    "state": "prepared",
-                    "generation": gate_result.get("record", {}).get("generation"),
-                }
-            )
-
-        def settle_model_submission(state: str) -> None:
-            if attempt_context.get("submission_gate_state") != "prepared":
-                return
-            _settle_submission_gate(submission_gate_file, attempt_id, state)
-            attempt_context["submission_gate_state"] = state
-            evidence["submission_gate"]["state"] = state
+        agent_name = str(attempt_context["agent_name"])
 
         if secretary_runtime is not None:
             evidence["secretary_runtime"] = {
@@ -4463,17 +4542,40 @@ def _main_body(args: argparse.Namespace) -> int:
             plan_identity=args.plan_identity,
             assignment_id=args.assignment_id,
         )
+        runtime_grant = registry_launcher.get("runtime_grant")
+        delivery_task = _validate_task(args.task)
+        if (
+            isinstance(runtime_grant, dict)
+            and isinstance(runtime_grant.get("delegation"), dict)
+            and "child_agents" in runtime_grant["delegation"]
+        ):
+            delivery_task = _project_runtime_grant(delivery_task, runtime_grant)
+        delivery_task_sha256 = registry_launcher.get(
+            "delivery_task_sha256",
+            _sha256_text(delivery_task),
+        )
+        grant_digest = registry_launcher.get("grant_digest")
+        codex_start_confirmed = False
+        codex_prompt_submitted = False
+        codex_prompt_result: dict[str, Any] | None = None
+        codex_assignment_result: subprocess.CompletedProcess[str] | None = None
+        codex_transport_timeout: CommandTransportTimeout | None = None
+        assignment_result: subprocess.CompletedProcess[str] | None = None
+        prompt_result: dict[str, Any] | None = None
+        transport_timeout: CommandTransportTimeout | None = None
         for attempt in range(2):
+            codex_start_confirmed = False
+            codex_prompt_submitted = False
+            codex_prompt_result = None
+            codex_assignment_result = None
+            codex_transport_timeout = None
+            assignment_result = None
+            prompt_result = None
+            transport_timeout = None
             attempt_started = time.monotonic()
             pane_run_duration_ms: float | None = None
             pane_run_started = time.monotonic()
             try:
-                if (
-                    args.executor == "deepagents"
-                    and args.assignment_id is not None
-                    and attempt_context.get("submission_gate_state") is None
-                ):
-                    claim_model_submission()
                 try:
                     dispatch_timeout = (
                         max(0.01, _remaining_deepagents_timeout(attempt_deadline))
@@ -4483,6 +4585,9 @@ def _main_body(args: argparse.Namespace) -> int:
 
                     def dispatch_verified(pane_state: dict[str, Any] | None):
                         nonlocal agent_name, command
+                        nonlocal codex_start_confirmed, codex_prompt_submitted
+                        nonlocal codex_prompt_result, codex_assignment_result, codex_transport_timeout
+                        prepare_model_submission()
                         dispatch_command = command
                         if args.executor == "codex" and (
                             evidence["herdr"].get("reuse") is True
@@ -4515,7 +4620,61 @@ def _main_body(args: argparse.Namespace) -> int:
                             )
                             command = dispatch_command
                             return subprocess.CompletedProcess(dispatch_command, 0, "", "")
-                        return _run(dispatch_command, env=environment, timeout=dispatch_timeout)
+                        startup_result = _run(
+                            dispatch_command,
+                            env=environment,
+                            timeout=dispatch_timeout,
+                        )
+                        if args.executor == "codex" and command[3:5] == ["agent", "start"]:
+                            if startup_result.returncode:
+                                return startup_result
+                            start_identity = _confirm_codex_start(
+                                str(evidence["herdr"]["executable"]),
+                                resolved_session,
+                                resolved_pane,
+                                agent_name,
+                                env=environment,
+                                before_process_ids=set(evidence["herdr"].get("start_process_ids", [])),
+                                expected_codex_executable=str(
+                                    evidence["herdr"].get("codex_executable") or "codex"
+                                ),
+                                expected_cwd=Path(str(evidence["herdr"].get("pane_cwd", args.cwd))),
+                            )
+                            codex_start_confirmed = True
+                            evidence["herdr"].update(start_identity)
+                            evidence["herdr"]["pre_submit_completion_seq"] = start_identity.get(
+                                "completion_seq"
+                            )
+                            evidence["herdr"]["pre_submit_state_change_seq"] = start_identity.get(
+                                "state_change_seq"
+                            )
+                            evidence["observation"]["pre_submit_completion_seq"] = start_identity.get(
+                                "completion_seq"
+                            )
+                            evidence["observation"]["pre_submit_state_change_seq"] = start_identity.get(
+                                "state_change_seq"
+                            )
+                            evidence["herdr"]["ownership"] = {
+                                "repository_identity": args.repository_identity,
+                                "plan_identity": args.plan_identity,
+                                "assignment_id": args.assignment_id,
+                                "attempt_id": attempt_id,
+                                "session": resolved_session,
+                                "pane": resolved_pane,
+                                "agent": agent_name,
+                            }
+                            assignment = _codex_assignment_command(
+                                str(evidence["herdr"]["executable"]),
+                                resolved_session,
+                                agent_name,
+                                delivery_task,
+                            )
+                            codex_assignment_result, codex_prompt_result, codex_transport_timeout = (
+                                _submit_codex_prompt(assignment, env=environment)
+                            )
+                            codex_prompt_submitted = True
+                            return {"startup_result": startup_result}
+                        return startup_result
 
                     result = _run_with_pane_ownership(
                         args.cwd,
@@ -4532,6 +4691,15 @@ def _main_body(args: argparse.Namespace) -> int:
                         context_identity=dispatch_context_identity,
                         callback=dispatch_verified,
                     )
+                    if (
+                        args.executor == "codex"
+                        and isinstance(result, dict)
+                        and "startup_result" in result
+                    ):
+                        result = result["startup_result"]
+                        assignment_result = codex_assignment_result
+                        prompt_result = codex_prompt_result
+                        transport_timeout = codex_transport_timeout
                 finally:
                     if args.executor == "deepagents":
                         pane_run_duration_ms = max(0.0, time.monotonic() - pane_run_started) * 1000
@@ -4710,7 +4878,7 @@ def _main_body(args: argparse.Namespace) -> int:
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
             agent_name = str(evidence["herdr"]["agent_name"])
-            if command[3:5] == ["agent", "start"]:
+            if command[3:5] == ["agent", "start"] and not codex_start_confirmed:
                 start_identity = _confirm_codex_start(
                     herdr,
                     resolved_session,
@@ -4776,12 +4944,6 @@ def _main_body(args: argparse.Namespace) -> int:
                 agent_name,
                 delivery_task,
             )
-            if (
-                args.assignment_id is not None
-                and submission_gate_operation_id is not None
-                and attempt_context.get("submission_gate_state") is None
-            ):
-                claim_model_submission()
             timeout_policy = registry_launcher.get("timeout_policy")
             if not isinstance(timeout_policy, dict):
                 timeout_policy = _timeout_policy(registry_launcher)
@@ -4802,8 +4964,12 @@ def _main_body(args: argparse.Namespace) -> int:
                     context_identity=dispatch_context_identity,
                     callback=lambda _pane_state: submit_prompt(),
                 )
-            else:
+            elif not codex_prompt_submitted:
                 assignment_result, prompt_result, transport_timeout = submit_prompt()
+            else:
+                assignment_result = codex_assignment_result
+                prompt_result = codex_prompt_result
+                transport_timeout = codex_transport_timeout
             completion_snapshot = None
             completion_classification = None
             if transport_timeout is not None:
