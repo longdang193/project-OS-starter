@@ -747,6 +747,7 @@ test("unchanged effort skips control discovery and focus", async () => {
 
 test("completion requires a new stable visible assistant turn and conversation", () => {
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "Finding: src/example.js:12 uses the requested revision.",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
@@ -759,6 +760,7 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), true);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: null,
     assistantText: "Finding",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
@@ -771,6 +773,7 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), false);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "Finding",
     assistantTurnCount: 1,
     baselineAssistantTurnCount: 1,
@@ -783,6 +786,7 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), false);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "I’ll verify the exact commit before reviewing it.",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
@@ -793,6 +797,19 @@ test("completion requires a new stable visible assistant turn and conversation",
     responseActionsReady: false,
     stableSampleCount: 2,
   }), true);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: null,
+    assistantText: "I’ll review only the pinned revision before reporting findings.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generating: false,
+    interrupted: false,
+    responseActionsReady: false,
+    stableSampleCount: 2,
+  }), false);
 });
 
 test("assistant fallback excludes rich-text user turns", () => {

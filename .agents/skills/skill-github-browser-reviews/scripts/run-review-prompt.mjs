@@ -162,6 +162,7 @@ async function readCompletionSnapshot(page, { includeText } = {}) {
 }
 
 export function evaluateReviewCompletion({
+  assistantMessageId,
   assistantText,
   assistantTurnCount,
   baselineAssistantTurnCount,
@@ -176,6 +177,7 @@ export function evaluateReviewCompletion({
     && composerReady
     && !interrupted
     && Boolean(conversationId)
+    && Boolean(assistantMessageId)
     && assistantTurnCount > baselineAssistantTurnCount
     && Boolean(assistantText.trim())
     && stableSampleCount >= 2;
