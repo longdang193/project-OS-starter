@@ -25,7 +25,6 @@ const FLAG_ARGUMENTS = new Set(["--probe-only"]);
 function usageError(message) {
   throw new Error(`${message}\n${USAGE}`);
 }
-
 function parseArguments(argv) {
   const argumentsByName = new Map();
   for (let index = 0; index < argv.length; index += 1) {
@@ -74,7 +73,6 @@ function parseArguments(argv) {
 
   return { cdpEndpoint, contextIndex, effort, model, probeOnly, promptFile };
 }
-
 async function main(argv) {
   if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
     console.log(USAGE);
