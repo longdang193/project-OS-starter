@@ -986,7 +986,10 @@ def _resolve_target_selector(
         remaining = deadline - time.monotonic() - _TARGET_ALLOCATION_RESERVE_SECONDS
         if remaining <= 0:
             return 0.0
-        return remaining
+        return min(
+            remaining,
+            _TARGET_DISCOVERY_TIMEOUT - _TARGET_ALLOCATION_RESERVE_SECONDS,
+        )
 
     def candidate_discovery_timeout() -> float:
         timeout = candidate_timeout()
