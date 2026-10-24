@@ -1,0 +1,439 @@
+---
+layer: change
+artifact_type: plan
+template_id: implementation-plan
+contract_version: "1"
+status: proposed
+name: cgw-retirement-pane-lifecycle-hardening
+targets:
+  - scripts/herdr_main_launcher.py
+  - scripts/agent_profile_registry.py
+  - tests/test_herdr_main_launcher.py
+  - tests/test_agent_profile_registry.py
+  - docs/operating_system/runtime/runtime-surfaces.md
+  - docs/operating_system/procedures/runtime-adapter-procedure.md
+---
+
+# CGW Retirement And Pane Lifecycle Hardening
+
+## Goal
+
+Complete the validated hardening needed after the dual-model review of
+`main@e830cc3531ec68f866aa3c78261f9b8f536a177e`: preserve CGW retirement as a
+fail-closed policy boundary while making automatic pane selection reliable,
+non-mutating in dry runs, safe under concurrent dispatch, and bounded under
+slow Herdr responses.
+
+The central behavioral correction is to distinguish recoverable candidate-local
+inspection failures from global discovery failures. A pane with an incompatible
+context must be rejected and allow allocation to continue; malformed or
+partially unavailable evidence that is isolated to that candidate must not
+prevent the authorized replacement-pane fallback. Global workspace identity,
+transport integrity, and ownership failures remain fail-closed.
+
+## Implementation Outcomes
+
+### Reliable automatic pane fallback
+
+`--session auto --pane auto` continues past safely isolated candidate-local
+agent/process inspection failures, records rejection evidence, and allocates a
+replacement pane when no eligible candidate remains. Global snapshot and
+workspace-identity failures still produce structured fail-closed resolution
+errors. Named-session discovery preserves the same allocation reserve as
+snapshot discovery.
+
+### Safe launch lifecycle
+
+Dry runs do not split panes or release stale agents. Codex logical operations
+claim their submission gate before prompt delivery. Reused panes retain a short
+exclusive dispatch lease through final validation and prompt submission, while
+full model execution remains unlocked. Concurrent auto-allocation performs a
+short recheck-and-split transition under a session/workspace lock.
+
+### Stable context and error contracts
+
+Collision recovery preserves the final context marker, verified-start retries
+retain profile and context constraints, and malformed retirement policy data
+becomes structured `LaunchBlocked` evidence rather than a raw traceback. CGW
+identifiers remain in retirement policy and regression evidence intentionally;
+no executable CGW path or new lifecycle service is introduced.
+
+### Measurement-led efficiency
+
+The implementation removes only proven redundant inspection and indexes snapshot
+metadata only if focused measurements show material cost. Existing performance
+evidence remains the source for reserve and subprocess decisions; no speculative
+retry framework, persistent pane registry, or scheduler is added.
+
+## Evidence And Validated Scope
+
+- Repository: `longdang193/project-OS-starter`.
+- Reviewed revision: `e830cc3531ec68f866aa3c78261f9b8f536a177e` on `main`.
+- Primary source: `scripts/herdr_main_launcher.py`.
+- Models: `GPT-5.6-Sol / High` and `GPT-6 / High`, both completed read-only reviews.
+- CGW result: executable and selectable CGW paths are retired; policy/test/history
+  identifiers remain intentionally for rejection and regression proof.
+- Validated defects: candidate-local failure classification, dry-run mutation,
+  Codex gate admission, reused-pane ownership, duplicate allocation, context
+  marker loss, retry constraint loss, named-session reserve loss, and retirement
+  policy error normalization.
+- Conditional optimizations: duplicate pane inspection and snapshot indexing;
+  implement only after baseline measurement confirms material cost.
+
+## Execution Approach
+
+- Mode: `inline sequential`
+- Coordination: `git-tracked`
+- Required skills: `skill-writing-plans`, `skill-systematic-debugging`, `skill-test-driven-development`, `skill-code-standards`, `skill-backend-verification`, `skill-performance-optimization`, `skill-verification-before-completion`, `skill-plan-document-reviewer`
+- Isolation: `current workspace`
+- Commit policy: `no commits during execution`
+- Preauthorized local actions: edit listed source, tests, and runtime documentation; run focused tests, repository validators, and bounded mocked lifecycle/performance probes; preserve existing untracked artifacts
+- User-approval actions: commits, pushes, merges, live authentication, external configuration writes, destructive cleanup, and edits outside listed targets
+- Parallel ownership: none; target resolution, dispatch ownership, retry semantics, and shared tests use overlapping launcher contracts
+- Sequential fallback: establish failing regression tests, implement target-resolution boundaries, implement dispatch lifecycle fixes, implement retry/error-contract fixes, measure optimization candidates, then run final verification
+
+## Coordination State
+
+- Coordination owner: `single lead controller`
+- Coordination schema: `2`
+- Branch: `main`
+- Base commit: `e830cc3531ec68f866aa3c78261f9b8f536a177e`
+- Expected workspace: preserve existing untracked `.playwright-mcp/`, `.runtime/`, and `node_modules/`; do not stage or rewrite them
+- Next action: obtain approval, then start Task 1 with focused regression coverage
+- Blockers: none for local implementation; external publication and Git disposition remain approval-gated
+
+| Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| Task 1 | `pending` | current | `unresolved` | none | focused failing tests and baseline | pending |
+| Task 2 | `pending` | current | `unresolved` | Task 1 | candidate fallback, reserve, and allocation concurrency tests | pending |
+| Task 3 | `pending` | current | `unresolved` | Task 1 | dry-run, gate, and dispatch-ownership tests | pending |
+| Task 4 | `pending` | current | `unresolved` | Task 1 | retry, marker, and structured-policy-error tests | pending |
+| Task 5 | `pending` | current | `unresolved` | Tasks 2–4 | measured inspection/allocation baseline and targeted optimization proof | pending |
+| Task 6 | `pending` | current | `unresolved` | Tasks 2–5 | docs, focused suite, validators, and final diff proof | pending |
+
+## Task Breakdown
+
+### Task 1: Establish contracts and regression tests
+
+**Purpose:**
+- Convert the dual-review findings into executable acceptance cases before source
+  changes.
+- Preserve the distinction between candidate rejection and global resolution
+  failure.
+
+**Task Function:**
+- Add focused tests in `tests/test_herdr_main_launcher.py` and
+  `tests/test_agent_profile_registry.py` using the existing mocked Herdr and
+  launcher seams.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`.
+- Selection basis: bounded test-first work with source-authoritative contracts.
+
+**Files And Symbols:**
+- Inspect: `scripts/herdr_main_launcher.py:_resolve_target_selector`, `_herdr_pane`, `_agent_for_pane`, `_run_with_pane_ownership`, `_main_body`, `_unique_agent_name`.
+- Inspect: `scripts/agent_profile_registry.py:_load_retirement_policy`, `load_agent_profiles`.
+- Modify: `tests/test_herdr_main_launcher.py`, `tests/test_agent_profile_registry.py`.
+
+**Dependencies:**
+- None.
+
+**Authority:**
+- Preauthorized local actions: add tests and run the focused launcher/profile-registry tests.
+- Stop for: contradictory source contracts, unrelated tracked changes, live runtime mutation, or any need to edit outside the listed test files.
+
+**Steps:**
+- [ ] Add a candidate-local agent-list/process-info failure case where another
+  matching pane has an incompatible context; assert the selector reaches the
+  allocation branch and returns a validated new pane.
+- [ ] Add a global snapshot identity corruption case; assert it remains
+  fail-closed as structured target-resolution evidence.
+- [ ] Add slow named-session pane-list coverage proving the allocation reserve
+  is preserved.
+- [ ] Add dry-run auto-resolution coverage proving no split and no stale-agent
+  release occur.
+- [ ] Add Codex logical-operation gate coverage, reused-pane dispatch ownership
+  coverage, and concurrent allocation coverage.
+- [ ] Add collision-marker, verified-retry constraint, and malformed-retirement
+  policy coverage.
+
+**Verification:**
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` demonstrates the new tests fail for the current revision or otherwise records an existing contract mismatch before implementation.
+
+**Exit Criteria:**
+- Every validated defect has a focused regression case with an explicit expected
+  side effect or failure classification.
+
+### Task 2: Repair candidate classification, deadlines, and allocation ownership
+
+**Purpose:**
+- Make incompatible or locally malformed candidates rejectable without
+  blocking safe replacement-pane allocation.
+- Prevent slow discovery and concurrent launches from defeating allocation.
+
+**Task Function:**
+- Implement the smallest typed boundary changes in the launcher; do not catch
+  all exceptions indiscriminately.
+
+**Files And Symbols:**
+- Modify: `scripts/herdr_main_launcher.py:_candidate_json_command`, `_agent_for_pane`, `_herdr_pane`, `_inspect_auto_candidate`, `_resolve_target_selector`.
+- Add or reuse: a short session/workspace allocation lock helper adjacent to the
+  existing pane lock helpers.
+- Modify: `tests/test_herdr_main_launcher.py` cases from Task 1.
+
+**Dependencies:**
+- Task 1 regression tests exist.
+
+**Authority:**
+- Preauthorized local actions: edit the listed launcher symbols and their focused tests; run mocked lifecycle tests.
+- Stop for: a proposed catch-all that would swallow global identity failure, a new persistent registry/scheduler, or any external Herdr mutation outside bounded tests.
+
+**Steps:**
+- [ ] Convert isolated agent-list, process-info, and candidate-local transport/
+  envelope failures into `TargetCandidateRejected` with rejection evidence.
+- [ ] Keep malformed current-workspace snapshot identity, unavailable global
+  snapshot envelopes, and global transport failures as `TargetResolutionBlocked`.
+- [ ] Apply the candidate deadline minus `_TARGET_ALLOCATION_RESERVE_SECONDS`
+  to named-session pane listing as well as global snapshot discovery.
+- [ ] Protect only the allocation transition with a keyed session/workspace
+  lock: re-read or revalidate the current candidate set under the lock, split
+  once, then release immediately.
+- [ ] Preserve partial-allocation evidence and validate the returned pane before
+  selecting it; do not retry an uncertain split blindly.
+
+**Verification:**
+- [ ] Candidate-local failure still reaches allocation and returns a validated
+  pane.
+- [ ] Global identity corruption remains fail-closed.
+- [ ] Named-session slow-list test leaves the allocation reserve intact.
+- [ ] Concurrent allocation test proves one split for the same session/workspace
+  transition and distinct safe dispatch ownership afterward.
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+
+**Exit Criteria:**
+- The original `--session auto --pane auto` bottleneck is corrected without
+  weakening global fail-closed safety or adding a second lifecycle authority.
+
+### Task 3: Repair dry-run, submission gating, and reused-pane ownership
+
+**Purpose:**
+- Make dry-run truthful and serialize only the short dispatch boundary needed for
+  Codex safety and deduplication.
+
+**Files And Symbols:**
+- Modify: `scripts/herdr_main_launcher.py:_main_body`, `resolve_launch`, `_run_with_pane_ownership`, Codex prompt-submission branch around `claim_model_submission` and `_submit_codex_prompt`.
+- Modify: `tests/test_herdr_main_launcher.py`.
+- Update: `docs/operating_system/runtime/runtime-surfaces.md` if it documents
+  dry-run or dispatch ownership semantics.
+
+**Dependencies:**
+- Task 1 tests; Task 2 target-resolution contract.
+
+**Authority:**
+- Preauthorized local actions: edit listed launcher/docs/test surfaces and run focused mocked dispatch tests.
+- Stop for: holding a pane lock across full model execution, changing delivery settlement semantics, or modifying unrelated lifecycle authorities.
+
+**Steps:**
+- [ ] Separate dry-run target proposal from mutating split/stale-agent release;
+  dry-run must not create, release, or otherwise mutate Herdr state.
+- [ ] Claim the submission gate for Codex when a logical operation identity is
+  present, before `_submit_codex_prompt`, and preserve existing uncertain/
+  acknowledged settlement states.
+- [ ] Keep a short exclusive dispatch lease from final reuse validation through
+  prompt submission; release it after the delivery boundary, not after model
+  completion.
+- [ ] Preserve final pane/process/context validation immediately before dispatch.
+
+**Verification:**
+- [ ] Dry-run auto path has no split/release side effect.
+- [ ] Two Codex launches with one logical operation produce one gate claim and
+  one admitted prompt submission.
+- [ ] Concurrent compatible reuse cannot submit to the same pane concurrently.
+- [ ] Delivery timeout remains `delivery_uncertain` and is not replayed without
+  reconciliation.
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+
+**Exit Criteria:**
+- Dry-run is non-mutating and Codex dispatch is deduplicated and ownership-safe
+  without serializing full model execution.
+
+### Task 4: Preserve context identity and normalize policy errors
+
+**Purpose:**
+- Prevent collision and retry paths from silently degrading pane reuse or error
+  contracts.
+
+**Files And Symbols:**
+- Modify: `scripts/herdr_main_launcher.py:_unique_agent_name`, verified-start retry branch around `_resolve_target_selector`, `_herdr_pane`, and `_profile`.
+- Modify: `scripts/agent_profile_registry.py` only if a narrow typed exception
+  boundary is needed; do not move retirement policy ownership.
+- Modify: `tests/test_herdr_main_launcher.py`, `tests/test_agent_profile_registry.py`.
+
+**Dependencies:**
+- Task 1 tests; Task 2 context and candidate contracts.
+
+**Authority:**
+- Preauthorized local actions: edit listed identity/error-boundary symbols and focused tests.
+- Stop for: changing retirement policy contents, deleting rejection evidence, or weakening fail-closed admission.
+
+**Steps:**
+- [ ] Preserve the `-ctx-<hash>` marker as the final suffix when adding a
+  uniqueness component after an agent-name collision.
+- [ ] Pass the existing dispatch profile and context identity into verified-start
+  retry resolution and follow-up pane validation.
+- [ ] Translate `RuntimeError` raised by retirement-policy loading into the
+  launcher’s structured `LaunchBlocked` contract at the profile-loading boundary.
+- [ ] Keep CGW aliases rejected before executable lookup, Git identity, Herdr
+  discovery, pane locking, or dispatch.
+
+**Verification:**
+- [ ] Collision recovery followed by same-context launch reuses the recovered
+  agent when safe.
+- [ ] Verified-start retry preserves profile/context constraints.
+- [ ] Malformed retirement policy emits structured launcher failure evidence,
+  not a traceback.
+- [ ] Retired provider/model aliases remain rejected before side effects.
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` passes.
+
+**Exit Criteria:**
+- Context identity remains stable across collision/retry paths and policy failures
+  preserve the established structured fail-closed contract.
+
+### Task 5: Measure and apply only justified efficiency improvements
+
+**Purpose:**
+- Reduce unnecessary Herdr work without weakening freshness, ownership, or
+  final validation.
+
+**Task Function:**
+- Establish a before/after baseline using existing performance evidence and
+  bounded mocked workloads before changing data flow.
+
+**Files And Symbols:**
+- Inspect: `scripts/herdr_main_launcher.py:resolve_launch`, `_resolve_target_selector`, `_herdr_pane`, existing performance evidence helpers.
+- Modify only if justified: launcher inspection-state handoff and snapshot
+  indexing code; update focused performance tests.
+
+**Dependencies:**
+- Tasks 2–4 complete.
+
+**Authority:**
+- Preauthorized local actions: run bounded performance probes and make measured, local optimizations in the listed launcher/test symbols.
+- Stop for: no material baseline, stale-state safety regression, or any proposal for a scheduler, persistent registry, broad retry framework, or speculative timeout change.
+
+**Steps:**
+- [ ] Measure candidate counts, Herdr subprocess counts, discovery latency,
+  split/readiness latency, and p95/p99 behavior for empty, incompatible, and
+  reusable pane sets.
+- [ ] Remove the redundant middle pane inspection only if the discovered pane
+  state can be carried into launch preparation and final lock-held validation
+  remains intact.
+- [ ] If snapshot grouping is material, pre-index validated panes once by
+  resolved CWD/workspace ID; otherwise record the optimization as intentionally
+  deferred.
+- [ ] Keep the fixed reserve unchanged unless measured p95/p99 evidence supports
+  a bounded adjustment; record the decision in the plan evidence.
+- [ ] Add explicit metrics for allocation attempts, allocation failures, and
+  partial-allocation reconciliation if the existing evidence lacks them.
+
+**Verification:**
+- [ ] Before/after results show no increase in stale-pane dispatch, duplicate
+  allocation, or uncertain delivery.
+- [ ] Any shipped optimization reduces measured subprocess count or latency on a
+  representative workload; otherwise no optimization code is merged.
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+
+**Exit Criteria:**
+- Efficiency changes are evidence-led, bounded, and simpler than the behavior
+  they replace.
+
+### Task 6: Documentation alignment and final verification
+
+**Purpose:**
+- Reconcile source, tests, docs, CGW retirement evidence, and final acceptance.
+
+**Files And Symbols:**
+- Update, only where semantics changed: `docs/operating_system/runtime/runtime-surfaces.md` and `docs/operating_system/procedures/runtime-adapter-procedure.md`.
+- Inspect: retirement policy, maintained `agents/*.toml`, launcher, tests, and
+  all task-owned diffs.
+
+**Dependencies:**
+- Tasks 2–5 complete.
+
+**Authority:**
+- Preauthorized local actions: run focused and broad validation, update listed runtime docs, inspect diff/status, and record evidence.
+- Stop for: failed required proof, stale generated surfaces, unrelated tracked changes, commit, push, merge, or destructive cleanup.
+
+**Steps:**
+- [ ] Document that dry-run is non-mutating, candidate-local failures are
+  quarantined, global identity failures remain fail-closed, and allocation is
+  bounded and reconciled.
+- [ ] Verify no active CGW launcher/provider/package/startup/overlay/port/receipt
+  path was reintroduced; retain policy and regression identifiers.
+- [ ] Run focused tests, repository/config validators, and `git diff --check`.
+- [ ] Record measured performance decisions and any intentionally deferred
+  optimization.
+
+**Verification:**
+- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q`.
+- [ ] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`.
+- [ ] `py -3 scripts/validate_repo_config.py --repo-root .`.
+- [ ] `py -3 scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check` if launcher/profile surfaces are included by the validator.
+- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check` if canonical profile or adapter surfaces change.
+- [ ] `git diff --check`.
+- [ ] `git status --short --branch` confirms only intended tracked changes and
+  preserves existing untracked artifacts.
+
+**Exit Criteria:**
+- Fresh proof supports every implementation outcome, docs match behavior, CGW
+  remains executable-path retired, and the plan is ready for approval or
+  execution handoff.
+
+## Non-Goals
+
+- No restoration, compatibility shim, or executable CGW path.
+- No literal deletion of CGW identifiers from retirement policy, tests, or
+  historical evidence that intentionally enforce rejection.
+- No new scheduler, pane registry, lifecycle service, janitor, or coordination
+  authority.
+- No catch-all exception handling that converts global identity failures into
+  candidate rejection.
+- No broad timeout increase or automatic retry after uncertain ownership,
+  delivery, or allocation state.
+- No live authentication, external configuration writes, or production pane
+  mutation as part of local verification.
+- No changes to unrelated runtime, agent-profile, or generated surfaces.
+
+## Verification
+
+- Test-first proof for every validated defect.
+- Direct mocked Herdr boundary proof for candidate rejection, fallback
+  allocation, dry-run non-mutation, lock ownership, gate admission, timeout,
+  malformed policy, collision recovery, and retry context.
+- Performance evidence for any inspection or indexing optimization, including
+  representative candidate counts and p95/p99 latency.
+- Repository contract/config/runtime drift checks and `git diff --check`.
+- Fresh status proof preserving `.playwright-mcp/`, `.runtime/`, and
+  `node_modules/` as existing untracked artifacts.
+
+## Completion Criteria
+
+1. Incompatible contexts and isolated malformed candidates reach safe replacement
+   allocation; global snapshot/identity failures remain fail-closed.
+2. `--session auto --pane auto` and named-session `--pane auto` both preserve a
+   bounded allocation reserve.
+3. Dry-run produces no Herdr mutations.
+4. Codex logical operations claim the submission gate before prompt delivery.
+5. Reused panes remain exclusively owned through final validation and prompt
+   submission, without locking full execution.
+6. Concurrent auto-allocation does not duplicate splits for one session/workspace
+   transition.
+7. Collision and retry paths preserve profile/context identity.
+8. Retirement-policy failures emit structured launcher evidence.
+9. CGW remains rejected before runtime side effects and no active executable CGW
+   path is present.
+10. Any performance improvement is measured, documented, and regression-tested;
+    speculative orchestration is not introduced.
+11. Focused tests and required validators pass with fresh output.
+12. No commit, push, merge, destructive cleanup, or unrelated change occurs
+    without explicit authorization.
