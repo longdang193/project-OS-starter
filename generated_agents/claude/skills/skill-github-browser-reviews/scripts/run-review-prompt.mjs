@@ -174,6 +174,7 @@ export function evaluateReviewCompletion({
   baselineAssistantTurnCount,
   composerReady,
   conversationId,
+  generationObserved,
   generating,
   interrupted,
   responseActionsReady,
@@ -184,6 +185,7 @@ export function evaluateReviewCompletion({
     && !interrupted
     && Boolean(conversationId)
     && Boolean(assistantMessageId)
+    && generationObserved
     && assistantTurnCount > baselineAssistantTurnCount
     && Boolean(assistantText.trim())
     && stableSampleCount >= 2;
@@ -240,11 +242,13 @@ export async function waitForReviewCompletion(page, {
   let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
   let previousText = "";
   let previousMessageId = null;
+  let generationObserved = false;
   let stableSampleCount = 0;
   let snapshot;
 
   while (Date.now() <= deadline) {
     snapshot = await readCompletionSnapshot(page);
+    generationObserved ||= snapshot.generating;
     const sameMessage = !snapshot.assistantMessageId
       || !previousMessageId
       || snapshot.assistantMessageId === previousMessageId;
@@ -259,6 +263,7 @@ export async function waitForReviewCompletion(page, {
     if (evaluateReviewCompletion({
       ...snapshot,
       baselineAssistantTurnCount: baseline.assistantTurnCount,
+      generationObserved,
       stableSampleCount,
     })) {
       return {

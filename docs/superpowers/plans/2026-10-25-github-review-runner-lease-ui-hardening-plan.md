@@ -73,8 +73,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 - Branch: `main`
 - Base commit: `961fce7ee33319521da338165170fe04b5ff519f`
 - Expected workspace: `main` with preserved untracked live-review artifacts; no tracked implementation changes at plan creation
-- Next action: obtain explicit authorization to rerun the live probe after the completion-identity fix
-- Blockers: `the first live probe exposed premature completion; rerun requires explicit authorization`
+- Next action: publish the completion-quiescence fix, then run the final authorized live probe
+- Blockers: `the prior rerun correctly failed closed; final probe must verify generation-observed completion`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 | Task 3 | `completed` | current | `codex` | none | bounded action and readiness tests | bounded UI actions, composer readiness, and submission cases pass |
 | Task 4 | `completed` | current | `codex` | Task 3 | completion and interruption tests | completion without response-action buttons and scoped alert handling pass |
 | Task 5 | `completed` | current | `codex` | Tasks 2–4 | model-menu and batch ownership tests | one bounded recovery owner and transition-aware close cases pass; canonical skill text already aligned |
-| Task 6 | `active` | current | `codex` | Tasks 1–5 | full local suite, adapter check, live probe | local checks pass; first probe was incomplete because planning text without response identity was marked completed; fix is patched and rerun requires explicit authorization |
+| Task 6 | `active` | current | `codex` | Tasks 1–5 | full local suite, adapter check, live probe | local checks pass; probes correctly failed closed on missing response identity; finality now also requires observed generation and needs one final authorized probe |
 
 ## Task Breakdown
 
@@ -299,7 +299,7 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 - [ ] In one authenticated Node/Playwright context, run GPT-5.6-Sol High then GPT-6 High in fresh tabs without reopening the browser; verify model, effort, pinned revision, exactly-once submission, completion, cleanup, and artifact status for each review.
 - [ ] Record full diagnostics and classify the final result as `verified`, `incomplete`, or `blocked`; never infer completion from submission acknowledgment alone.
 
-**Live-probe anomaly and correction:** The first probe against `52302be80ba55218cd071d9acd8806416ae5cbba` reported both transactions as completed, but each saved only an initial planning sentence and had no `assistant_message_id`. The completion predicate accepted stable nonempty text without response identity. The correction requires a nonempty assistant message identity before confirmation and adds a focused regression case; the preserved first-probe artifacts remain diagnostic evidence, not completion proof. A rerun is intentionally deferred until explicitly authorized.
+**Live-probe anomaly and correction:** The first probe against `52302be80ba55218cd071d9acd8806416ae5cbba` reported both transactions as completed, but each saved only an initial planning sentence and had no `assistant_message_id`. The completion predicate accepted stable nonempty text without response identity. The first correction required a nonempty assistant message identity; the authorized rerun then failed closed for both models, while GPT-6’s preserved final text confirmed a second gap: an identified intermediate planning turn could still pass when generation was never observed. The current correction requires both response identity and observed generation before confirmation. All prior artifacts remain diagnostic evidence, not completion proof.
 
 **Verification:**
 - [x] `node --test tests/test_github_browser_review_lifecycle.mjs` — 60 tests passed.
@@ -338,7 +338,7 @@ The plan is ready for completion verification when:
 4. completion evidence no longer depends on nonessential response-action labels and unrelated alerts do not block valid completion
 5. model-menu recovery has one bounded owner and final closure waits for the hidden transition
 6. focused Node tests, Python contract tests, syntax checks, adapter synchronization, and `git diff --check` pass
-7. the authorized live probe provides immutable-SHA, model, effort, exactly-once submission, completion, and cleanup evidence for both models; the preserved first probe is classified `incomplete` because its response identity evidence was missing
+7. the final authorized live probe provides immutable-SHA, model, effort, exactly-once submission, completion, and cleanup evidence for both models; prior probes remain `incomplete` because response identity or generation-observation evidence was missing
 8. preserved untracked review artifacts and unrelated user work remain untouched
 
 The plan remains `proposed` until approved execution follows this breakdown and
