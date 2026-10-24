@@ -149,7 +149,10 @@ export async function selectReviewModel(page, { model, effort }) {
   const reopenModelMenu = async () => {
     await page.keyboard.press("Escape");
     await menu.waitFor({ state: "hidden", timeout: 1500 });
-    return openModelMenu(page);
+    const reopenedMenu = await openModelMenu(page);
+    const modelControl = reopenedMenu.getByRole("menuitem", { name: "Select model", exact: true }).first();
+    if (await modelControl.isVisible()) await modelControl.click({ timeout: 1500 });
+    return reopenedMenu;
   };
   menu = await openModelList(menu, {
     model,

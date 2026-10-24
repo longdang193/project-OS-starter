@@ -244,6 +244,17 @@ test("model selection reopens when the real requested-row click is intercepted",
       throw new Error(`Unexpected locator: ${selector}`);
     },
     getByRole(role, options = {}) {
+      if (role === "menuitem" && options.name === "Select model") {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return false;
+              },
+            };
+          },
+        };
+      }
       if (role === "menuitem" && options.name === "Power") {
         return {
           first() {
