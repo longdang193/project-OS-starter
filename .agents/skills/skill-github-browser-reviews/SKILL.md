@@ -158,13 +158,16 @@ to ChatGPT, selects and verifies the model and effort, fills the prompt, and
 submits it once. `openReviewTab(context)` and
 `runReviewPromptInNewTab(context, options)` can create a tab from an existing
 authenticated Playwright context; they do not launch a browser or
-authenticate. The helpers never retry, rerun, or interpret the review response.
+authenticate. The submission helper never retries or reruns a review request;
+the completion helper only observes visible completion signals and returns the
+  final visible assistant turn for the caller to record.
 
 For a non-submitting validation, use `probeReviewModelInNewTab(context,
 options)` or the CLI's `--probe-only` mode. It opens a fresh authenticated tab,
 selects and verifies the requested model and effort, closes the selector, and
-returns `promptSubmitted: false`; it never submits a prompt. Use this probe
-before an explicitly authorized end-to-end submission.
+  returns `promptSubmitted: false`; it never submits a prompt. The probe is
+  diagnostic only; normal submission performs the same selection checks in one
+  bounded invocation.
 
 ### Helper execution boundary
 
@@ -201,8 +204,16 @@ node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.m
   --user-data-dir <authenticated-playwright-profile> \
   --model GPT-6 \
   --effort High \
-  --prompt-file <review-prompt.txt>
+  --prompt-file <review-prompt.txt> \
+  --output-dir <review-output-directory>
 ```
+
+One normal invocation is one bounded review transaction. It selects and visibly
+verifies the requested model and effort, submits at most once, waits for a new
+stable visible assistant turn, writes `response.md` and a small `result.json`,
+and only then closes the owned browser context. Terminal results are
+`verified`, `incomplete`, or `blocked`; a nonzero exit code accompanies the last
+two. The runner never retries or silently recovers a failed submission.
 
 To verify model and effort without entering or submitting prompt content:
 
@@ -235,7 +246,7 @@ Use visible page state as the authority for model, response mode, completion,
 and interruption status; do not infer these from hidden DOM or transport
 metadata.
 
-Use this shape:
+Use this shape, with every GitHub URL pinned to the expected full commit SHA:
 
 ```text
 @GitHub Review this exact file revision:
@@ -264,10 +275,10 @@ retry a bloated request.
 
 ### 5. Verify review evidence
 
-The reviewer must confirm that it read the requested revision by citing a known
-heading, hash, file marker, or equivalent evidence before the review is accepted.
-A URL being present, or a response that discusses the topic without revision
-evidence, is not proof that the requested file was reviewed.
+The reviewer should confirm that it read the requested revision by citing a
+known heading, hash, file marker, or equivalent evidence before the review is
+accepted. The runner records the completed response and conversation identity;
+the caller remains responsible for judging file-specific review evidence.
 
 ### 6. Handle unavailable revisions
 

@@ -87,6 +87,8 @@ def test_skill_has_bounded_playwright_model_selection_helper() -> None:
     assert "scripts/select-review-model.mjs" in skill
     assert "selectReviewModel(page" in skill
     assert 'getByRole("button", { name: "Select ChatGPT model" })' in helper
+    assert 'waitFor({ state: "visible", timeout: MODEL_MENU_TIMEOUT_MS })' in helper
+    assert "const MODEL_MENU_TIMEOUT_MS = 10000" in helper
     assert '[role="menuitemradio"]' in helper
     assert 'getByRole("menuitem", { name: "Select model", exact: true })' in helper
     assert 'getByRole("menuitem", { name: "Power", exact: true })' in helper
@@ -117,6 +119,18 @@ def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
     assert "promptSubmitted: true" in helper
     assert "never launches a browser" in helper
     assert "retries" in helper
+
+
+def test_completion_wait_allows_long_repository_reviews() -> None:
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "const COMPLETION_TIMEOUT_MS = 900000" in helper
+
+
+def test_completion_selector_supports_current_markdown_response_surface() -> None:
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "main [class*=\"MarkdownRoot-\"]:visible" in helper
 
 
 def test_skill_documents_non_submitting_probe_boundary() -> None:

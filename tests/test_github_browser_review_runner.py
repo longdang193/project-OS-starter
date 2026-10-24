@@ -23,7 +23,14 @@ def test_review_runner_is_a_real_node_entrypoint() -> None:
     assert "--cdp-endpoint" in content
     assert "--user-data-dir" in content
     assert "--prompt-file" in content
+    assert "--output-dir" in content
+    assert "--expected-sha" not in content
     assert "promptSubmitted" in content
+    assert "submission_attempted" in content
+    assert "await mkdir(outputDir, { recursive: true })" in content
+    assert "if (!context) {\n      throw new Error" in content
+    assert "result.json" in content
+    assert "response.md" in content
 
 
 def test_review_runner_supports_a_non_submitting_probe_mode() -> None:
@@ -31,7 +38,7 @@ def test_review_runner_supports_a_non_submitting_probe_mode() -> None:
 
     assert "--probe-only" in content
     assert "probeReviewModelInNewTab" in content
-    assert "options.probeOnly ? false : true" in content
+    assert "result.promptSubmitted !== false" in content
 
 
 def test_review_runner_requires_a_supported_browser_attachment_mode() -> None:
@@ -83,6 +90,16 @@ def test_probe_only_mode_does_not_require_prompt_file() -> None:
     assert result.returncode != 0
     assert "Missing one of: --cdp-endpoint or --user-data-dir" in result.stderr
     assert "Missing required argument: --prompt-file" not in result.stderr
+
+
+def test_review_runner_does_not_require_release_audit_arguments() -> None:
+    content = RUNNER.read_text(encoding="utf-8")
+
+    assert "--expected-sha" not in content
+    assert "--expected-file-url" not in content
+    assert "--expected-marker" not in content
+    assert "acquireTransactionLock" not in content
+    assert "GITHUB_REVIEW_" not in content
 
 
 def test_review_runner_exposes_help_without_connecting_to_a_browser() -> None:

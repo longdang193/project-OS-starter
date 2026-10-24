@@ -2,6 +2,7 @@ const SUPPORTED_MODELS = new Set(["GPT-5.6-Sol", "GPT-6"]);
 const SUPPORTED_EFFORTS = new Set(["Instant", "Medium", "High"]);
 const MODEL_LABELS = { "GPT-5.6-Sol": "GPT-5.6 Sol", "GPT-6": "GPT-6" };
 const EFFORT_ORDER = ["Instant", "Medium", "High"];
+const MODEL_MENU_TIMEOUT_MS = 10000;
 
 function assertSupported(value, supported, label) {
   if (!supported.has(value)) {
@@ -18,18 +19,25 @@ async function openModelMenu(page) {
   if (await menu.isVisible()) return menu;
 
   const control = page.getByRole("button", { name: "Select ChatGPT model" }).first();
-  if (!(await control.isVisible())) {
+  try {
+    await control.waitFor({ state: "visible", timeout: MODEL_MENU_TIMEOUT_MS });
+  } catch {
     throw new Error("Visible ChatGPT model selector was not found");
   }
 
   await control.click();
-  if (!(await menu.isVisible())) {
+  try {
+    await menu.waitFor({ state: "visible", timeout: MODEL_MENU_TIMEOUT_MS });
+  } catch {
     throw new Error("ChatGPT model menu did not open");
   }
   return menu;
 }
 
-async function openModelList(menu) {
+export async function openModelList(menu) {
+  const visibleModelOptions = menu.locator('[role="menuitemradio"]:visible');
+  if (await visibleModelOptions.count()) return;
+
   const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
   if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
     await modelControl.click({ timeout: 1500 });

@@ -1,6 +1,14 @@
 import { selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
+const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible, main [class*="MarkdownRoot-"]:visible';
+const COMPLETION_TIMEOUT_MS = 900000;
+const COMPLETION_INITIAL_BACKOFF_MS = 250;
+const COMPLETION_MAX_BACKOFF_MS = 1000;
+
+function normalizeComposerText(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
 
 function assertPrompt(prompt) {
   if (typeof prompt !== "string" || prompt.trim() === "") {
@@ -40,15 +48,87 @@ async function closeModelMenu(page) {
   }
 }
 
-async function submitPrompt(page, composer, prompt) {
+function extractConversationIdentity(url) {
+  const match = url.match(/\/c\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
+
+async function readVisibleAssistantTurns(page) {
+  return page.locator(ASSISTANT_TURN_SELECTOR);
+}
+
+async function readVisibleAssistantText(page) {
+  const turns = await readVisibleAssistantTurns(page);
+  const count = await turns.count();
+  if (count === 0) return "";
+  return (await turns.nth(count - 1).innerText()).trim();
+}
+
+async function readVisibleInterruption(page) {
+  const interruption = page.getByText(/(?:something went wrong|network error|try again|response interrupted|stopped responding)/i).first();
+  return await interruption.isVisible();
+}
+
+export async function isPromptVisibleInComposer(composer, prompt) {
+  const expectedPrompt = normalizeComposerText(prompt);
+
+  try {
+    if (normalizeComposerText(await composer.inputValue()) === expectedPrompt) return true;
+  } catch {
+    // Contenteditable composers do not expose inputValue.
+  }
+
+  return normalizeComposerText(await composer.innerText()) === expectedPrompt;
+}
+
+async function readCompletionSnapshot(page) {
+  const turns = await readVisibleAssistantTurns(page);
+  const assistantTurnCount = await turns.count();
+  const assistantText = await readVisibleAssistantText(page);
+  const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
+  const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
+  const currentUrl = page.url();
+  const conversationId = extractConversationIdentity(currentUrl);
+
+  return {
+    assistantText,
+    assistantTurnCount,
+    composerReady: await composer.isVisible() && !(await stopButton.isVisible()),
+    conversationId,
+    currentUrl,
+    generating: await stopButton.isVisible(),
+    interrupted: await readVisibleInterruption(page),
+  };
+}
+
+export function evaluateReviewCompletion({
+  assistantText,
+  assistantTurnCount,
+  baselineAssistantTurnCount,
+  composerReady,
+  conversationId,
+  generating,
+  interrupted,
+  stableSampleCount,
+}) {
+  return !generating
+    && composerReady
+    && !interrupted
+    && Boolean(conversationId)
+    && assistantTurnCount > baselineAssistantTurnCount
+    && Boolean(assistantText.trim())
+    && stableSampleCount >= 2;
+}
+
+async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
   await composer.fill(prompt);
 
-  const visiblePrompt = page.getByText(prompt, { exact: true }).first();
-  if (!(await visiblePrompt.isVisible())) {
+  if (!(await isPromptVisibleInComposer(composer, prompt))) {
     throw new Error("Prompt was not visibly entered");
   }
 
   const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
+  if (beforeSubmit) await beforeSubmit();
   if (await sendButton.isVisible()) {
     await sendButton.click();
   } else {
@@ -56,9 +136,11 @@ async function submitPrompt(page, composer, prompt) {
   }
 
   await page.waitForTimeout(250);
-  if ((await composer.innerText()).trim() === prompt.trim()) {
+  if (await isPromptVisibleInComposer(composer, prompt)) {
     throw new Error("Prompt submission was not visibly acknowledged");
   }
+
+  return { submission: "acknowledged" };
 }
 
 async function prepareReviewPrompt(page, { model, effort }) {
@@ -85,14 +167,66 @@ export async function probeReviewModel(page, options) {
  * review model and effort, fill the prompt, and submit it exactly once.
  *
  * The caller owns the browser session. This helper never launches a browser,
- * authenticates, retries, reruns, or interprets the review response.
+ * authenticates, retries, or reruns a review request.
  */
-export async function runReviewPrompt(page, { model, effort, prompt }) {
+export async function waitForReviewCompletion(page, {
+  baseline,
+  timeoutMs = COMPLETION_TIMEOUT_MS,
+} = {}) {
+  if (!baseline) throw new Error("baseline is required for completion observation");
+
+  const deadline = Date.now() + timeoutMs;
+  let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
+  let previousText = "";
+  let stableSampleCount = 0;
+  let snapshot;
+
+  while (Date.now() <= deadline) {
+    snapshot = await readCompletionSnapshot(page);
+    if (snapshot.assistantText === previousText && snapshot.assistantText) {
+      stableSampleCount += 1;
+    } else {
+      stableSampleCount = 0;
+      previousText = snapshot.assistantText;
+    }
+
+    if (evaluateReviewCompletion({
+      ...snapshot,
+      baselineAssistantTurnCount: baseline.assistantTurnCount,
+      stableSampleCount,
+    })) {
+      return {
+        ...snapshot,
+        assistantTurnIndex: snapshot.assistantTurnCount - 1,
+        response: snapshot.assistantText,
+        status: "confirmed",
+      };
+    }
+
+    await page.waitForTimeout(backoffMs);
+    backoffMs = Math.min(backoffMs * 2, COMPLETION_MAX_BACKOFF_MS);
+  }
+
+  return {
+    ...(snapshot || await readCompletionSnapshot(page)),
+    response: await readVisibleAssistantText(page),
+    status: "incomplete",
+    failureReason: "bounded completion timeout or ambiguous response association",
+  };
+}
+
+export async function runReviewPrompt(page, { beforeSubmit, model, effort, prompt }) {
   assertPrompt(prompt);
   const { composer } = await prepareReviewPrompt(page, { model, effort });
-  await submitPrompt(page, composer, prompt);
+  const baselineTurns = await readVisibleAssistantTurns(page);
+  const baseline = {
+    assistantTurnCount: await baselineTurns.count(),
+    conversationId: extractConversationIdentity(page.url()),
+    conversationUrl: page.url(),
+  };
+  const submission = await submitPrompt(page, composer, prompt, { beforeSubmit });
 
-  return { model, effort, promptSubmitted: true };
+  return { ...baseline, ...submission, model, effort, promptSubmitted: true };
 }
 
 export async function runReviewPromptInNewTab(context, options) {
