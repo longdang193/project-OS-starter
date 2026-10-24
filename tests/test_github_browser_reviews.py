@@ -116,6 +116,15 @@ def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
     assert "retries" in helper
 
 
+def test_skill_documents_non_submitting_probe_boundary() -> None:
+    skill = CANONICAL_SKILL.read_text(encoding="utf-8")
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "probe-only" in skill
+    assert "probeReviewModelInNewTab(context, options)" in helper
+    assert "submits a review request" in helper
+
+
 def test_skill_documents_file_backed_helper_execution_boundary() -> None:
     skill = CANONICAL_SKILL.read_text(encoding="utf-8")
 
@@ -127,6 +136,8 @@ def test_skill_documents_file_backed_helper_execution_boundary() -> None:
         "filename",
         "sourcePath",
         "Prompt submission remains gated",
+        "run-review-prompt-cli.mjs",
+        "browser_run_code_unsafe` is not an ESM module runner",
     ):
         assert rule in skill
 

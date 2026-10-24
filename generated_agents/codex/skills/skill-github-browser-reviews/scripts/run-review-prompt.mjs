@@ -67,6 +67,25 @@ async function submitPrompt(page, composer, prompt) {
   }
 }
 
+async function prepareReviewPrompt(page, { model, effort }) {
+  const composer = await openChatGPT(page);
+  await selectReviewModel(page, { model, effort });
+  await closeModelMenu(page);
+  return { composer, effort, model };
+}
+
+/**
+ * Navigate an existing authenticated ChatGPT page, select and verify the
+ * requested review model and thinking effort, and stop before prompt entry.
+ *
+ * The caller owns the browser session. This helper never launches a browser,
+ * authenticates, retries, reruns, or submits a review request.
+ */
+export async function probeReviewModel(page, options) {
+  const { effort, model } = await prepareReviewPrompt(page, options);
+  return { effort, model, promptSubmitted: false };
+}
+
 /**
  * Navigate an existing authenticated ChatGPT page, select the requested
  * review model and effort, fill the prompt, and submit it exactly once.
@@ -76,9 +95,7 @@ async function submitPrompt(page, composer, prompt) {
  */
 export async function runReviewPrompt(page, { model, effort, prompt }) {
   assertPrompt(prompt);
-  const composer = await openChatGPT(page);
-  await selectReviewModel(page, { model, effort });
-  await closeModelMenu(page);
+  const { composer } = await prepareReviewPrompt(page, { model, effort });
   await submitPrompt(page, composer, prompt);
 
   return { model, effort, promptSubmitted: true };
@@ -87,4 +104,9 @@ export async function runReviewPrompt(page, { model, effort, prompt }) {
 export async function runReviewPromptInNewTab(context, options) {
   const page = await openReviewTab(context);
   return { page, ...(await runReviewPrompt(page, options)) };
+}
+
+export async function probeReviewModelInNewTab(context, options) {
+  const page = await openReviewTab(context);
+  return { page, ...(await probeReviewModel(page, options)) };
 }

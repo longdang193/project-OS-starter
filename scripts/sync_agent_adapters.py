@@ -152,11 +152,19 @@ def _render_toml_generated_block(source_rel: str) -> str:
 
 def _strip_generated_block(raw: str) -> str:
     js_marker = "// GENERATED FILE - DO NOT EDIT\n"
-    if raw.startswith(js_marker):
-        end = raw.find("\n\n")
+    shebang = ""
+    body = raw
+    if body.startswith("#!"):
+        line_end = body.find("\n")
+        if line_end == -1:
+            return body
+        shebang = body[: line_end + 1]
+        body = body[line_end + 1 :]
+    if body.startswith(js_marker):
+        end = body.find("\n\n")
         if end != -1:
-            return raw[end + len("\n\n") :].lstrip("\n")
-        return raw
+            return shebang + body[end + len("\n\n") :].lstrip("\n")
+        return shebang + body
 
     marker = "<!--\nGENERATED FILE - DO NOT EDIT\n"
     if not raw.startswith(marker):
@@ -180,6 +188,11 @@ def _render_with_header(text: str, *, source_rel: str, prefix: str) -> str:
     del prefix
     header = _render_generated_block(source_rel)
     normalized = _strip_generated_block(text.replace("\r\n", "\n"))
+    if Path(source_rel).suffix in {".cjs", ".js", ".mjs"} and normalized.startswith("#!"):
+        line_end = normalized.find("\n")
+        if line_end == -1:
+            return normalized + "\n" + header
+        return normalized[: line_end + 1] + header + normalized[line_end + 1 :]
     if not normalized.startswith("---\n"):
         return header + normalized
     parts = normalized.split("---\n", 2)

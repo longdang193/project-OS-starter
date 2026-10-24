@@ -166,6 +166,12 @@ submits it once. `openReviewTab(context)` and
 authenticated Playwright context; they do not launch a browser or
 authenticate. The helpers never retry, rerun, or interpret the review response.
 
+For a non-submitting validation, use `probeReviewModelInNewTab(context,
+options)` or the CLI's `--probe-only` mode. It opens a fresh authenticated tab,
+selects and verifies the requested model and effort, closes the selector, and
+returns `promptSubmitted: false`; it never submits a prompt. Use this probe
+before an explicitly authorized end-to-end submission.
+
 ### Helper execution boundary
 
 These `.mjs` helpers run in the Node/Playwright runner, not in the ChatGPT page
@@ -189,6 +195,34 @@ execution. If the helper cannot be loaded or the authenticated context cannot
 be attached, report `incomplete` or `blocked`; do not replace the helper with
 hidden DOM or network-state inspection. Prompt submission remains gated by the
 explicit user authorization required by this skill.
+
+For a standalone, repeatable Node invocation, use the ESM CLI entrypoint rather
+than evaluating the `.mjs` module as a browser VM script:
+
+```bash
+node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
+  --cdp-endpoint <authenticated-browser-cdp-url> \
+  --model GPT-6 \
+  --effort High \
+  --prompt-file <review-prompt.txt>
+```
+
+To verify model and effort without entering or submitting prompt content:
+
+```bash
+node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
+  --cdp-endpoint <authenticated-browser-cdp-url> \
+  --model GPT-6 \
+  --effort High \
+  --probe-only
+```
+
+The CLI attaches to an existing authenticated Chromium session through CDP,
+selects the requested browser context, imports `run-review-prompt.mjs` through
+Node's ESM loader, and either performs the non-submitting `--probe-only` check
+or submits exactly once. It never launches or authenticates a browser.
+`browser_run_code_unsafe` is not an ESM module runner; do not pass this CLI or
+either `.mjs` helper to that VM as a raw file.
 
 ### 3. Open the review
 

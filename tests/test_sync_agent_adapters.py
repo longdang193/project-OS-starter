@@ -151,6 +151,29 @@ def test_sync_tree_copies_nested_skill_support_files(tmp_path: Path) -> None:
     assert generated_mjs.read_text(encoding="utf-8").startswith("// GENERATED FILE - DO NOT EDIT\n")
 
 
+def test_sync_tree_keeps_javascript_shebang_executable(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    source_root = root / ".agents" / "skills"
+    skill_dir = source_root / "skill-sample"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("---\nname: skill-sample\ndescription: Use when sample applies\n---\n", encoding="utf-8")
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "runner.mjs").write_text("#!/usr/bin/env node\nconsole.log('ok');\n", encoding="utf-8")
+
+    mapping = SYNC.Mapping(
+        source=".agents/skills",
+        destination="generated_agents/codex/skills",
+        mode="copy_tree",
+        comment_prefix="#",
+        include_glob="**/*",
+    )
+
+    assert SYNC._sync_tree(root, mapping, check=False) == []
+    generated = (root / "generated_agents" / "codex" / "skills" / "skill-sample" / "scripts" / "runner.mjs").read_text(encoding="utf-8")
+    assert generated.startswith("#!/usr/bin/env node\n// GENERATED FILE - DO NOT EDIT\n")
+
+
 def _write_agent_role(path: Path, *, name: str = "normal", rank: int | None = 20, extra: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rank_line = "" if rank is None else f"rank = {rank}\n"

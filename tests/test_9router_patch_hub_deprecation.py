@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +20,18 @@ PRESERVED_FILES = {
 
 
 def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    relative_path = path.relative_to(ROOT).as_posix()
+    canonical_bytes = subprocess.check_output(
+        [
+            "git",
+            "cat-file",
+            "--filters",
+            f"--path={relative_path}",
+            f":{relative_path}",
+        ],
+        cwd=ROOT,
+    )
+    return hashlib.sha256(canonical_bytes).hexdigest()
 
 
 def test_9router_patch_hub_surfaces_are_removed() -> None:
