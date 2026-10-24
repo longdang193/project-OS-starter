@@ -210,13 +210,19 @@ last two. The controller, not the runner, validates revision-specific review
 evidence and may classify the overall workflow as `verified`. The runner never
 retries or silently recovers a failed submission.
 
-For a multi-model review, keep the same transaction boundary but call the
+For multiple reviews, keep the same transaction boundary but call the
 CLI module's `openReviewContext(options)` once, then call
 `runReviewBatch({ attached, reviews, outputDir })` from the Node controller. It
-reuses one authenticated context for sequential reviews, allocates a separate
+reuses one authenticated context for sequential reviews—including repeated
+reviews with the same model—allocates a separate
 `run-*` output directory per review, closes each review page after its artifacts
 are persisted, and closes the shared context once at the end. Do not add a
-keep-open flag or a second browser lifecycle owner.
+keep-open flag or a second browser lifecycle owner. The optional `--batch-file`
+manifest is the standalone entry point for this mode. Persistent-profile mode
+holds an exclusive profile lease for the lifetime of the owned context, so
+overlapping launches fail before opening a second browser. If a review reports
+that the shared context is unusable, the controller stops the batch and closes
+the context rather than attempting later reviews against a broken session.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The

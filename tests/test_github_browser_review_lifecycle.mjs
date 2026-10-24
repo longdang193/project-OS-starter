@@ -16,10 +16,14 @@ import {
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
   atomicWrite,
+  acquireProfileLease,
   closeContext,
   createResult,
   createRunOutputDirectory,
+  persistCleanupFailure,
   parseArguments,
+  releaseProfileLease,
+  runReviewTransaction,
   runReviewBatch,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
@@ -58,6 +62,18 @@ test("output directory remains optional for controller-allocated review artifact
   assert.equal(parsed.outputDir, "review-output");
 });
 
+test("batch arguments select one shared browser session", () => {
+  const parsed = parseArguments([
+    "--user-data-dir", "profile",
+    "--batch-file", "reviews.json",
+  ]);
+
+  assert.equal(parsed.batchFile, "reviews.json");
+  assert.equal(parsed.model, undefined);
+  assert.equal(parsed.effort, undefined);
+  assert.equal(parsed.promptFile, undefined);
+});
+
 test("runner contract uses completed as its successful terminal state", async () => {
   const runner = await readFile(
     new URL("../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs", import.meta.url),
@@ -76,7 +92,7 @@ test("review transaction uses the caller-owned context instead of launching anot
   );
   const transaction = runner.slice(runner.indexOf("export async function runReviewTransaction"), runner.indexOf("export async function runReviewBatch"));
 
-  assert.match(transaction, /runReviewPromptInNewTab\(context/);
+  assert.match(transaction, /runPrompt\(context/);
   assert.match(transaction, /prompt: options\.prompt/);
   assert.doesNotMatch(transaction, /loadPlaywright\(\)/);
   assert.doesNotMatch(transaction, /openContext\(/);
@@ -532,9 +548,51 @@ test("result records the requested and observed lifecycle state", () => {
     assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
+    cleanup_status: "not_started",
+    cleanup_warning: null,
+    failure_scope: null,
     failure_stage: null,
     failure_reason: null,
   });
+});
+
+test("page cleanup failure makes a completed transaction incomplete", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-page-cleanup-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async () => ({
+          effort: "High",
+          model: "GPT-6",
+          page: {
+            async close() {
+              throw new Error("page close failed");
+            },
+          },
+          promptSubmitted: true,
+          submission: "acknowledged",
+        }),
+        waitForReviewCompletion: async () => ({
+          assistantMessageId: "assistant-1",
+          assistantTurnIndex: 1,
+          conversationId: "review",
+          currentUrl: "https://chatgpt.com/c/review",
+          response: "response",
+          status: "confirmed",
+        }),
+      },
+    });
+
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.cleanup_status, "failed");
+    assert.equal(result.cleanup_warning, "page close failed");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("result and response writes are atomic and preserve final evidence", async () => {
@@ -550,6 +608,25 @@ test("result and response writes are atomic and preserve final evidence", async 
 
     assert.equal(JSON.parse(await readFile(join(outputDir, "result.json"), "utf8")).status, "completed");
     assert.equal(await readFile(join(outputDir, "response.md"), "utf8"), "Finding at line 12.\n");
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("cleanup failures are persisted after a completed transaction", async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), "github-review-cleanup-"));
+  try {
+    const result = createResult({ model: "GPT-6", effort: "High" });
+    result.status = "completed";
+    result.completion = "confirmed";
+    await writeResult(outputDir, result);
+
+    await persistCleanupFailure(result, outputDir, "context close failed");
+
+    const persisted = JSON.parse(await readFile(join(outputDir, "result.json"), "utf8"));
+    assert.equal(persisted.status, "incomplete");
+    assert.equal(persisted.failure_stage, "cleanup");
+    assert.equal(persisted.failure_reason, "context close failed");
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
@@ -617,7 +694,7 @@ test("review batch reuses one context, isolates runs, and closes the context onc
       outputDir: parent,
       reviews: [
         { model: "GPT-5.6-Sol", effort: "High", prompt: "first" },
-        { model: "GPT-6", effort: "High", prompt: "second" },
+        { model: "GPT-5.6-Sol", effort: "High", prompt: "second" },
       ],
       runTransaction: async (reviewContext, review) => {
         const allocation = await createRunOutputDirectory(review.outputDir);
@@ -638,6 +715,90 @@ test("review batch reuses one context, isolates runs, and closes the context onc
     assert.notEqual(results[0].outputDir, results[1].outputDir);
     assert.equal(seenPages.length, 2);
     assert.equal(contextCloseCount, 1);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("review batch persists cleanup failure for completed transactions", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-batch-cleanup-"));
+  const attached = {
+    browser: null,
+    context: {
+      async close() {
+        throw new Error("context close failed");
+      },
+    },
+    ownsContext: true,
+  };
+  let result;
+
+  try {
+    await assert.rejects(
+      runReviewBatch({
+        attached,
+        outputDir: parent,
+        reviews: [{ model: "GPT-6", effort: "High", prompt: "review" }],
+        runTransaction: async (reviewContext, review) => {
+          const allocation = await createRunOutputDirectory(review.outputDir);
+          result = createResult(review);
+          result.status = "completed";
+          result.output_dir = allocation.outputDir;
+          await writeResult(allocation.outputDir, result);
+          return result;
+        },
+      }),
+      /context close failed/,
+    );
+
+    const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
+    assert.equal(persisted.status, "incomplete");
+    assert.equal(persisted.failure_stage, "cleanup");
+    assert.equal(persisted.failure_reason, "context close failed");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("review batch stops after a shared-context failure", async () => {
+  const context = {};
+  const attached = { browser: null, context, ownsContext: true };
+  const attempted = [];
+  let closeCount = 0;
+  context.close = async () => {
+    closeCount += 1;
+  };
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      if (review.prompt === "first") {
+        return { status: "blocked", failure_scope: "shared_context" };
+      }
+      return { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first"]);
+  assert.deepEqual(results, [{ status: "blocked", failure_scope: "shared_context" }]);
+  assert.equal(closeCount, 1);
+});
+
+test("profile lease prevents overlapping persistent-profile launches", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-profile-"));
+  const profile = join(parent, "profile");
+  try {
+    const first = await acquireProfileLease(profile);
+    await assert.rejects(acquireProfileLease(profile), /profile is already in use/);
+    await releaseProfileLease(first);
+    const second = await acquireProfileLease(profile);
+    await releaseProfileLease(second);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

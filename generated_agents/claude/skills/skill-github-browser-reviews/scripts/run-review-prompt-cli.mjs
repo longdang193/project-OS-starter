@@ -6,10 +6,10 @@
 // To update: edit canonical source, then run sync.
 
 
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 import {
   runReviewPromptInNewTab,
@@ -22,7 +22,8 @@ import {
 
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> [--output-dir <path>] [--context-index <number>]";
+const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set();
 
 function usageError(message) {
@@ -52,17 +53,19 @@ export function parseArguments(argv) {
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
+  const batchFile = argumentsByName.get("--batch-file");
   const contextIndexValue = argumentsByName.get("--context-index");
   const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
-  if (!model) usageError("Missing required argument: --model");
-  if (!effort) usageError("Missing required argument: --effort");
-  if (!promptFile) usageError("Missing required argument: --prompt-file");
-  if (!SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
-  if (!SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
+  if (batchFile && (model || effort || promptFile)) usageError("Single-review arguments cannot be combined with --batch-file");
+  if (!batchFile && !model) usageError("Missing required argument: --model");
+  if (!batchFile && !effort) usageError("Missing required argument: --effort");
+  if (!batchFile && !promptFile) usageError("Missing required argument: --prompt-file");
+  if (model && !SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
+  if (effort && !SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
 
   const contextIndex = contextIndexValue === undefined ? DEFAULT_CONTEXT_INDEX : Number(contextIndexValue);
   if (!Number.isInteger(contextIndex) || contextIndex < 0) usageError(`Invalid context index: ${contextIndexValue}`);
@@ -72,6 +75,7 @@ export function parseArguments(argv) {
     contextIndex,
     effort,
     model,
+    batchFile,
     outputDir,
     promptFile,
     userDataDir,
@@ -94,6 +98,9 @@ export function createResult(options) {
     assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
+    cleanup_status: "not_started",
+    cleanup_warning: null,
+    failure_scope: null,
     failure_stage: null,
     failure_reason: null,
   };
@@ -118,6 +125,104 @@ export async function atomicWrite(filePath, content) {
 
 export async function writeResult(outputDir, result) {
   await atomicWrite(join(outputDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function readBatchReviews(batchFile) {
+  const manifestPath = resolve(batchFile);
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read batch manifest ${manifestPath}: ${errorMessage(error)}`);
+  }
+
+  if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.reviews) || manifest.reviews.length === 0) {
+    throw new Error("Batch manifest must contain a non-empty reviews array");
+  }
+
+  return Promise.all(manifest.reviews.map(async (review, index) => {
+    if (!review || typeof review !== "object") {
+      throw new Error(`Batch review ${index + 1} must be an object`);
+    }
+    if (!SUPPORTED_MODELS.has(review.model)) {
+      throw new Error(`Batch review ${index + 1} has unsupported model: ${review.model}`);
+    }
+    if (!SUPPORTED_EFFORTS.has(review.effort)) {
+      throw new Error(`Batch review ${index + 1} has unsupported effort: ${review.effort}`);
+    }
+    if (typeof review.prompt_file !== "string" || !review.prompt_file.trim()) {
+      throw new Error(`Batch review ${index + 1} must provide prompt_file`);
+    }
+
+    const promptFile = resolve(dirname(manifestPath), review.prompt_file);
+    let prompt;
+    try {
+      prompt = await readFile(promptFile, "utf8");
+    } catch (error) {
+      throw new Error(`Could not read prompt file for batch review ${index + 1}: ${errorMessage(error)}`);
+    }
+    if (!prompt.trim()) throw new Error(`Prompt file for batch review ${index + 1} must not be empty`);
+
+    return {
+      effort: review.effort,
+      model: review.model,
+      prompt,
+      promptFile,
+    };
+  }));
+}
+
+export function summarizeBatchResults(results) {
+  const completedCount = results.filter((result) => result.status === "completed").length;
+  return {
+    status: completedCount === results.length ? "completed" : "incomplete",
+    review_count: results.length,
+    completed_count: completedCount,
+    failed_count: results.length - completedCount,
+    reviews: results,
+  };
+}
+
+function profileLeasePath(userDataDir) {
+  return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
+}
+
+export async function acquireProfileLease(userDataDir) {
+  const profilePath = resolve(userDataDir);
+  const lockPath = profileLeasePath(profilePath);
+  await mkdir(dirname(profilePath), { recursive: true });
+
+  let handle;
+  try {
+    handle = await open(lockPath, "wx");
+    await handle.writeFile(`${JSON.stringify({ pid: process.pid, profile: profilePath })}\n`, "utf8");
+    return { handle, lockPath };
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    if (error?.code === "EEXIST") {
+      throw new Error(`Browser profile is already in use: ${profilePath}`);
+    }
+    throw error;
+  }
+}
+
+export async function releaseProfileLease(lease) {
+  if (!lease) return;
+  await lease.handle?.close().catch(() => {});
+  await rm(lease.lockPath, { force: true });
+}
+
+export async function persistCleanupFailure(result, outputDir, cleanupReason) {
+  result.status = "incomplete";
+  result.cleanup_status = "failed";
+  result.cleanup_warning = cleanupReason;
+  result.failure_stage = "cleanup";
+  result.failure_reason = cleanupReason;
+  if (outputDir) await writeResult(outputDir, result);
 }
 
 function structuredFailure({ error, failureStage, outputDir }) {
@@ -151,10 +256,12 @@ async function openContext(chromium, options) {
     return { browser, context, ownsContext: false };
   }
 
+  const profileLease = await acquireProfileLease(options.userDataDir);
   try {
     const context = await chromium.launchPersistentContext(options.userDataDir, { headless: false });
-    return { browser: null, context, ownsContext: true };
+    return { browser: null, context, ownsContext: true, profileLease };
   } catch (error) {
+    await releaseProfileLease(profileLease).catch(() => {});
     const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`Could not launch the Playwright browser profile${detail}`);
   }
@@ -165,21 +272,41 @@ export async function openReviewContext(options) {
   return openContext(chromium, options);
 }
 
-export async function closeContext({ browser, context, ownsContext, page }) {
-  if (ownsContext && context) return context.close();
-
+export async function closeContext({ browser, context, ownsContext, page, profileLease }) {
   let cleanupError;
   try {
-    if (page) await page.close();
+    if (ownsContext && context) {
+      await context.close();
+    } else {
+      try {
+        if (page) await page.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+      try {
+        if (browser) await browser.close();
+      } catch (error) {
+        cleanupError ||= error;
+      }
+    }
   } catch (error) {
-    cleanupError = error;
-  } finally {
-    if (browser) await browser.close();
+    cleanupError ||= error;
+  }
+  try {
+    await releaseProfileLease(profileLease);
+  } catch (error) {
+    cleanupError ||= error;
   }
   if (cleanupError) throw cleanupError;
 }
 
 export async function runReviewTransaction(context, options) {
+  const dependencies = options.dependencies || {};
+  const runPrompt = dependencies.runReviewPromptInNewTab || runReviewPromptInNewTab;
+  const waitForCompletion = dependencies.waitForReviewCompletion || waitForReviewCompletion;
+  const persistResult = dependencies.writeResult || writeResult;
+  const writeResponse = dependencies.writeResponse || ((filePath, content) => atomicWrite(filePath, content));
+  const closePage = dependencies.closePage || ((reviewPage) => reviewPage.close());
   let result = createResult(options);
   let outputDir;
   let runId;
@@ -190,16 +317,16 @@ export async function runReviewTransaction(context, options) {
     ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
     result = createResult({ ...options, runId });
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
-    await writeResult(outputDir, result);
+    await persistResult(outputDir, result);
 
-    const review = await runReviewPromptInNewTab(context, {
+    const review = await runPrompt(context, {
       effort: options.effort,
       model: options.model,
       prompt: options.prompt,
       beforeSubmit: async () => {
         result.submission_attempted = true;
         result.submission = "attempted";
-        await writeResult(outputDir, result);
+        await persistResult(outputDir, result);
       },
     });
     page = review.page;
@@ -208,20 +335,22 @@ export async function runReviewTransaction(context, options) {
     result.effort_verified = review.effort;
     result.submission = review.submission;
     result.completion = "waiting";
-    await writeResult(outputDir, result);
+    result.cleanup_status = "pending";
+    await persistResult(outputDir, result);
 
-    const completion = await waitForReviewCompletion(page, { baseline: review });
+    const completion = await waitForCompletion(page, { baseline: review });
     result.completion = completion.status;
     result.conversation_url = completion.currentUrl || null;
     result.conversation_id = completion.conversationId || null;
     result.assistant_message_id = completion.assistantMessageId || null;
     result.assistant_turn_index = completion.assistantTurnIndex ?? null;
 
-    if (completion.response) await atomicWrite(join(outputDir, "response.md"), `${completion.response}\n`);
+    if (completion.response) await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
     if (completion.status === "confirmed") {
       result.status = "completed";
     } else {
       result.status = "incomplete";
+      result.failure_scope = "review";
       result.failure_stage = "completion";
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
@@ -229,25 +358,35 @@ export async function runReviewTransaction(context, options) {
     failure = error;
     result.status = result.submission_attempted ? "incomplete" : "blocked";
     result.failure_stage = result.submission_attempted ? "submission" : "browser";
+    result.failure_scope = result.submission_attempted ? "review" : "shared_context";
     result.failure_reason = error instanceof Error ? error.message : String(error);
     result.submission = result.submission_attempted ? "ambiguous" : result.submission;
   } finally {
+    if (page) result.cleanup_status = "pending";
     try {
-      if (page) await page.close();
+      if (page) {
+        await closePage(page);
+        result.cleanup_status = "completed";
+      } else {
+        result.cleanup_status = "not_needed";
+      }
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
-      if (!failure) {
+      result.cleanup_status = "failed";
+      result.cleanup_warning = cleanupReason;
+      if (!failure && result.status === "completed") {
         result.status = "incomplete";
+        result.failure_scope = "review";
         result.failure_stage = "cleanup";
         result.failure_reason = cleanupReason;
       } else {
-        result.failure_reason = `${result.failure_reason}; cleanup failed: ${cleanupReason}`;
+        result.failure_reason = `${result.failure_reason || "Review transaction failed"}; cleanup failed: ${cleanupReason}`;
       }
     }
 
     try {
       if (!outputDir) throw new Error("Review output directory was not allocated");
-      await writeResult(outputDir, result);
+      await persistResult(outputDir, result);
     } catch (error) {
       console.error(JSON.stringify(structuredFailure({
         error,
@@ -273,49 +412,96 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
   const results = [];
   try {
     for (const review of reviews) {
-      results.push(await runTransaction(attached.context, {
+      const result = await runTransaction(attached.context, {
         ...review,
         outputDir,
-      }));
+      });
+      results.push(result);
+      if (result.failure_scope === "shared_context") break;
     }
-    return results;
   } finally {
-    await closeContext(attached);
+    try {
+      await closeContext(attached);
+    } catch (error) {
+      const cleanupReason = error instanceof Error ? error.message : String(error);
+      for (const result of results) {
+        if (result.output_dir) {
+          await persistCleanupFailure(result, resolve(result.output_dir), cleanupReason);
+        }
+      }
+      const batchError = new Error(`Batch context cleanup failed: ${cleanupReason}`);
+      batchError.cause = error;
+      batchError.results = results;
+      throw batchError;
+    }
   }
+  return results;
 }
 
-export async function main(argv) {
+export async function main(argv, dependencies = {}) {
   if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
     console.log(USAGE);
     return 0;
   }
 
+  const openContextForReview = dependencies.openReviewContext || openReviewContext;
+  const closeAttachedContext = dependencies.closeContext || closeContext;
+  const runBatch = dependencies.runReviewBatch || runReviewBatch;
+  const runTransaction = dependencies.runReviewTransaction || runReviewTransaction;
   const options = parseArguments(argv);
-  const prompt = await readFile(options.promptFile, "utf8");
-  if (!prompt.trim()) usageError("Prompt file must not be empty");
+  const reviews = options.batchFile
+    ? await readBatchReviews(options.batchFile)
+    : [{
+      effort: options.effort,
+      model: options.model,
+      prompt: await readFile(options.promptFile, "utf8"),
+      promptFile: options.promptFile,
+    }];
+  if (!options.batchFile && !reviews[0].prompt.trim()) usageError("Prompt file must not be empty");
 
   let result;
   let attached;
 
   try {
-    attached = await openReviewContext(options);
-    result = await runReviewTransaction(attached.context, {
-      effort: options.effort,
-      model: options.model,
-      outputDir: options.outputDir,
-      prompt,
-    });
+    attached = await openContextForReview(options);
+    if (options.batchFile) {
+      result = summarizeBatchResults(await runBatch({
+        attached,
+        outputDir: options.outputDir,
+        reviews,
+      }));
+    } else {
+      result = await runTransaction(attached.context, {
+        effort: options.effort,
+        model: options.model,
+        outputDir: options.outputDir,
+        prompt: reviews[0].prompt,
+      });
+    }
   } catch (error) {
-    result = {
-      ...createResult(options),
-      status: "blocked",
-      failure_stage: "browser",
-      failure_reason: error instanceof Error ? error.message : String(error),
-      output_dir: null,
-    };
+    if (options.batchFile && Array.isArray(error.results)) {
+      const cleanupReason = errorMessage(error.cause || error);
+      result = {
+        ...summarizeBatchResults(error.results),
+        status: "incomplete",
+        failure_stage: "cleanup",
+        failure_reason: cleanupReason,
+        cleanup_status: "failed",
+        cleanup_warning: cleanupReason,
+      };
+    } else {
+      result = {
+        ...createResult(options),
+        status: "blocked",
+        failure_stage: "browser",
+        failure_scope: "shared_context",
+        failure_reason: errorMessage(error),
+        output_dir: null,
+      };
+    }
   } finally {
     try {
-      if (attached) await closeContext(attached);
+      if (attached && !options.batchFile) await closeAttachedContext(attached);
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
       if (!result) {
@@ -323,13 +509,17 @@ export async function main(argv) {
           ...createResult(options),
           status: "incomplete",
           failure_stage: "cleanup",
+          failure_scope: "shared_context",
           failure_reason: cleanupReason,
           output_dir: null,
         };
       } else {
-        result.status = "incomplete";
-        result.failure_stage = "cleanup";
-        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}cleanup failed: ${cleanupReason}`;
+        const priorReason = result.failure_reason;
+        await persistCleanupFailure(
+          result,
+          result.output_dir ? resolve(result.output_dir) : null,
+          `${priorReason || ""}${priorReason ? "; " : ""}cleanup failed: ${cleanupReason}`,
+        );
       }
     }
   }
