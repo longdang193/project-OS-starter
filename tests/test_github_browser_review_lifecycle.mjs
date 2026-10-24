@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -20,7 +20,10 @@ import {
   createResult,
   createRunOutputDirectory,
   parseArguments,
+  readBatchReviews,
   runReviewBatch,
+  runReviewTransaction,
+  summarizeBatchResults,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
 import {
@@ -58,6 +61,65 @@ test("output directory remains optional for controller-allocated review artifact
   assert.equal(parsed.outputDir, "review-output");
 });
 
+test("batch CLI arguments replace single-review arguments", () => {
+  const parsed = parseArguments([
+    "--user-data-dir", "profile",
+    "--batch-file", "reviews.json",
+    "--output-dir", "review-output",
+  ]);
+
+  assert.equal(parsed.batchFile, "reviews.json");
+  assert.equal(parsed.model, undefined);
+  assert.equal(parsed.promptFile, undefined);
+});
+
+test("batch CLI arguments reject mixed single-review options", () => {
+  assert.throws(
+    () => parseArguments([
+      "--user-data-dir", "profile",
+      "--batch-file", "reviews.json",
+      "--model", "GPT-6",
+    ]),
+    /cannot be combined with --batch-file/,
+  );
+});
+
+test("batch manifest resolves prompt files and validates review entries", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-manifest-"));
+  try {
+    await writeFile(join(parent, "sol.md"), "first review\n", "utf8");
+    await writeFile(join(parent, "gpt6.md"), "second review\n", "utf8");
+    const manifestPath = join(parent, "reviews.json");
+    await writeFile(manifestPath, JSON.stringify({
+      reviews: [
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "sol.md" },
+        { model: "GPT-6", effort: "High", prompt_file: "gpt6.md" },
+      ],
+    }), "utf8");
+
+    const reviews = await readBatchReviews(manifestPath);
+
+    assert.deepEqual(reviews, [
+      { model: "GPT-5.6-Sol", effort: "High", promptFile: join(parent, "sol.md"), prompt: "first review\n" },
+      { model: "GPT-6", effort: "High", promptFile: join(parent, "gpt6.md"), prompt: "second review\n" },
+    ]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("batch summary is completed only when every review completes", () => {
+  const summary = summarizeBatchResults([
+    { status: "completed", output_dir: "run-a" },
+    { status: "incomplete", output_dir: "run-b" },
+  ]);
+
+  assert.equal(summary.status, "incomplete");
+  assert.equal(summary.review_count, 2);
+  assert.equal(summary.completed_count, 1);
+  assert.equal(summary.failed_count, 1);
+});
+
 test("runner contract uses completed as its successful terminal state", async () => {
   const runner = await readFile(
     new URL("../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs", import.meta.url),
@@ -76,7 +138,8 @@ test("review transaction uses the caller-owned context instead of launching anot
   );
   const transaction = runner.slice(runner.indexOf("export async function runReviewTransaction"), runner.indexOf("export async function runReviewBatch"));
 
-  assert.match(transaction, /runReviewPromptInNewTab\(context/);
+  assert.match(transaction, /runPrompt\(context/);
+  assert.match(transaction, /dependencies\.runReviewPromptInNewTab \|\| runReviewPromptInNewTab/);
   assert.match(transaction, /prompt: options\.prompt/);
   assert.doesNotMatch(transaction, /loadPlaywright\(\)/);
   assert.doesNotMatch(transaction, /openContext\(/);
@@ -532,9 +595,210 @@ test("result records the requested and observed lifecycle state", () => {
     assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
+    cleanup_status: "not_started",
+    cleanup_warning: null,
     failure_stage: null,
     failure_reason: null,
   });
+});
+
+test("completion observer failure preserves acknowledged submission and records completion stage", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-observer-failure-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: { async close() {} },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => {
+          throw new Error("completion observer failed");
+        },
+      },
+    });
+
+    const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.failure_stage, "completion");
+    assert.equal(result.submission, "acknowledged");
+    assert.equal(result.cleanup_status, "completed");
+    assert.equal(persisted.submission, "acknowledged");
+    assert.equal(persisted.failure_stage, "completion");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("selection failure is not reported as submission ambiguity", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-selection-failure-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async () => {
+          throw new Error("model selection failed");
+        },
+      },
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.failure_stage, "selection");
+    assert.equal(result.submission, "not_started");
+    assert.equal(result.cleanup_status, "not_needed");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("unacknowledged submission remains ambiguous at the submission stage", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-submission-failure-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          throw new Error("prompt acknowledgement failed");
+        },
+      },
+    });
+
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.failure_stage, "submission");
+    assert.equal(result.submission, "ambiguous");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("pre-submit checkpoint failure is classified as an artifact failure", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-pre-submit-artifact-failure-"));
+  let writeCount = 0;
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          throw new Error("send should not run");
+        },
+        writeResult: async (outputDir, value) => {
+          writeCount += 1;
+          if (writeCount === 2) throw new Error("checkpoint write failed");
+          await writeResult(outputDir, value);
+        },
+      },
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.failure_stage, "artifacts");
+    assert.equal(result.submission, "attempted");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("response artifact failure is classified separately after acknowledged submission", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-artifact-failure-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: { async close() {} },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => ({
+          currentUrl: "https://chatgpt.com/c/review",
+          response: "response",
+          status: "confirmed",
+        }),
+        writeResponse: async () => {
+          throw new Error("response write failed");
+        },
+      },
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.failure_stage, "artifacts");
+    assert.equal(result.submission, "acknowledged");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("cleanup failure preserves completed review and records a cleanup warning", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-cleanup-failure-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: {
+              async close() {
+                throw new Error("page close failed");
+              },
+            },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => ({
+          assistantMessageId: "assistant-1",
+          assistantTurnIndex: 1,
+          conversationId: "review",
+          currentUrl: "https://chatgpt.com/c/review",
+          response: "response",
+          status: "confirmed",
+        }),
+      },
+    });
+
+    const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
+    assert.equal(result.status, "completed");
+    assert.equal(result.cleanup_status, "failed");
+    assert.equal(result.cleanup_warning, "page close failed");
+    assert.equal(persisted.status, "completed");
+    assert.equal(persisted.cleanup_status, "failed");
+    assert.equal(persisted.cleanup_warning, "page close failed");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("result and response writes are atomic and preserve final evidence", async () => {
@@ -641,4 +905,27 @@ test("review batch reuses one context, isolates runs, and closes the context onc
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
+});
+
+test("batch context cleanup failure retains completed review results", async () => {
+  const context = {
+    async close() {
+      throw new Error("context close failed");
+    },
+  };
+  const attached = { context, ownsContext: true };
+
+  await assert.rejects(
+    () => runReviewBatch({
+      attached,
+      outputDir: "review-output",
+      reviews: [{ model: "GPT-6", effort: "High", prompt: "review" }],
+      runTransaction: async () => ({ status: "completed", output_dir: "run-a" }),
+    }),
+    (error) => {
+      assert.equal(error.message, "Batch context cleanup failed: context close failed");
+      assert.deepEqual(error.results, [{ status: "completed", output_dir: "run-a" }]);
+      return true;
+    },
+  );
 });
