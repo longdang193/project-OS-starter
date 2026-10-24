@@ -192,13 +192,10 @@ export async function runReviewTransaction(context, options) {
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
     await writeResult(outputDir, result);
 
-    const chromium = await loadPlaywright();
-    attached = await openContext(chromium, options);
-
-    const review = await runReviewPromptInNewTab(attached.context, {
+    const review = await runReviewPromptInNewTab(context, {
       effort: options.effort,
       model: options.model,
-      prompt,
+      prompt: options.prompt,
       beforeSubmit: async () => {
         result.submission_attempted = true;
         result.submission = "attempted";

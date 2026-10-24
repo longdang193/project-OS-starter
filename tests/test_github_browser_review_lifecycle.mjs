@@ -68,6 +68,19 @@ test("runner contract uses completed as its successful terminal state", async ()
   assert.doesNotMatch(runner, /result\.status = "verified"/);
 });
 
+test("review transaction uses the caller-owned context instead of launching another browser", async () => {
+  const runner = await readFile(
+    new URL("../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs", import.meta.url),
+    "utf8",
+  );
+  const transaction = runner.slice(runner.indexOf("export async function runReviewTransaction"), runner.indexOf("export async function runReviewBatch"));
+
+  assert.match(transaction, /runReviewPromptInNewTab\(context/);
+  assert.match(transaction, /prompt: options\.prompt/);
+  assert.doesNotMatch(transaction, /loadPlaywright\(\)/);
+  assert.doesNotMatch(transaction, /openContext\(/);
+});
+
 test("model selection keeps the simple picker view when model radios are visible", async () => {
   let modelControlClicked = false;
   const menu = {
