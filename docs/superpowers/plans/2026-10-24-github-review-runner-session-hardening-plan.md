@@ -7,9 +7,12 @@ layer: change
 name: github-review-runner-session-hardening
 targets:
   - .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs
+  - .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs
   - .agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs
-  - tests/test_github_browser_review_lifecycle.mjs
   - .agents/skills/skill-github-browser-reviews/SKILL.md
+  - tests/test_github_browser_review_lifecycle.mjs
+  - tests/test_github_browser_review_runner.py
+  - tests/test_github_browser_reviews.py
   - generated_agents
   - docs/superpowers/plans/2026-10-24-github-review-runner-session-hardening-plan.md
 ---
@@ -18,379 +21,456 @@ targets:
 
 ## Goal
 
-Harden the GitHub browser-review runner around failure classification, persistent
-profile recovery, and repeated effort selection while preserving the existing
-single authenticated context, sequential fresh-tab isolation, no-model-fallback,
-single-submission, and cleanup ownership contracts.
+Harden the repository-owned GitHub browser-review runner around failure
+classification, persistent-profile ownership, visible completion evidence,
+artifact settlement, and repeated selector work while preserving the existing
+single authenticated context, sequential fresh-tab isolation, single
+submission, no model substitution, and one cleanup owner per run.
 
-This plan contains only findings validated by source inspection, focused tests,
-and the completed GPT-5.6-Sol High and GPT-6 High GitHub browser reviews of
-commit `e616fe8ab447452c83019d5539eb0ef77f762066`.
-
-## Review Basis
-
-- Repository: `longdang193/project-OS-starter`
-- Reviewed revision: `e616fe8ab447452c83019d5539eb0ef77f762066`
-- Base containing the merged revision: `origin/main` at `d5071a3f0bd63aba5c3b43befde103c85fb88d32`
-- GPT-5.6-Sol High: verified the pinned revision and identified stale profile-lease recovery, broad selection-failure scope, and unchanged-effort selector churn as actionable findings.
-- GPT-6 High: verified the pinned revision and confirmed the broad selection-failure classification; it rejected the exact VM-internal cause and external adapter capability as unproven claims.
-- Local evidence: `run-review-prompt-cli.mjs:190-213`, `run-review-prompt-cli.mjs:296-300`, `run-review-prompt-cli.mjs:445-459`, `select-review-model.mjs:114-153`, and lifecycle tests covering selection failure, batch stopping, and profile exclusivity.
-
-## Validated Findings And Disposition
-
-### P2: Selection failures are overclassified as shared-context failures
-
-`classifyFailureScope()` maps every transaction failure at the `selection` stage
-to `shared_context`. `runReviewBatch()` stops all later manifest entries when it
-sees that scope. A page-local selector failure or a model-specific unavailability
-therefore terminates the shared context even when the authenticated context is
-still usable. Existing tests prove the stop behavior but do not distinguish
-page-local, model-specific, and context-invalid failures.
-
-Disposition: implement a narrow failure taxonomy and continue only when the
-failure is explicitly page/review-scoped or model-scoped. Unknown selection
-failures remain fail-closed as `shared_context` until a health check proves the
-context can safely continue. Never retry or substitute the failed review.
-
-### P2: Persistent profile leases can remain stranded after abnormal termination
-
-`acquireProfileLease()` creates a sidecar lock with `open(lockPath, "wx")` and
-writes only PID/profile metadata. `releaseProfileLease()` removes it only on
-normal cleanup. A crash, forced termination, or machine interruption can leave a
-lock that blocks future reuse indefinitely; the current test covers concurrent
-exclusion and normal release only.
-
-Disposition: add conservative, explicit stale-lease recovery. Recovery must
-fail closed when ownership is ambiguous, must verify the recorded owner is no
-longer running using a platform-supported identity/liveness probe, must avoid
-deleting a replacement owner's lock, and must preserve normal exclusive
-acquisition. Do not add an unconditional age-based deletion path.
-
-### P3: Unchanged effort still incurs selector and focus work
-
-`setEffort()` reads the current effort, then builds and probes multiple locator
-candidates and focuses a control before calculating that the requested effort
-delta is zero. Sequential reviews using the same effort repeat this work without
-any keypress being needed.
-
-Disposition: return immediately after `readEffort()` when the current effort
-already equals the requested effort. Keep `verifySelection()` unchanged so the
-visible final state remains authoritative.
-
-### Explicitly deferred or rejected claims
-
-- The exact `importModuleDynamically` VM cause is not a repository-established
-  defect. The maintained skill already documents that `browser_run_code_unsafe`
-  is not the supported ESM runner and directs callers to the Node entry point.
-- The claim that a particular external adapter cannot expose an authenticated
-  context is not proven by the repository. The helper contract requires a
-  `Page` for page-level operations and a `BrowserContext` only for
-  `runReviewPromptInNewTab()`; adapter capability must be reported at the
-  boundary, not guessed in core helpers.
-- Context reuse and fresh-tab isolation are already implemented and tested. Do
-  not add another browser lifecycle owner or replace fresh tabs with one page
-  without measured latency and contamination evidence.
-- No automatic model fallback is present or authorized. A visibly confirmed
-  model-specific lockout remains blocked; an intercepted click or selector
-  timeout must retain its actual failure classification.
+The plan contains only findings validated against commit
+`b0a9473e9a7f7071e33b8d4ed3775986bd9aec68` by source inspection and two
+completed read-only browser reviews. It does not add a second browser lifecycle
+owner or replace fresh-tab isolation with same-page reuse.
 
 ## Implementation Outcomes
 
-### Precise batch failure settlement
+### Truthful lifecycle and batch settlement
 
-Review results distinguish model-specific unavailability, page/review-scoped
-selection failures, and proven shared-context failures. The batch continues only
-after an explicitly non-shared failure and stops fail-closed for unknown or
-context-invalid selection failures. The failed review is never resubmitted and
-the requested model is never silently replaced.
+Selection, artifact, cleanup, and completion failures have distinct, durable
+scopes. Batch execution continues only after an explicitly review-local failure,
+stops on shared-context or shared-artifact failure, and reports requested,
+attempted, completed, failed, and skipped entries without silently dropping
+unattempted work.
 
-### Recoverable persistent-profile ownership
+### Safe authenticated-profile reuse
 
-Normal lease exclusivity remains unchanged. An operator can inspect and recover
-a lease left by an owner proven to be gone, while ambiguous, live, malformed, or
-race-losing lease state remains protected. Lease cleanup is token/identity-safe
-and covered on Windows and Linux-compatible paths.
+Persistent profile leases recover only when the recorded owner is provably dead
+and the lock can be reclaimed without deleting a replacement owner's lease.
+Active or ambiguous ownership remains fail-closed. Normal cleanup preserves the
+same exclusive-ownership contract.
 
-### Lower-overhead repeated model selection
+### Bounded visible completion and cleanup evidence
 
-Repeated reviews at the already-selected effort avoid locator discovery and
-focus work while retaining visible-state verification for model and effort.
+A completed review is accepted from stable visible assistant-turn identity and
+text, stopped generation, composer readiness, conversation identity, and
+interruption absence. Optional response-action controls do not hold a run open
+for the full timeout. Final context-cleanup failures are persisted in the
+same result artifact that the CLI reports.
 
-### Canonical and generated surfaces remain synchronized
+### Lower-overhead selector path
 
-Canonical scripts, tests, skill documentation, and generated adapter mirrors are
-updated through the repository-owned sync path. No browser-runner workaround,
-new context owner, or alternate model-selection strategy is introduced.
+Already-correct effort settings avoid locator discovery and focus work. Menu
+close behavior uses one bounded hidden-state wait, while final model and effort
+verification remains mandatory.
+
+### Maintained-surface parity and regression proof
+
+Canonical skill documentation, generated adapters, lifecycle tests, Python
+runner tests, and repository contract checks describe and prove the same
+behavior without adding a new orchestration or retry layer.
+
+## Validation Consolidation
+
+- Repository: `longdang193/project-OS-starter`.
+- Reviewed revision: `b0a9473e9a7f7071e33b8d4ed3775986bd9aec68`.
+- Remote evidence: local `HEAD`, `origin/main`, and `git ls-remote origin refs/heads/main` resolved to the same SHA before both reviews.
+- GPT-6 High evidence: `.runtime/gpt6-live-probe/output/run-dHVsv2/result.json` and `response.md`; model and effort were visibly verified, one submission was acknowledged, completion was confirmed, and cleanup completed.
+- GPT-5.6-Sol High evidence: `.runtime/gpt5-6-sol-live-probe/output/run-yU6JMQ/result.json` and `response.md`; model and effort were visibly verified, one submission was acknowledged, completion was confirmed, and cleanup completed.
+- Both reviews confirmed the need to preserve one authenticated context with sequential fresh tabs. Neither review found a defect that reopens the whole browser between entries of a supported batch.
+- Confirmed findings are listed below only when the cited control flow exists in the pinned source. Performance effects remain reasoned risks unless a task adds an identical before/after measurement.
+
+### P1: Persistent profile leases can strand ownership after abnormal termination
+
+Evidence: `run-review-prompt-cli.mjs:190-206` creates a sidecar lease with
+`open(lockPath, "wx")`, records a PID, and treats every `EEXIST` as active
+ownership. `:209-213` removes the lease only during normal release.
+
+Validated impact: a crash, forced termination, or machine interruption can
+leave future `--user-data-dir` runs blocked indefinitely. `closeContext()` also
+releases the lease after a context-close error at `:263-292`, so uncertain
+teardown can weaken the ownership guarantee.
+
+Disposition: implement conservative owner-liveness and race-safe stale-lease
+recovery; never reclaim by age alone and never reclaim ambiguous ownership.
+
+### P1: Review-local selection failures abort otherwise healthy batches
+
+Evidence: `run-review-prompt-cli.mjs:296-300` maps every selection-stage error
+to `shared_context`, and `runReviewBatch()` stops on that value at `:445-459`.
+`run-review-prompt.mjs:48-55` immediately checks menu visibility after
+`Escape`, so a close animation can turn a page-local selector condition into a
+shared-context stop.
+
+Validated impact: a transient model-menu or page-local failure can tear down a
+usable context and prevent later authorized reviews from running.
+
+Disposition: classify review-local selection failures separately from proven
+context loss; retain fail-closed handling for unknown failures and add one
+bounded hidden-state wait after `Escape`.
+
+### P2: Completion requires an optional response-action control
+
+Evidence: `run-review-prompt.mjs:114-133` recognizes only `Regenerate response`
+or `Rate response`; `evaluateReviewCompletion()` requires that signal at
+`:136-155`, while the observer can wait 900 seconds at `:194-243`.
+
+Validated impact: UI label or surface drift can leave stronger completion
+signals satisfied while the runner consumes the full timeout and returns
+`incomplete`, multiplying latency and browser-resource use in sequential runs.
+
+Disposition: make stable new-turn identity/text, stopped generation, composer
+readiness, conversation identity, and interruption absence primary completion
+evidence. Keep response actions as optional corroboration or a short bounded
+grace, not a 15-minute gate.
+
+### P2: Input and batch preflight errors bypass the structured result contract
+
+Evidence: `run-review-prompt-cli.mjs:497-506` parses the prompt or batch file
+before the structured `try` at `:511`; module-level handling at `:576-582`
+prints only a plain error.
+
+Validated impact: controllers need two failure protocols and may misclassify a
+missing prompt, malformed manifest, or unreadable file as a process failure.
+
+Disposition: keep validation before browser launch but route it through the
+same structured `blocked` result contract and preserve the exact failure stage.
+
+### P2: Shared artifact failures can allow wasted later submissions
+
+Evidence: artifact failures are assigned no scope by
+`classifyFailureScope()` at `run-review-prompt-cli.mjs:296-300`, while the batch
+loop stops only for `shared_context` at `:452-459`. Artifact persistence occurs
+in `:401-415`.
+
+Validated impact: a persistent shared output failure can cause later entries to
+perform setup or submit prompts even though their evidence cannot be preserved.
+
+Disposition: classify failures in the shared output root as
+`shared_artifacts`, stop later entries, preserve already-written evidence, and
+never retry a submitted review. Keep per-review evidence failures explicit
+rather than silently treating them as success.
+
+### P2: Final single-review context cleanup can disagree with result.json
+
+Evidence: `run-review-prompt-cli.mjs:548-568` mutates the in-memory result after
+`closeContext()` fails, but the result artifact was last persisted inside the
+transaction before that final context cleanup.
+
+Validated impact: stdout can report `incomplete` while `result.json` still says
+`completed`, allowing automated consumers to accept a run the CLI rejected.
+
+Disposition: persist the final cleanup state through the existing atomic writer
+before returning the terminal result; add a regression assertion that stdout and
+`result.json` agree.
+
+### P3: Same-effort selection performs unnecessary UI work
+
+Evidence: `select-review-model.mjs:114-154` reads the current effort, probes
+multiple controls, focuses one, and only then calculates the delta.
+
+Validated impact: repeated High-effort reviews incur avoidable DOM lookup,
+hit-testing, and focus work, increasing selector failure opportunities.
+
+Disposition: return immediately when the requested effort equals the visible
+current effort, then retain independent final verification.
+
+### P3: Early batch termination omits skipped entries from the summary
+
+Evidence: `summarizeBatchResults()` counts only returned results at
+`run-review-prompt-cli.mjs:175-184`; a stop at `:452-459` leaves later manifest
+entries absent.
+
+Validated impact: operators cannot distinguish a one-review attempt from a
+completed multi-review request, complicating accounting and recovery decisions.
+
+Disposition: preserve manifest total and report `requested_count`,
+`attempted_count`, `completed_count`, `failed_count`, and `skipped_count`.
+
+### Deferred or rejected claims
+
+- Do not encode the exact `importModuleDynamically` VM failure as a repository
+  defect; the maintained skill already defines the Node ESM runner boundary.
+- Do not add adapter-specific context discovery or a second browser lifecycle
+  owner without new boundary evidence.
+- Do not replace fresh review tabs with same-page reuse without comparable
+  latency, memory, and contamination measurements.
+- Do not add automatic retries, model substitution, age-only lease deletion, or
+  a general keep-open flag.
+- The selector recovery branching in `select-review-model.mjs:37-68` and
+  `:174-198` is retained as a lower-priority maintainability risk. It is not a
+  confirmed functional defect in this plan; simplify it only if focused tests
+  can preserve visible selection behavior without adding another recovery
+  owner.
 
 ## Execution Approach
 
 - Mode: `inline sequential`
 - Coordination: `git-tracked`
-- Required skills: `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-verification-before-completion`
-- Isolation: `optional worktree` from `origin/main`
+- Required skills: `skill-executing-plans`, `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-verification-before-completion`
+- Isolation: `current workspace`
 - Commit policy: `no commits during execution`
-- Preauthorized local actions: edit declared runner, selector, tests, documentation, generated projections, and this plan; run declared repository-local tests, sync, and validation checks; preserve unrelated artifacts
-- User-approval actions: push, merge, publication, destructive recovery, discard, cleanup, or changing the base revision
-- Parallel ownership: none; shared result classification and lease semantics require one sequential owner
-- Sequential fallback: complete Tasks 1–3 in order, synchronize generated surfaces, then run Task 4 final verification
+- Preauthorized local actions: edit declared canonical files, update tests and documentation, run declared local checks, run generated-surface synchronization, and preserve existing untracked probe artifacts
+- User-approval actions: commit, push, PR, merge, branch/worktree deletion, and cleanup of preserved probe artifacts
+- Parallel ownership: `none; tasks share the CLI lifecycle contract`
+- Sequential fallback: complete Tasks 1–4 in order, then run Task 5 final verification
 
 ## Coordination State
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `codex/github-review-runner-session-hardening`
-- Base commit: `d5071a3f0bd63aba5c3b43befde103c85fb88d32`
-- Expected workspace: clean implementation worktree from `origin/main`; unrelated probe artifacts remain preserved outside the implementation worktree
-- Next action: resolve the implementation executor and activate Task 1 after plan approval
-- Blockers: `none`; adapter-specific runtime capability remains an explicit external boundary, not an implementation blocker
+- Branch: `main`
+- Base commit: `b0a9473e9a7f7071e33b8d4ed3775986bd9aec68`
+- Expected workspace: tracked plan update plus preserved untracked probe artifacts; do not stage or delete unrelated artifacts
+- Next action: await explicit implementation approval, then begin Task 1
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | implementation worktree | `unresolved` | none | focused failure-scope tests | pending |
-| Task 2 | `pending` | implementation worktree | `unresolved` | Task 1 | lease recovery and race-safety tests | pending |
-| Task 3 | `pending` | implementation worktree | `unresolved` | Task 1 | unchanged-effort selector regression | pending |
-| Task 4 | `pending` | implementation worktree | `unresolved` | Tasks 1–3 | full repository, sync, and generated-surface validation | pending |
+| Task 1 | `pending` | current | `unresolved` | none | focused lifecycle tests | pending |
+| Task 2 | `pending` | current | `unresolved` | Task 1 | lease ownership tests | pending |
+| Task 3 | `pending` | current | `unresolved` | Task 1 | completion/artifact/cleanup tests | pending |
+| Task 4 | `pending` | current | `unresolved` | Task 1 | selector and effort tests | pending |
+| Task 5 | `pending` | current | `unresolved` | Tasks 1–4 | full repository checks | pending |
 
 ## Task Breakdown
 
-### Task 1: Refine selection failure scope
+### Task 1: Make failure scopes and batch summaries truthful
 
 **Purpose:**
-- Prevent a page-local or explicitly model-scoped selection failure from being
-  misreported as a broken shared browser context while preserving fail-closed
-  behavior for unknown failures.
+- Prevent page-local or model-local selection failures from masquerading as
+  authenticated-context loss while stopping on proven shared infrastructure
+  failures.
+- Report every requested batch entry, including entries that were not attempted.
 
 **Task Function:**
-- Trace and implement the transaction-to-batch failure classification boundary.
+- Define and test the runner's stage and batch settlement contract.
 
 **Template Profile:**
 - Controller-selected: `none (lead controller)`
-- Selection basis: bounded JavaScript control-flow change with shared batch
-  semantics and existing lifecycle tests.
+- Selection basis: bounded lifecycle change with direct source and focused-test evidence.
 
 **Validator Profile:**
 - Controller-selected: `none`
-- Selection basis: focused lifecycle tests plus final controller verification.
+- Selection basis: focused lifecycle assertions and final repository checks.
 
 **Specification Coverage:**
-- Preserve single submission, no retry, no model substitution, and shared
-  context cleanup.
-- Continue the batch only for explicit non-shared failures with sufficient
-  evidence that the context remains usable.
-- Keep unknown selection failures fail-closed.
+- P1 selection classification; P2 shared artifact settlement; P3 skipped-entry
+  reporting; no retries or model substitution.
 
 **Required Skills:**
-- `skill-systematic-debugging`, `skill-test-driven-development`,
-  `skill-backend-verification`, `skill-code-standards`
+- `skill-systematic-debugging`, `skill-test-driven-development`, `skill-code-standards`
 
 **Files And Symbols:**
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:runReviewTransaction`, `classifyFailureScope`, `runReviewBatch`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`
-- Verify: `tests/test_github_browser_review_lifecycle.mjs`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:classifyFailureScope`, `runReviewTransaction`, `runReviewBatch`, `summarizeBatchResults`
+- Modify: the same CLI symbols and their result-schema fields
+- Verify: `tests/test_github_browser_review_lifecycle.mjs`, `tests/test_github_browser_review_runner.py`
 
 **Dependencies:**
-- Existing result schema and submission-stage ambiguity behavior remain
-  authoritative.
+- Current pinned source and the validation consolidation above.
 
 **Authority:**
-- Preauthorized local actions: edit the runner and focused lifecycle tests,
-  then run declared local checks
-- Stop for: a changed result contract outside this plan, uncertain context
-  health semantics, external browser capability work, or base-revision change
+- Preauthorized local actions: edit the CLI and focused tests; run Node and Python focused checks
+- Stop for: unresolved ownership of result fields, a required public-contract change not covered by tests, or any external Git action
 
 **Steps:**
-- [ ] Step 1: Add explicit error metadata or typed classification for model
-  unavailability, known page-local selector failure, proven context failure,
-  and unknown selection failure.
-- [ ] Step 2: Map only proven context failures to `shared_context`; keep
-  model/page failures review-scoped and preserve blocked status without retry.
-- [ ] Step 3: Make `runReviewBatch()` continue only after a review-scoped
-  failure and stop on shared/unknown failures.
-- [ ] Step 4: Add tests for model-specific lockout, page-local selection
-  failure, unknown selection failure, and context failure, including attempted
-  review order and one-time context cleanup.
+- [ ] Step 1: Add explicit failure scopes for review-local selection, shared context, and shared artifacts; keep unknown failures fail-closed.
+- [ ] Step 2: Stop the batch on shared-context/shared-artifact failure, continue only after explicit review-local failure, and preserve submission acknowledgment without retrying.
+- [ ] Step 3: Extend batch summaries with requested, attempted, completed, failed, and skipped counts while preserving existing terminal status semantics.
+- [ ] Step 4: Add focused tests for page-local selection continuation, shared failure stop, artifact failure stop, and skipped-entry accounting.
 
 **Verification:**
 - [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
-- Expected: the failed entry is never resubmitted; page/model-scoped failures
-  do not terminate later authorized entries; unknown/context failures stop the
-  batch; no fallback model is selected.
+- Expected: all new scope and summary assertions pass; no failed review is resubmitted.
 
 **Exit Criteria:**
-- Failure scope matches evidence, and existing submission and cleanup
-  invariants remain green.
+- Batch control flow and summaries identify the true failure boundary and every unattempted entry.
 
-### Task 2: Add conservative persistent-profile lease recovery
+### Task 2: Harden persistent profile lease ownership
 
 **Purpose:**
-- Prevent abnormal termination from permanently blocking authenticated profile
-  reuse without weakening exclusive ownership.
+- Recover only demonstrably stale profile leases while preserving exclusive
+  ownership for active or ambiguous owners.
 
 **Task Function:**
-- Design and test safe lease inspection, recovery, and token-preserving release.
+- Implement and test conservative lease liveness and race handling.
 
 **Template Profile:**
 - Controller-selected: `none (lead controller)`
-- Selection basis: cross-platform lifecycle and race-safety change requiring
-  careful failure handling.
+- Selection basis: cross-platform ownership and abnormal-termination risk require careful source-first reasoning.
 
 **Validator Profile:**
 - Controller-selected: `none`
-- Selection basis: focused Node tests on the supported Windows and Linux
-  execution paths plus repository verification.
+- Selection basis: deterministic active/stale/malformed/race test matrix.
 
 **Specification Coverage:**
-- Preserve fail-closed behavior for live or ambiguous owners.
-- Recover only a lease whose owner is proven gone and whose identity has not
-  changed during the recovery race.
-- Keep normal acquire/release and concurrent exclusion behavior unchanged.
+- P1 stale lease recovery; no age-only deletion; no replacement-owner deletion.
 
 **Required Skills:**
-- `skill-systematic-debugging`, `skill-test-driven-development`,
-  `skill-backend-verification`, `skill-code-standards`
+- `skill-systematic-debugging`, `skill-test-driven-development`, `skill-code-standards`
 
 **Files And Symbols:**
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:acquireProfileLease`, `releaseProfileLease`, `openContext`, `closeContext`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:acquireProfileLease`, `releaseProfileLease`, `closeContext`
+- Modify: the same lease and cleanup symbols
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
-- Document: `.agents/skills/skill-github-browser-reviews/SKILL.md` only if the
-  recovery command or operator contract changes
 
 **Dependencies:**
-- Task 1 is complete; lease recovery must not alter batch failure settlement.
+- Task 1 result schema and cleanup scope remain stable.
 
 **Authority:**
-- Preauthorized local actions: edit lease ownership code and focused tests,
-  and run local lifecycle/contract checks
-- Stop for: inability to prove owner liveness portably, unsafe PID-reuse
-  handling, new runtime dependency, or destructive automatic deletion design
+- Preauthorized local actions: edit lease code and lifecycle tests; run platform-supported local process-liveness checks
+- Stop for: ambiguous owner identity, platform behavior that cannot be proven on supported runners, or destructive lock removal
 
 **Steps:**
-- [ ] Step 1: Extend lease metadata with an owner identity/token and enough
-  evidence for a conservative liveness check.
-- [ ] Step 2: Add an explicit recovery path that refuses malformed, live, or
-  ambiguous locks and atomically quarantines/removes only a verified stale
-  owner before retrying exclusive creation.
-- [ ] Step 3: Make release delete only the current owner’s lease, so a delayed
-  cleanup cannot remove a replacement owner’s lock.
-- [ ] Step 4: Add tests for live-owner exclusion, abnormal/stale-owner
-  recovery, malformed metadata, PID reuse/ambiguous ownership, race loss, and
-  normal release.
+- [ ] Step 1: Read and validate existing lease metadata when `EEXIST` occurs, including PID/profile identity and malformed-data handling.
+- [ ] Step 2: Prove the owner is no longer running before attempting reclaim; preserve the lock when liveness is unknown.
+- [ ] Step 3: Reclaim through an atomic race-safe operation that cannot delete a replacement lease; retain ownership when context teardown is uncertain.
+- [ ] Step 4: Add tests for active owner, stale owner, malformed metadata, ambiguous liveness, reclaim race, normal release, and failed context close.
 
 **Verification:**
 - [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
-- Expected: active owners remain protected; stale leases can be recovered only
-  through the explicit safe path; ambiguous state remains blocked; release is
-  idempotent and token-safe.
+- Expected: active and ambiguous leases fail closed; only proven stale leases are reclaimed.
 
 **Exit Criteria:**
-- A crash no longer creates an indefinite deadlock when safe recovery evidence
-  exists, and no recovery path can delete another active owner’s lease.
+- Abnormal termination no longer permanently poisons a reusable profile, and active ownership remains exclusive.
 
-### Task 3: Short-circuit unchanged effort selection
+### Task 3: Make completion, artifact, input, and cleanup evidence consistent
 
 **Purpose:**
-- Remove repeated locator discovery and focus work when the visible effort is
-  already the requested effort.
+- Avoid 15-minute false incompletes and ensure structured artifacts agree with
+  the CLI's terminal status across preflight, persistence, and final cleanup.
 
 **Task Function:**
-- Apply the smallest selector optimization while preserving visible-state
-  verification.
+- Align visible completion predicates and durable result settlement.
 
 **Template Profile:**
 - Controller-selected: `none (lead controller)`
-- Selection basis: small, low-risk JavaScript change with direct regression
-  coverage.
+- Selection basis: browser-visible state and durable evidence are tightly coupled and require focused regression proof.
 
 **Validator Profile:**
 - Controller-selected: `none`
-- Selection basis: focused selector tests and final suite.
+- Selection basis: direct state-machine tests and artifact assertions.
 
 **Specification Coverage:**
-- Keep `readEffort()` and `verifySelection()` authoritative.
-- Preserve keyboard ArrowLeft/ArrowRight behavior for nonzero deltas.
+- P2 completion gate; P2 structured preflight; P2 shared artifact handling; P2 final cleanup persistence.
+
+**Required Skills:**
+- `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
+
+**Files And Symbols:**
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:evaluateReviewCompletion`, `waitForReviewCompletion`; `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:main`, `runReviewTransaction`
+- Modify: completion predicate, bounded observer, structured preflight error path, artifact settlement, and final cleanup persistence
+- Verify: `tests/test_github_browser_review_lifecycle.mjs`, `tests/test_github_browser_review_runner.py`, `tests/test_github_browser_reviews.py`
+
+**Dependencies:**
+- Task 1 failure scopes must be available for artifact and cleanup settlement.
+
+**Authority:**
+- Preauthorized local actions: edit canonical runner/helper code and focused tests; run local contract checks
+- Stop for: a completion rule that accepts text without visible stopped/composer/context evidence, or a result artifact that cannot be written atomically
+
+**Steps:**
+- [ ] Step 1: Remove mandatory dependence on response-action controls while retaining stopped generation, composer readiness, conversation identity, new assistant turn, stable text, and interruption checks.
+- [ ] Step 2: Move prompt/batch file loading and validation inside the structured result boundary without opening a browser for invalid input.
+- [ ] Step 3: Persist final single-review context-cleanup failures through the existing atomic writer and keep artifact-stage failures fail-closed.
+- [ ] Step 4: Add tests for changed response-action labels, bounded completion, missing prompt, malformed batch, shared artifact failure, and cleanup/result agreement.
+
+**Verification:**
+- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [ ] `python -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- Expected: terminal status, stdout, and saved artifacts agree; completion does not wait on optional controls indefinitely.
+
+**Exit Criteria:**
+- Every preflight, completion, artifact, and cleanup outcome has one structured, durable interpretation.
+
+### Task 4: Reduce selector overhead without weakening visible verification
+
+**Purpose:**
+- Eliminate repeated same-effort locator/focus work and make menu-close timing
+  resilient without introducing another browser lifecycle or retry owner.
+
+**Task Function:**
+- Simplify bounded selector transitions and preserve final visible state proof.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: narrow UI-helper change with measurable DOM-operation regression proof.
+
+**Validator Profile:**
+- Controller-selected: `none`
+- Selection basis: focused helper and lifecycle assertions.
+
+**Specification Coverage:**
+- P3 unchanged-effort overhead; P1 menu-close contribution to selection failure;
+  model/effort verification remains mandatory.
 
 **Required Skills:**
 - `skill-test-driven-development`, `skill-code-standards`
 
 **Files And Symbols:**
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs:setEffort`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs:setEffort`, `selectReviewModel`; `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:closeModelMenu`
+- Modify: same-effort short circuit and bounded menu-close wait only
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
 
 **Dependencies:**
-- Tasks 1–2 are not behaviorally required, but execution remains sequential
-  to keep the shared test surface single-owner.
+- Task 1 selection scope and Task 3 completion contracts remain stable.
 
 **Authority:**
-- Preauthorized local actions: edit the selector and focused tests, then run
-  the selector suite
-- Stop for: a changed effort-control contract or evidence that the visible
-  effort can change asynchronously after `readEffort()`
+- Preauthorized local actions: edit selector helpers and focused tests; run local browser-helper simulations
+- Stop for: any change that weakens visible model/effort verification or requires indefinite reopen/retry behavior
 
 **Steps:**
-- [ ] Step 1: Add a failing test where the requested effort equals the visible
-  current effort and control lookup/focus would fail if attempted.
-- [ ] Step 2: Return before control discovery when the effort delta is zero.
-- [ ] Step 3: Retain and test nonzero keyboard adjustments and final visible
-  verification.
+- [ ] Step 1: Return from `setEffort()` immediately when the visible effort already equals the requested effort.
+- [ ] Step 2: Wait up to the existing bounded timeout for the model menu to become hidden after `Escape`.
+- [ ] Step 3: Preserve one bounded recovery transition and final `verifySelection()`; do not add general retries or page reuse.
+- [ ] Step 4: Add assertions for zero focus/key operations on unchanged effort, nonzero adjustment on changed effort, hidden-menu timing, and visible final verification.
 
 **Verification:**
 - [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
-- Expected: unchanged effort performs no keypress or control focus; changed
-  effort still adjusts and verifies correctly.
+- Expected: unchanged effort performs no adjustment work; menu close tolerates its bounded animation; final selection remains visible and authoritative.
 
 **Exit Criteria:**
-- Repeated same-effort selections avoid unnecessary UI work without reducing
-  visible confirmation.
+- Repeated High-effort reviews avoid unnecessary selector work without changing the one-context/fresh-tab lifecycle.
 
-### Task 4: Synchronize maintained surfaces and complete verification
+### Task 5: Reconcile maintained surfaces and complete final verification
 
 **Purpose:**
-- Ensure the canonical change, generated adapters, documentation, and final
-  repository contracts remain aligned.
+- Keep the canonical skill, generated adapters, tests, and repository contracts
+  aligned with the implemented lifecycle contract.
 
 **Task Function:**
-- Reconcile generated surfaces and run fresh acceptance proof.
+- Synchronize maintained projections and produce fresh acceptance evidence.
 
 **Template Profile:**
 - Controller-selected: `none (lead controller)`
-- Selection basis: deterministic repository synchronization and verification.
+- Selection basis: deterministic generated-surface and repository verification.
 
 **Validator Profile:**
 - Controller-selected: `none`
 - Selection basis: independent final command results and clean Git evidence.
 
 **Specification Coverage:**
-- Generated adapters are projections of canonical sources.
-- No unrelated probe artifacts are staged or deleted.
+- All implementation outcomes; generated parity; no unrelated artifact changes.
 
 **Required Skills:**
 - `skill-verification-before-completion`, `skill-code-standards`
 
 **Files And Symbols:**
-- Inspect: `scripts/sync_agent_adapters.py`, `scripts/validate_repo_contracts.py`
-- Modify: generated adapter mirrors only through the sync command, plus
-  canonical documentation if Task 2 changes the operator contract
-- Verify: `generated_agents`, all declared tests, and Git inventory
+- Inspect: `.agents/skills/skill-github-browser-reviews/SKILL.md`, `scripts/sync_agent_adapters.py`, `scripts/validate_repo_contracts.py`
+- Modify: canonical documentation first, then generated adapters only through synchronization
+- Verify: `generated_agents`, declared test suites, and Git inventory
 
 **Dependencies:**
-- Tasks 1–3 complete with focused proof.
+- Tasks 1–4 complete with focused proof.
 
 **Authority:**
-- Preauthorized local actions: run synchronization, contract validation,
-  tests, and read-only Git inspection
-- Stop for: generated drift that requires hand edits, unrelated modified files,
-  failed final proof, or any external publication action
+- Preauthorized local actions: run synchronization, contract validation, tests, diff checks, and read-only Git inspection
+- Stop for: generated drift requiring hand edits, unrelated tracked changes, failed final proof, or any external publication action
 
 **Steps:**
-- [ ] Step 1: Run `python scripts/sync_agent_adapters.py --all-platforms`.
-- [ ] Step 2: Run focused Node tests, relevant Python tests, and repository
-  contract validation.
-- [ ] Step 3: Run `git diff --check`, inspect staged/unstaged/untracked state,
-  and confirm only declared surfaces changed.
-- [ ] Step 4: Record final evidence and leave publication/merge for separately
-  authorized Git disposition.
+- [ ] Step 1: Update the canonical skill contract for failure scopes, completion evidence, lease recovery, and batch accounting.
+- [ ] Step 2: Run `python scripts/sync_agent_adapters.py --all-platforms` and verify generated parity.
+- [ ] Step 3: Run focused Node/Python tests and repository contract validation.
+- [ ] Step 4: Run `git diff --check`, inspect staged/unstaged/untracked state, and record preserved probe artifacts without staging or deleting them.
 
 **Verification:**
 - [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
@@ -398,51 +478,38 @@ new context owner, or alternate model-selection strategy is introduced.
 - [ ] `python scripts/validate_repo_contracts.py`
 - [ ] `python scripts/sync_agent_adapters.py --all-platforms --check`
 - [ ] `git diff --check`
-- Expected: all checks pass, generated adapters are current, and unrelated
-  untracked probe artifacts remain preserved.
+- Expected: all checks pass, generated adapters match canonical sources, and unrelated probe artifacts remain untouched.
 
 **Exit Criteria:**
-- Fresh proof covers failure classification, lease recovery, unchanged effort,
-  generated parity, and repository contracts with no unresolved implementation
-  blocker.
+- All validated findings have implementation and regression proof, maintained surfaces agree, and no unrelated workspace artifact was staged or removed.
 
 ## Verification
 
-- [ ] Focused lifecycle suite passes after each behavior task.
-- [ ] Lease tests cover active, stale, malformed, ambiguous, race-losing, and
-  normal-release states.
-- [ ] Batch tests prove later entries continue only for explicit review-scoped
-  failures and stop for shared/unknown failures.
-- [ ] Generated adapter sync/check passes after canonical changes.
-- [ ] Relevant Python tests and `validate_repo_contracts.py` pass.
-- [ ] Final Git inventory proves no unrelated artifacts were staged, removed,
-  or overwritten.
+- `node --test tests/test_github_browser_review_lifecycle.mjs`
+- `python -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- `python scripts/validate_repo_contracts.py`
+- `python scripts/sync_agent_adapters.py --all-platforms --check`
+- `git diff --check`
 
 ## Completion Criteria
 
-- [ ] All four tasks are completed in the plan ledger with immutable proof paths
-  or command results.
-- [ ] Selection failure scope is evidence-based and no failed review is retried
-  or silently switched to another model.
-- [ ] Safe profile-lease recovery exists only for proven stale ownership and
-  cannot remove a replacement owner’s lock.
-- [ ] Same-effort selection avoids unnecessary locator/focus work while final
-  visible verification remains intact.
-- [ ] Context reuse, fresh-tab isolation, and cleanup ownership remain unchanged
-  unless fresh measurement and a separately approved plan change justify them.
-- [ ] External adapter/VM limitations are documented as boundary conditions,
-  not encoded as speculative core workarounds.
-- [ ] The plan remains `proposed` until an explicit implementation approval
-  activates it.
+The plan is ready for completion verification when:
+
+1. every implementation outcome is satisfied by Tasks 1–5
+2. every task-local verification item passes
+3. profile recovery is conservative, race-safe, and never age-only
+4. selection and artifact failures expose the true stop boundary without retries or model substitution
+5. completion, stdout, and durable result artifacts agree across success and failure paths
+6. unchanged effort avoids unnecessary selector work while visible verification remains mandatory
+7. one authenticated context and fresh-tab isolation remain the only browser lifecycle ownership model
+8. canonical docs, generated adapters, tests, and validators are reconciled
+9. preserved probe artifacts remain untracked and untouched
+10. the plan remains `proposed` until explicit implementation approval activates it
 
 ## Known Limits And Deferred Work
 
-- This plan does not claim that a particular Playwright VM lacks
-  `importModuleDynamically`; only the maintained ESM execution boundary is
-  established.
-- This plan does not add adapter-specific context discovery or a new browser
-  lifecycle owner. Such work requires an adapter capability contract and fresh
-  runtime evidence.
-- Fresh-tab replacement with same-page reuse is deferred until comparable
-  latency, memory, and contamination evidence exists.
-- Automatic age-only lock deletion is explicitly prohibited.
+- This plan does not claim that a particular VM lacks `importModuleDynamically`; only the maintained Node ESM execution boundary is established.
+- This plan does not add adapter-specific context discovery, a second browser owner, or a general keep-open flag.
+- Same-page reuse is deferred until comparable latency, memory, and contamination evidence exists.
+- Selector recovery simplification beyond the bounded menu-close wait is deferred unless focused tests demonstrate a safe reduction.
+- Final `completed` status belongs to `skill-verification-before-completion` after fresh implementation evidence; this document remains `proposed` until then.
