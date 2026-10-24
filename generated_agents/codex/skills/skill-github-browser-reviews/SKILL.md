@@ -225,8 +225,13 @@ authenticated context for sequential fresh-tab transactions, allocates a
  separate `run-*` directory per review, persists response and result artifacts
  before page cleanup, closes the shared context once through the batch owner,
  prints a JSON summary, and returns nonzero if any review is not `completed` or
- the shared context cannot be closed. Do not add a keep-open flag or a second
- browser lifecycle owner.
+ the shared context cannot be closed. Repeated reviews with the same model use
+ the same authenticated context; persistent-profile mode holds an exclusive
+ profile lease for the lifetime of the owned context, so overlapping launches
+ fail before opening a second browser. If a review reports that the shared
+ context is unusable, the batch stops instead of attempting later reviews
+ against the broken session. Do not add a keep-open flag or a second browser
+ lifecycle owner.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The

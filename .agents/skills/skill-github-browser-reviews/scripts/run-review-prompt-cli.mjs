@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -16,6 +16,7 @@ import {
 
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
+const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
 const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set();
 
@@ -95,6 +96,7 @@ export function createResult(options) {
     response_path: "response.md",
     cleanup_status: "not_started",
     cleanup_warning: null,
+    failure_scope: null,
     failure_stage: null,
     failure_reason: null,
   };
@@ -181,6 +183,45 @@ export function summarizeBatchResults(results) {
   };
 }
 
+function profileLeasePath(userDataDir) {
+  return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
+}
+
+export async function acquireProfileLease(userDataDir) {
+  const profilePath = resolve(userDataDir);
+  const lockPath = profileLeasePath(profilePath);
+  await mkdir(dirname(profilePath), { recursive: true });
+
+  let handle;
+  try {
+    handle = await open(lockPath, "wx");
+    await handle.writeFile(`${JSON.stringify({ pid: process.pid, profile: profilePath })}\n`, "utf8");
+    return { handle, lockPath };
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    if (error?.code === "EEXIST") {
+      throw new Error(`Browser profile is already in use: ${profilePath}`);
+    }
+    throw error;
+  }
+}
+
+export async function releaseProfileLease(lease) {
+  if (!lease) return;
+  await lease.handle?.close().catch(() => {});
+  await rm(lease.lockPath, { force: true });
+}
+
+export async function persistCleanupFailure(result, outputDir, cleanupReason) {
+  result.status = "incomplete";
+  result.cleanup_status = "failed";
+  result.cleanup_warning = cleanupReason;
+  result.failure_scope = result.failure_scope || "shared_context";
+  result.failure_stage = "cleanup";
+  result.failure_reason = cleanupReason;
+  if (outputDir) await writeResult(outputDir, result);
+}
+
 async function loadPlaywright() {
   try {
     const { chromium } = await import("playwright");
@@ -203,10 +244,12 @@ async function openContext(chromium, options) {
     return { browser, context, ownsContext: false };
   }
 
+  const profileLease = await acquireProfileLease(options.userDataDir);
   try {
     const context = await chromium.launchPersistentContext(options.userDataDir, { headless: false });
-    return { browser: null, context, ownsContext: true };
+    return { browser: null, context, ownsContext: true, profileLease };
   } catch (error) {
+    await releaseProfileLease(profileLease).catch(() => {});
     const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`Could not launch the Playwright browser profile${detail}`);
   }
@@ -220,19 +263,56 @@ export async function openReviewContext(options) {
 export async function closeContext(attached) {
   if (attached?.closed) return;
   if (!attached) return;
-  const { browser, context, ownsContext, page } = attached;
+  const { browser, context, ownsContext, page, profileLease } = attached;
+  let cleanupError;
   try {
     if (ownsContext && context) {
       await context.close();
-      attached.closed = true;
-      return;
     }
-
-    if (page) await page.close();
-    if (browser) await browser.close();
-    attached.closed = true;
   } catch (error) {
-    throw error;
+    cleanupError = error;
+  }
+  if (!ownsContext) {
+    try {
+      if (page) await page.close();
+    } catch (error) {
+      cleanupError ||= error;
+    }
+    try {
+      if (browser) await browser.close();
+    } catch (error) {
+      cleanupError ||= error;
+    }
+  }
+  try {
+    await releaseProfileLease(profileLease);
+  } catch (error) {
+    cleanupError ||= error;
+  }
+  if (cleanupError) throw cleanupError;
+  attached.closed = true;
+}
+
+function classifyFailureScope(stage) {
+  if (stage === "selection") return "shared_context";
+  if (stage === "submission" || stage === "completion") return "review";
+  return null;
+}
+
+function appendFailureReason(currentReason, suffix) {
+  return `${currentReason || "Review transaction failed"}; ${suffix}`;
+}
+
+function markCleanupFailure(result, cleanupReason) {
+  result.cleanup_status = "failed";
+  result.cleanup_warning = cleanupReason;
+  if (result.status === "completed") {
+    result.status = "incomplete";
+    result.failure_scope = "review";
+    result.failure_stage = "cleanup";
+    result.failure_reason = cleanupReason;
+  } else {
+    result.failure_reason = appendFailureReason(result.failure_reason, `cleanup failed: ${cleanupReason}`);
   }
 }
 
@@ -307,11 +387,13 @@ export async function runReviewTransaction(context, options) {
       result.status = "completed";
     } else {
       result.status = "incomplete";
+      result.failure_scope = "review";
       result.failure_stage = "completion";
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
   } catch (error) {
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
+    result.failure_scope = classifyFailureScope(stage);
     result.failure_stage = stage;
     result.failure_reason = errorMessage(error);
     if (stage === "submission" && result.submission !== "acknowledged") result.submission = "ambiguous";
@@ -339,8 +421,7 @@ export async function runReviewTransaction(context, options) {
         result.cleanup_status = "completed";
       }
     } catch (error) {
-      result.cleanup_status = "failed";
-      result.cleanup_warning = errorMessage(error);
+      markCleanupFailure(result, errorMessage(error));
     }
 
     if (outputDir && resultPersisted && (result.cleanup_status === "completed" || result.cleanup_warning)) {
@@ -369,10 +450,12 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
     if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
 
     for (const review of reviews) {
-      results.push(await runTransaction(attached.context, {
+      const result = await runTransaction(attached.context, {
         ...review,
         outputDir,
-      }));
+      });
+      results.push(result);
+      if (result.failure_scope === "shared_context") break;
     }
   } finally {
     if (attached) {
@@ -384,6 +467,14 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
     }
   }
   if (cleanupError) {
+    for (const result of results) {
+      if (!result.output_dir) continue;
+      try {
+        await persistCleanupFailure(result, resolve(result.output_dir), errorMessage(cleanupError));
+      } catch {
+        // Preserve the batch cleanup error even if a partial result cannot be rewritten.
+      }
+    }
     const batchError = new Error(`Batch context cleanup failed: ${errorMessage(cleanupError)}`);
     batchError.cause = cleanupError;
     batchError.results = results;
@@ -448,6 +539,7 @@ export async function main(argv, dependencies = {}) {
       result = {
         ...createResult(options),
         status: "blocked",
+        failure_scope: "shared_context",
         failure_stage: "browser",
         failure_reason: errorMessage(error),
         output_dir: null,
@@ -462,6 +554,7 @@ export async function main(argv, dependencies = {}) {
         result = {
           ...createResult(options),
           status: "incomplete",
+          failure_scope: "shared_context",
           failure_stage: "cleanup",
           failure_reason: cleanupReason,
           output_dir: null,

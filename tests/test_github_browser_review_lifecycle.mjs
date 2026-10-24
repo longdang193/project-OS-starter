@@ -17,12 +17,14 @@ import {
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
   atomicWrite,
+  acquireProfileLease,
   closeContext,
   createResult,
   createRunOutputDirectory,
   main,
   parseArguments,
   readBatchReviews,
+  releaseProfileLease,
   runReviewBatch,
   runReviewTransaction,
   summarizeBatchResults,
@@ -761,6 +763,7 @@ test("result records the requested and observed lifecycle state", () => {
     response_path: "response.md",
     cleanup_status: "not_started",
     cleanup_warning: null,
+    failure_scope: null,
     failure_stage: null,
     failure_reason: null,
   });
@@ -954,10 +957,11 @@ test("cleanup failure preserves completed review and records a cleanup warning",
     });
 
     const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
-    assert.equal(result.status, "completed");
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.failure_scope, "review");
     assert.equal(result.cleanup_status, "failed");
     assert.equal(result.cleanup_warning, "page close failed");
-    assert.equal(persisted.status, "completed");
+    assert.equal(persisted.status, "incomplete");
     assert.equal(persisted.cleanup_status, "failed");
     assert.equal(persisted.cleanup_warning, "page close failed");
   } finally {
@@ -1146,7 +1150,7 @@ test("review batch reuses one context, isolates runs, and closes the context onc
       outputDir: parent,
       reviews: [
         { model: "GPT-5.6-Sol", effort: "High", prompt: "first" },
-        { model: "GPT-6", effort: "High", prompt: "second" },
+        { model: "GPT-5.6-Sol", effort: "High", prompt: "second" },
       ],
       runTransaction: async (reviewContext, review) => {
         const allocation = await createRunOutputDirectory(review.outputDir);
@@ -1172,6 +1176,49 @@ test("review batch reuses one context, isolates runs, and closes the context onc
   }
 });
 
+test("review batch stops after a shared-context failure", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  let closeCount = 0;
+  context.close = async () => {
+    closeCount += 1;
+  };
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return review.prompt === "first"
+        ? { status: "blocked", failure_scope: "shared_context" }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first"]);
+  assert.equal(results.length, 1);
+  assert.equal(closeCount, 1);
+});
+
+test("profile lease prevents overlapping persistent-profile launches", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-profile-"));
+  const profile = join(parent, "profile");
+  try {
+    const first = await acquireProfileLease(profile);
+    await assert.rejects(acquireProfileLease(profile), /profile is already in use/);
+    await releaseProfileLease(first);
+    const second = await acquireProfileLease(profile);
+    await releaseProfileLease(second);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("batch context cleanup failure retains completed review results", async () => {
   const context = {
     async close() {
@@ -1189,7 +1236,15 @@ test("batch context cleanup failure retains completed review results", async () 
     }),
     (error) => {
       assert.equal(error.message, "Batch context cleanup failed: context close failed");
-      assert.deepEqual(error.results, [{ status: "completed", output_dir: "run-a" }]);
+      assert.deepEqual(error.results, [{
+        status: "incomplete",
+        output_dir: "run-a",
+        cleanup_status: "failed",
+        cleanup_warning: "context close failed",
+        failure_scope: "shared_context",
+        failure_stage: "cleanup",
+        failure_reason: "context close failed",
+      }]);
       return true;
     },
   );
