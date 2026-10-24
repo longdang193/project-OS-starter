@@ -66,7 +66,12 @@ test("model selection keeps the simple picker view when model radios are visible
   const menu = {
     locator(selector) {
       assert.equal(selector, '[role="menuitemradio"]:visible');
-      return { count: async () => 2 };
+      return {
+        count: async () => 2,
+        first() {
+          return { click: async () => {} };
+        },
+      };
     },
     getByRole() {
       return {
@@ -89,6 +94,47 @@ test("model selection keeps the simple picker view when model radios are visible
   await openModelList(menu);
 
   assert.equal(modelControlClicked, false);
+});
+
+test("model selection opens the model view when visible radios are covered", async () => {
+  let modelControlClicked = false;
+  const modelOptions = {
+    count: async () => 2,
+    first() {
+      return {
+        async click(options) {
+          assert.equal(options.trial, true);
+          throw new Error("effort view intercepts pointer events");
+        },
+      };
+    },
+  };
+  const menu = {
+    locator(selector) {
+      assert.equal(selector, '[role="menuitemradio"]:visible');
+      return modelOptions;
+    },
+    getByRole() {
+      return {
+        first() {
+          return this;
+        },
+        async count() {
+          return 1;
+        },
+        async isVisible() {
+          return true;
+        },
+        async click() {
+          modelControlClicked = true;
+        },
+      };
+    },
+  };
+
+  await openModelList(menu);
+
+  assert.equal(modelControlClicked, true);
 });
 
 test("completion requires a new stable visible assistant turn and conversation", () => {

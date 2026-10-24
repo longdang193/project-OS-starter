@@ -42,7 +42,14 @@ async function openModelMenu(page) {
 
 export async function openModelList(menu) {
   const visibleModelOptions = menu.locator('[role="menuitemradio"]:visible');
-  if (await visibleModelOptions.count()) return;
+  if (await visibleModelOptions.count()) {
+    try {
+      await visibleModelOptions.first().click({ trial: true, timeout: 1500 });
+      return;
+    } catch {
+      // A visible but covered option means the effort subview is still active.
+    }
+  }
 
   const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
   if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
