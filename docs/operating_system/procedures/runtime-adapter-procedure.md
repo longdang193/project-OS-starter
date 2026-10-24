@@ -144,14 +144,18 @@ wall-clock enforcement without that owner and proof.
 
 ## Delivery Reconciliation
 
-Launcher delivery evidence distinguishes `delivered`, `delivery_failed`, and
-`delivery_uncertain`. Codex prompt acknowledgement is delivery evidence;
-completion observation is separate. Transport timeout or missing observation
-produces `delivery_uncertain` only before acknowledgement; a later observation
-timeout does not rewrite confirmed delivery as rejection and does not authorize
-automatic kill or replay. Reconcile existing lane through correlated receipt and
-direct process/cleanup evidence before retrying any uncertain write-capable
-delivery; Herdr output is diagnostic only.
+The durable submission gate distinguishes admission from delivery. Admission
+prevents duplicate logical work but remains retryable when its short lease
+expires before pane ownership and prompt dispatch begin. The gate is promoted
+to delivery preparation only after final pane/context verification; from that
+boundary, `delivered`, `delivery_failed`, and `delivery_uncertain` describe
+prompt transport rather than worker execution. Codex prompt acknowledgement is
+delivery evidence; completion observation is separate. Transport timeout or
+missing observation produces `delivery_uncertain` only before acknowledgement;
+a later observation timeout does not rewrite confirmed delivery as rejection and
+does not authorize automatic kill or replay. Reconcile an existing lane through
+correlated receipt and direct process/cleanup evidence before retrying any
+uncertain write-capable delivery; Herdr output is diagnostic only.
 Replay requires plausible transient failure, an idempotent operation, and
 fresh evidence that the original delivery did not succeed. The launcher keeps
 the original task hash, projected Runtime Grant digest, and delivery-task hash

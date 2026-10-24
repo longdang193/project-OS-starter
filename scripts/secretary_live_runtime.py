@@ -51,6 +51,7 @@ try:
         claim_submission,
         derive_logical_operation_id,
         gate_path,
+        prepare_submission,
         settle_submission,
     )
     from project_os_runtime.secretary_economics import normalize_response_usage
@@ -90,6 +91,7 @@ except ModuleNotFoundError:
         claim_submission,
         derive_logical_operation_id,
         gate_path,
+        prepare_submission,
         settle_submission,
     )
     from scripts.project_os_runtime.secretary_economics import normalize_response_usage
@@ -3665,6 +3667,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     submission_path: Path | None = None
     submission_attempt_id = uuid.uuid4().hex
     submission_claimed = False
+    submission_prepared = False
     try:
         _configured_provider(request.codex_home)
         configured_model = _configured_model(request)
@@ -3698,6 +3701,11 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             launch_request.pane,
             env=environment,
         )
+        prepare_submission(
+            submission_path,
+            attempt_id=submission_attempt_id,
+        )
+        submission_prepared = True
         completed = subprocess.run(
             build_launcher_command(launch_request),
             cwd=request.worktree,
@@ -3840,7 +3848,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         if submission_claimed and submission_path is not None:
             if result is not None and result.get("disposition") == "READY":
                 settlement = "settled"
-            elif workspace_id is None:
+            elif not submission_prepared or workspace_id is None:
                 settlement = "not_delivered"
             else:
                 settlement = "delivery_uncertain"
