@@ -115,7 +115,7 @@ def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
     assert "runReviewPrompt(page" in helper
     assert "openReviewTab(context)" in helper
     assert "runReviewPromptInNewTab(context, options)" in helper
-    assert 'page.goto(CHATGPT_URL)' in helper
+    assert 'page.goto(CHATGPT_URL' in helper
     assert 'getByRole("textbox", { name: "Ask ChatGPT" })' in helper
     assert "promptSubmitted: true" in helper
     assert "never launches a browser" in helper

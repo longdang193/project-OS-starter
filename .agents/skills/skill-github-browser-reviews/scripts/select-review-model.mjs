@@ -17,7 +17,11 @@ function normalizeText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-async function openModelMenu(page) {
+function createModelSelectionError(message, code) {
+  return Object.assign(new Error(message), { code });
+}
+
+export async function openModelMenu(page) {
   const menu = page.getByRole("menu", { name: "Select ChatGPT model" }).first();
   if (await menu.isVisible()) return menu;
 
@@ -28,7 +32,7 @@ async function openModelMenu(page) {
     throw new Error("Visible ChatGPT model selector was not found");
   }
 
-  await control.click();
+  await control.click({ timeout: UI_ACTION_TIMEOUT_MS });
   try {
     await menu.waitFor({ state: "visible", timeout: MODEL_MENU_TIMEOUT_MS });
   } catch {
@@ -37,7 +41,7 @@ async function openModelMenu(page) {
   return menu;
 }
 
-export async function openModelList(menu, { model, reopen } = {}) {
+export async function openModelList(menu, { model } = {}) {
   const visibleModelOptions = menu.locator('[role="menuitemradio"]:visible');
   if (await visibleModelOptions.count()) {
     try {
@@ -46,7 +50,8 @@ export async function openModelList(menu, { model, reopen } = {}) {
         : visibleModelOptions.first();
       await requestedOption.click({ trial: true, timeout: UI_ACTION_TIMEOUT_MS });
       return menu;
-    } catch {
+    } catch (error) {
+      if (error?.code === "MODEL_UNAVAILABLE") throw error;
       // A visible but covered option may mean the effort subview is already active.
       for (const selector of [
         '[role="menuitem"][aria-label="Power"]:visible',
@@ -58,14 +63,20 @@ export async function openModelList(menu, { model, reopen } = {}) {
         } catch {
         }
       }
-      if (reopen) return reopen();
-      throw new Error("Visible model options are covered and no reopen handler was provided");
+      throw createModelSelectionError(
+        "Visible model options are covered and require one bounded reopen",
+        "MODEL_MENU_TRANSIENT",
+      );
     }
   }
 
   const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
   if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
-    await modelControl.click({ timeout: UI_ACTION_TIMEOUT_MS });
+    try {
+      await modelControl.click({ timeout: UI_ACTION_TIMEOUT_MS });
+    } catch (error) {
+      throw createModelSelectionError(error?.message || "Model view could not be opened", "MODEL_MENU_TRANSIENT");
+    }
   }
 
   return menu;
@@ -81,18 +92,25 @@ export async function findModelOption(menu, model) {
     }
   }
 
-  throw new Error(`Visible model option was not found: ${expectedLabel}`);
+  throw createModelSelectionError(`Visible model option was not found: ${expectedLabel}`, "MODEL_UNAVAILABLE");
 }
 
 async function selectModel(menu, model) {
   const option = await findModelOption(menu, model);
   if ((await option.getAttribute("aria-checked")) !== "true") {
-    await option.click({ position: { x: 12, y: 12 }, timeout: UI_ACTION_TIMEOUT_MS });
+    try {
+      await option.click({ position: { x: 12, y: 12 }, timeout: UI_ACTION_TIMEOUT_MS });
+    } catch (error) {
+      throw createModelSelectionError(error?.message || "Model selection click was intercepted", "MODEL_MENU_TRANSIENT");
+    }
   }
 
   const selectedOption = await findModelOption(menu, model);
   if ((await selectedOption.getAttribute("aria-checked")) !== "true") {
-    throw new Error(`Selected model is not visibly confirmed: ${MODEL_LABELS[model]}`);
+    throw createModelSelectionError(
+      `Selected model is not visibly confirmed: ${MODEL_LABELS[model]}`,
+      "MODEL_MENU_TRANSIENT",
+    );
   }
 }
 
@@ -188,13 +206,11 @@ export async function selectReviewModel(page, { model, effort }) {
     if (await modelControl.isVisible()) await modelControl.click({ timeout: UI_ACTION_TIMEOUT_MS });
     return reopenedMenu;
   };
-  menu = await openModelList(menu, {
-    model,
-    reopen: reopenModelMenu,
-  });
   try {
+    menu = await openModelList(menu, { model });
     await selectModel(menu, model);
-  } catch {
+  } catch (error) {
+    if (error?.code !== "MODEL_MENU_TRANSIENT") throw error;
     menu = await reopenModelMenu();
     await selectModel(menu, model);
   }

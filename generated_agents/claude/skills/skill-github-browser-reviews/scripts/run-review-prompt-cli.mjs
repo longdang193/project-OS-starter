@@ -194,89 +194,32 @@ function profileLeasePath(userDataDir) {
   return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
 }
 
-function defaultIsProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === "EPERM";
-  }
-}
-
-async function readLeaseMetadata(lockPath, profilePath) {
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(lockPath, "utf8"));
-  } catch {
-    return null;
-  }
-  if (!Number.isInteger(metadata?.pid) || metadata.pid <= 0) return null;
-  if (metadata.profile !== profilePath || typeof metadata.token !== "string" || metadata.token.length === 0) {
-    return null;
-  }
-  return metadata;
-}
-
-async function restoreQuarantinedLease(quarantinePath, lockPath) {
-  try {
-    await rename(quarantinePath, lockPath);
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      await rm(quarantinePath, { force: true });
-      return;
-    }
-    throw error;
-  }
-}
-
-async function recoverStaleProfileLease(lockPath, profilePath, isProcessAlive) {
-  const metadata = await readLeaseMetadata(lockPath, profilePath);
-  if (!metadata || await isProcessAlive(metadata.pid)) return false;
-
-  const quarantinePath = `${lockPath}.${metadata.token}.${randomUUID()}.stale`;
-  try {
-    await rename(lockPath, quarantinePath);
-  } catch {
-    return false;
-  }
-
-  try {
-    const quarantined = await readLeaseMetadata(quarantinePath, profilePath);
-    if (!quarantined || quarantined.pid !== metadata.pid || quarantined.token !== metadata.token) {
-      await restoreQuarantinedLease(quarantinePath, lockPath);
-      return false;
-    }
-    if (await isProcessAlive(quarantined.pid)) {
-      await restoreQuarantinedLease(quarantinePath, lockPath);
-      return false;
-    }
-    await rm(quarantinePath, { force: true });
-    return true;
-  } catch {
-    await restoreQuarantinedLease(quarantinePath, lockPath).catch(() => {});
-    return false;
-  }
-}
-
-export async function acquireProfileLease(userDataDir, { isProcessAlive = defaultIsProcessAlive } = {}) {
+export async function acquireProfileLease(userDataDir, { writeMetadata = defaultWriteLeaseMetadata } = {}) {
   const profilePath = resolve(userDataDir);
   const lockPath = profileLeasePath(profilePath);
   await mkdir(dirname(profilePath), { recursive: true });
 
-  while (true) {
-    let handle;
-    try {
-      handle = await open(lockPath, "wx");
-      const token = randomUUID();
-      await handle.writeFile(`${JSON.stringify({ pid: process.pid, profile: profilePath, token })}\n`, "utf8");
-      return { handle, lockPath, profilePath, token };
-    } catch (error) {
-      await handle?.close().catch(() => {});
-      if (error?.code !== "EEXIST") throw error;
-      if (await recoverStaleProfileLease(lockPath, profilePath, isProcessAlive)) continue;
-      throw new Error(`Browser profile is already in use or has ambiguous ownership: ${profilePath}`);
-    }
+  let handle;
+  try {
+    handle = await open(lockPath, "wx");
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+    throw new Error(`Browser profile is already in use or has ambiguous ownership: ${profilePath}`);
   }
+
+  const token = randomUUID();
+  try {
+    await writeMetadata(handle, { pid: process.pid, profile: profilePath, token });
+    return { handle, lockPath, profilePath, token };
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await rm(lockPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function defaultWriteLeaseMetadata(handle, metadata) {
+  await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
 }
 
 export async function releaseProfileLease(lease) {
@@ -347,9 +290,11 @@ export async function closeContext(attached) {
   if (!attached) return;
   const { browser, context, ownsContext, page, profileLease } = attached;
   let cleanupError;
+  let ownedContextClosed = !ownsContext;
   try {
     if (ownsContext && context) {
       await context.close();
+      ownedContextClosed = true;
     }
   } catch (error) {
     cleanupError = error;
@@ -366,10 +311,12 @@ export async function closeContext(attached) {
       cleanupError ||= error;
     }
   }
-  try {
-    await releaseProfileLease(profileLease);
-  } catch (error) {
-    cleanupError ||= error;
+  if (ownedContextClosed) {
+    try {
+      await releaseProfileLease(profileLease);
+    } catch (error) {
+      cleanupError ||= error;
+    }
   }
   if (cleanupError) throw cleanupError;
   attached.closed = true;
@@ -388,9 +335,9 @@ function appendFailureReason(currentReason, suffix) {
 function markCleanupFailure(result, cleanupReason) {
   result.cleanup_status = "failed";
   result.cleanup_warning = cleanupReason;
+  result.failure_scope = "shared_context";
   if (result.status === "completed") {
     result.status = "incomplete";
-    result.failure_scope = "review";
     result.failure_stage = "cleanup";
     result.failure_reason = cleanupReason;
   } else {
@@ -647,6 +594,9 @@ export async function main(argv, dependencies = {}) {
         result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}context cleanup failed: ${cleanupReason}`;
         result.cleanup_status = "failed";
         result.cleanup_warning = cleanupReason;
+      }
+      if (result.output_dir) {
+        await persistCleanupFailure(result, resolve(result.output_dir), cleanupReason).catch(() => {});
       }
     }
   }
