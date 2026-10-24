@@ -19,7 +19,7 @@ import {
 } from "./select-review-model.mjs";
 
 const DEFAULT_CONTEXT_INDEX = 0;
-const USAGE = "Usage: node run-review-prompt-cli.mjs --cdp-endpoint <url> --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> [--probe-only] [--prompt-file <path>] [--context-index <number>]";
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> [--probe-only] [--prompt-file <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set(["--probe-only"]);
 
 function usageError(message) {
@@ -51,13 +51,18 @@ function parseArguments(argv) {
   }
 
   const cdpEndpoint = argumentsByName.get("--cdp-endpoint");
+  const userDataDir = argumentsByName.get("--user-data-dir");
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
   const probeOnly = argumentsByName.has("--probe-only");
   const contextIndexValue = argumentsByName.get("--context-index");
 
-  if (!cdpEndpoint) usageError("Missing required argument: --cdp-endpoint");
+  if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
+  if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
+  if (!cdpEndpoint && contextIndexValue !== undefined) {
+    usageError("--context-index requires --cdp-endpoint");
+  }
   if (!model) usageError("Missing required argument: --model");
   if (!effort) usageError("Missing required argument: --effort");
   if (!probeOnly && !promptFile) usageError("Missing required argument: --prompt-file");
@@ -71,7 +76,7 @@ function parseArguments(argv) {
     usageError(`Invalid context index: ${contextIndexValue}`);
   }
 
-  return { cdpEndpoint, contextIndex, effort, model, probeOnly, promptFile };
+  return { cdpEndpoint, contextIndex, effort, model, probeOnly, promptFile, userDataDir };
 }
 async function main(argv) {
   if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
@@ -89,14 +94,30 @@ async function main(argv) {
     const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`Playwright is required for the Node review runner${detail}`);
   }
-  const browser = await chromium.connectOverCDP(options.cdpEndpoint);
+
+  let browser;
+  let context;
+  let ownsContext = false;
   try {
-    const contexts = browser.contexts();
-    const context = contexts[options.contextIndex];
-    if (!context) {
-      throw new Error(
-        `Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`,
-      );
+    if (options.cdpEndpoint) {
+      browser = await chromium.connectOverCDP(options.cdpEndpoint);
+      const contexts = browser.contexts();
+      context = contexts[options.contextIndex];
+      if (!context) {
+        throw new Error(
+          `Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`,
+        );
+      }
+    } else {
+      try {
+        context = await chromium.launchPersistentContext(options.userDataDir, {
+          headless: false,
+        });
+        ownsContext = true;
+      } catch (error) {
+        const detail = error instanceof Error ? `: ${error.message}` : "";
+        throw new Error(`Could not launch the Playwright browser profile${detail}`);
+      }
     }
 
     const { page, ...result } = options.probeOnly
@@ -119,7 +140,11 @@ async function main(argv) {
     }
     console.log(JSON.stringify({ ...result, pageUrl: page.url() }));
   } finally {
-    await browser.close();
+    if (ownsContext && context) {
+      await context.close();
+    } else if (browser) {
+      await browser.close();
+    }
   }
 }
 

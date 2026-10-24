@@ -25,6 +25,7 @@ REQUIRED_BROWSER_REVIEW_RULES = (
     "Use this skill only after the user explicitly invokes it by name",
     "Do not activate this skill merely because",
     "Explicit-invocation invariant",
+    "Node/Playwright automation runner",
     "normal ChatGPT browser tab",
     "with `@GitHub`",
     "Commit and push the selected plan or code",
@@ -33,6 +34,8 @@ REQUIRED_BROWSER_REVIEW_RULES = (
     "Do not use a local Windows path as the only review source.",
     "confirm that it read the requested revision",
     "Return findings ordered by severity and do not modify files.",
+    "pipe-backed Playwright MCP",
+    "--user-data-dir",
 )
 
 REQUIRED_MODEL_SELECTION_RULES = (

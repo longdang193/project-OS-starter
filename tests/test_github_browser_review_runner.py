@@ -19,7 +19,9 @@ def test_review_runner_is_a_real_node_entrypoint() -> None:
     assert content.startswith("#!/usr/bin/env node")
     assert "runReviewPromptInNewTab" in content
     assert "connectOverCDP" in content
+    assert "launchPersistentContext" in content
     assert "--cdp-endpoint" in content
+    assert "--user-data-dir" in content
     assert "--prompt-file" in content
     assert "promptSubmitted" in content
 
@@ -32,10 +34,10 @@ def test_review_runner_supports_a_non_submitting_probe_mode() -> None:
     assert "options.probeOnly ? false : true" in content
 
 
-def test_review_runner_fails_before_browser_use_for_missing_required_arguments() -> None:
+def test_review_runner_requires_a_supported_browser_attachment_mode() -> None:
     content = RUNNER.read_text(encoding="utf-8")
 
-    assert "Missing required argument: --cdp-endpoint" in content
+    assert "Missing one of: --cdp-endpoint or --user-data-dir" in content
     assert "Missing required argument: --model" in content
     assert "Missing required argument: --effort" in content
     assert "Missing required argument: --prompt-file" in content
@@ -59,7 +61,7 @@ def test_review_runner_reports_missing_endpoint_before_loading_browser_runtime()
     )
 
     assert result.returncode != 0
-    assert "Missing required argument: --cdp-endpoint" in result.stderr
+    assert "Missing one of: --cdp-endpoint or --user-data-dir" in result.stderr
 
 
 def test_probe_only_mode_does_not_require_prompt_file() -> None:
@@ -79,7 +81,7 @@ def test_probe_only_mode_does_not_require_prompt_file() -> None:
     )
 
     assert result.returncode != 0
-    assert "Missing required argument: --cdp-endpoint" in result.stderr
+    assert "Missing one of: --cdp-endpoint or --user-data-dir" in result.stderr
     assert "Missing required argument: --prompt-file" not in result.stderr
 
 
@@ -93,3 +95,4 @@ def test_review_runner_exposes_help_without_connecting_to_a_browser() -> None:
 
     assert result.returncode == 0
     assert "--cdp-endpoint" in result.stdout
+    assert "--user-data-dir" in result.stdout
