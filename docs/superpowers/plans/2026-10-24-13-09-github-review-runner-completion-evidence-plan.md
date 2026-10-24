@@ -95,6 +95,10 @@ boundary, dedicated profile/CDP ownership, exact result artifacts, and no-rerun 
 Generated Codex, Claude, and Antigravity skill surfaces are regenerated from the
 canonical source and checked for drift.
 
+The completion fallback excludes ChatGPT user-turn markdown (`rich-text-user-turn`).
+Without that exclusion, the submitted prompt can be counted as a new assistant turn and
+the runner can persist the prompt as `response.md` while incorrectly reporting verified.
+
 ## Execution Approach
 
 - Mode: `inline sequential`

@@ -1,7 +1,7 @@
 import { selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
-const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible, main [class*="MarkdownRoot-"]:visible';
+export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible, main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
 const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;

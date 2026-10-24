@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  ASSISTANT_TURN_SELECTOR,
   evaluateReviewCompletion,
   isPromptVisibleInComposer,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
@@ -111,6 +112,10 @@ test("completion requires a new stable visible assistant turn and conversation",
     interrupted: false,
     stableSampleCount: 2,
   }), false);
+});
+
+test("assistant fallback excludes rich-text user turns", () => {
+  assert.match(ASSISTANT_TURN_SELECTOR, /:not\(\.rich-text-user-turn\)/);
 });
 
 test("prompt entry validation reads the composer value", async () => {
