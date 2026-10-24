@@ -98,28 +98,28 @@ async function main(argv) {
   let browser;
   let context;
   let ownsContext = false;
-  if (options.cdpEndpoint) {
-    browser = await chromium.connectOverCDP(options.cdpEndpoint);
-    const contexts = browser.contexts();
-    context = contexts[options.contextIndex];
-    if (!context) {
-      throw new Error(
-        `Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`,
-      );
-    }
-  } else {
-    try {
-      context = await chromium.launchPersistentContext(options.userDataDir, {
-        headless: false,
-      });
-      ownsContext = true;
-    } catch (error) {
-      const detail = error instanceof Error ? `: ${error.message}` : "";
-      throw new Error(`Could not launch the Playwright browser profile${detail}`);
-    }
-  }
-
   try {
+    if (options.cdpEndpoint) {
+      browser = await chromium.connectOverCDP(options.cdpEndpoint);
+      const contexts = browser.contexts();
+      context = contexts[options.contextIndex];
+      if (!context) {
+        throw new Error(
+          `Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`,
+        );
+      }
+    } else {
+      try {
+        context = await chromium.launchPersistentContext(options.userDataDir, {
+          headless: false,
+        });
+        ownsContext = true;
+      } catch (error) {
+        const detail = error instanceof Error ? `: ${error.message}` : "";
+        throw new Error(`Could not launch the Playwright browser profile${detail}`);
+      }
+    }
+
     const { page, ...result } = options.probeOnly
       ? await probeReviewModelInNewTab(context, {
         effort: options.effort,
@@ -140,9 +140,9 @@ async function main(argv) {
     }
     console.log(JSON.stringify({ ...result, pageUrl: page.url() }));
   } finally {
-    if (ownsContext) {
+    if (ownsContext && context) {
       await context.close();
-    } else {
+    } else if (browser) {
       await browser.close();
     }
   }
