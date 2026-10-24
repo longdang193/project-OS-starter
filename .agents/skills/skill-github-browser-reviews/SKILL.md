@@ -44,11 +44,13 @@ that the review inspected local state.
 3. **Revision invariant:** Give the reviewer an exact branch or commit and an
    exact file URL. The review request must include the file path or GitHub file URL.
    Pin URLs to a commit when reproducibility matters.
-4. **Browser invariant:** Use Playwright first to control and observe an
-   authenticated normal Chrome/Edge ChatGPT Web tab, then invoke `@GitHub`
-   through the visible UI. Use ChromeDev as the fallback for session attachment
-   or low-level browser diagnostics. Do not use the in-app Native Tab as the
-   primary interaction path when it is unreliable.
+4. **Browser invariant:** Prefer the Node/Playwright automation runner as the
+   primary execution path. It must own the authenticated browser context and
+   invoke `@GitHub` through the visible UI. Use CDP attachment only when a
+   TCP CDP endpoint is explicitly available. A pipe-backed Playwright MCP
+   browser has no TCP CDP endpoint; do not attempt to attach the standalone
+   CLI to it. Use ChromeDev only for session attachment or low-level
+   diagnostics when the primary runner cannot operate.
 5. **Model invariant:** Let the user select either `GPT-5.6-Sol` or `GPT-6`.
 6. **Reasoning invariant:** Let the user select `Instant`, `Medium`, or `High`
    and preserve that choice in the review request.
@@ -181,19 +183,22 @@ const { page } = await runReviewPromptInNewTab(context, {
 });
 ```
 
-The runner must provide an already authenticated Playwright `context`. Use its
-`filename` or `sourcePath` option when the browser tool supports file-backed
-execution. If the helper cannot be loaded or the authenticated context cannot
-be attached, report `incomplete` or `blocked`; do not replace the helper with
-hidden DOM or network-state inspection. Prompt submission remains gated by the
-explicit user authorization required by this skill.
+The runner must either own or receive an already authenticated Playwright
+`context`. The CLI's `--user-data-dir` mode creates the owned context; the
+library helpers and `--cdp-endpoint` mode require the caller to provide one.
+Use a browser tool's `filename` or `sourcePath` option only when it supports
+file-backed Node execution. If the helper cannot be loaded or the authenticated
+context cannot be created or attached, report `incomplete` or `blocked`; do not
+replace the helper with hidden DOM or network-state inspection. Prompt submission remains gated by the explicit user authorization required by this
+skill.
 
 For a standalone, repeatable Node invocation, use the ESM CLI entrypoint rather
-than evaluating the `.mjs` module as a browser VM script:
+than evaluating the `.mjs` module as a browser VM script. The primary mode
+launches a visible Playwright browser with a dedicated authenticated profile:
 
 ```bash
 node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
-  --cdp-endpoint <authenticated-browser-cdp-url> \
+  --user-data-dir <authenticated-playwright-profile> \
   --model GPT-6 \
   --effort High \
   --prompt-file <review-prompt.txt>
@@ -203,26 +208,29 @@ To verify model and effort without entering or submitting prompt content:
 
 ```bash
 node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
-  --cdp-endpoint <authenticated-browser-cdp-url> \
+  --user-data-dir <authenticated-playwright-profile> \
   --model GPT-6 \
   --effort High \
   --probe-only
 ```
 
-The CLI attaches to an existing authenticated Chromium session through CDP,
-selects the requested browser context, imports `run-review-prompt.mjs` through
-Node's ESM loader, and either performs the non-submitting `--probe-only` check
-or submits exactly once. It never launches or authenticates a browser.
+When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
+optional attach mode and `--context-index` selects its browser context. The
+CLI imports `run-review-prompt.mjs` through Node's ESM loader and either
+performs the non-submitting probe or submits exactly once. It never authenticates
+a profile for the user. A pipe-backed Playwright MCP browser cannot be used
+with `--cdp-endpoint`; use the owned-profile mode or MCP directly.
 `browser_run_code_unsafe` is not an ESM module runner; do not pass this CLI or
 either `.mjs` helper to that VM as a raw file.
 
 ### 3. Open the review
 
-Use Playwright first to open or control an authenticated normal Chrome/Edge
-ChatGPT Web tab and invoke `@GitHub` through the visible UI. If Playwright
-cannot attach to the required session or low-level diagnostics are needed, use
-ChromeDev instead. Keep the browser request compact and provide only the exact
-revision, read-only scope, stable context identifier, and one review question.
+Run the Node/Playwright automation path first to open or control an authenticated
+normal Chrome/Edge ChatGPT Web tab and invoke `@GitHub` through the visible UI.
+If the owned-profile runner cannot create or use the required session, report
+`incomplete` or `blocked`; use ChromeDev only for low-level diagnostics. Keep
+the browser request compact and provide only the exact revision, read-only
+scope, stable context identifier, and one review question.
 Use visible page state as the authority for model, response mode, completion,
 and interruption status; do not infer these from hidden DOM or transport
 metadata.
