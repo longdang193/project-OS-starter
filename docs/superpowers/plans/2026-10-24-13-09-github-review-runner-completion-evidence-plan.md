@@ -392,7 +392,7 @@ rows cannot be selected.
 **Steps:**
 - [x] Step 1: Run the lifecycle Node tests and focused Python tests.
 - [x] Step 2: Run generated adapter synchronization/check and `git diff --check`.
-- [ ] Step 3: If separately authorized, run one real-browser smoke test through the Node/Playwright runner with explicit profile, prompt, and output paths; verify model/effort selection, one submission, completion association, and artifact persistence.
+- [x] Step 3: Optional real-browser smoke test explicitly deferred; local contract evidence remains authoritative and no authenticated browser submission was performed.
 - [x] Step 4: Inspect that no new scheduler, retry loop, GitHub API client, profile-copy path, CDP discovery path, lock, or second result store was introduced.
 - [x] Step 5: Record local verification evidence; authenticated browser smoke remains optional external evidence.
 
@@ -401,7 +401,7 @@ rows cannot be selected.
 - [x] `py -3 -m pytest tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py -q`
 - [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - [x] `git diff --check`
-- [ ] Optional smoke command: `node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs --user-data-dir <authenticated-profile> --model GPT-5.6-Sol --effort High --prompt-file <review-prompt.txt> --output-dir <review-output>`
+- [x] Optional smoke command deferred: `node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs --user-data-dir <authenticated-profile> --model GPT-5.6-Sol --effort High --prompt-file <review-prompt.txt> --output-dir <review-output>` was not run because authenticated browser smoke is optional external evidence.
 - Expected: all declared focused checks pass, generated outputs are clean, and any explicitly authorized smoke test either produces `completed` artifacts or records explicit `incomplete/blocked` browser evidence without retry.
 
 **Exit Criteria:**

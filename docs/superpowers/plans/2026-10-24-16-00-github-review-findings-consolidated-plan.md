@@ -89,16 +89,16 @@ never edited as canonical source. Focused tests cover the changed contracts.
 - Base commit: `4f13a8a8128e385b071ba07d3c8f50fcbfa03911`
 - Expected workspace: preserve all tracked edits present at plan creation, including the `.agents/` browser-review sources, generated adapter mirrors, browser-review tests, and the edit in `tests/test_github_browser_review_lifecycle.mjs`, plus all untracked local review/runtime artifacts; do not reset, clean, or overwrite them
 - Next action: none; implementation and verification complete
-- Blockers: none; stop if the preserved test edit changes the requested terminal-status contract or if the base revision changes
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `complete` | current | `lead controller` | none | focused Herdr and submission-gate tests | `283 passed` |
-| Task 2 | `complete` | current | `lead controller` | Task 1 | focused auto-pane lock and mutation tests | `24 passed` |
-| Task 3 | `complete` | current | `lead controller` | Task 2 | browser completion, model, and interruption tests | `15 Node + 19 Python passed; adapters synchronized` |
-| Task 4 | `complete` | current | `lead controller` | Task 3 | browser cleanup and concurrent-output tests | `18 Node + 19 Python passed; adapters synchronized` |
-| Task 5 | `complete` | current | `lead controller` | Task 4 | synchronized canonical/generated surfaces | `40 Python passed; adapter check passed; 19 Node passed` |
-| Task 6 | `complete` | current | `lead controller` | Task 5 | final focused test and contract checks | `324 Python + 19 Node passed; adapter check and diff check passed` |
+| Task 1 | `completed` | current | `codex` | none | focused Herdr and submission-gate tests | `283 passed` |
+| Task 2 | `completed` | current | `codex` | Task 1 | focused auto-pane lock and mutation tests | `24 passed` |
+| Task 3 | `completed` | current | `codex` | Task 2 | browser completion, model, and interruption tests | `15 Node + 19 Python passed; adapters synchronized` |
+| Task 4 | `completed` | current | `codex` | Task 3 | browser cleanup and concurrent-output tests | `18 Node + 19 Python passed; adapters synchronized` |
+| Task 5 | `completed` | current | `codex` | Task 4 | synchronized canonical/generated surfaces | `40 Python passed; adapter check passed; 19 Node passed` |
+| Task 6 | `completed` | current | `codex` | Task 5 | final focused test and contract checks | `324 Python + 19 Node passed; adapter check and diff check passed` |
 
 ## Validation Consolidation
 
@@ -130,6 +130,8 @@ Excluded from implementation scope:
 - Serial pane-inspection reduction and shared snapshot refactoring: repetition
   is visible, but no workload or latency evidence validates a regression or a
   safe optimization boundary.
+
+## Task Breakdown
 
 ### Task 1: Repair the Codex submission-gate phase boundary
 
