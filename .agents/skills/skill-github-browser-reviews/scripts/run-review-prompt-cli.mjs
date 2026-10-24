@@ -232,7 +232,6 @@ export async function closeContext(attached) {
     if (browser) await browser.close();
     attached.closed = true;
   } catch (error) {
-    attached.closed = true;
     throw error;
   }
 }
@@ -311,9 +310,6 @@ export async function runReviewTransaction(context, options) {
       result.failure_stage = "completion";
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
-    stage = "artifacts";
-    result.cleanup_status = "pending";
-    await persist();
   } catch (error) {
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
     result.failure_stage = stage;
@@ -366,12 +362,12 @@ export async function runReviewTransaction(context, options) {
 }
 
 export async function runReviewBatch({ attached, outputDir, reviews, runTransaction = runReviewTransaction }) {
-  if (!attached?.context) throw new Error("attached authenticated context is required");
-  if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
-
   const results = [];
   let cleanupError;
   try {
+    if (!attached?.context) throw new Error("attached authenticated context is required");
+    if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
+
     for (const review of reviews) {
       results.push(await runTransaction(attached.context, {
         ...review,
@@ -379,10 +375,12 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
       }));
     }
   } finally {
-    try {
-      await closeContext(attached);
-    } catch (error) {
-      cleanupError = error;
+    if (attached) {
+      try {
+        await closeContext(attached);
+      } catch (error) {
+        cleanupError = error;
+      }
     }
   }
   if (cleanupError) {
@@ -394,11 +392,16 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
   return results;
 }
 
-export async function main(argv) {
+export async function main(argv, dependencies = {}) {
   if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
     console.log(USAGE);
     return 0;
   }
+
+  const openContextForReview = dependencies.openReviewContext || openReviewContext;
+  const closeAttachedContext = dependencies.closeContext || closeContext;
+  const runBatch = dependencies.runReviewBatch || runReviewBatch;
+  const runTransaction = dependencies.runReviewTransaction || runReviewTransaction;
 
   const options = parseArguments(argv);
   const reviews = options.batchFile
@@ -415,15 +418,15 @@ export async function main(argv) {
   let attached;
 
   try {
-    attached = await openReviewContext(options);
+    attached = await openContextForReview(options);
     if (options.batchFile) {
-      result = summarizeBatchResults(await runReviewBatch({
+      result = summarizeBatchResults(await runBatch({
         attached,
         outputDir: options.outputDir,
         reviews,
       }));
     } else {
-      result = await runReviewTransaction(attached.context, {
+      result = await runTransaction(attached.context, {
         effort: options.effort,
         model: options.model,
         outputDir: options.outputDir,
@@ -432,10 +435,14 @@ export async function main(argv) {
     }
   } catch (error) {
     if (options.batchFile && Array.isArray(error.results)) {
+      const cleanupReason = errorMessage(error.cause || error);
       result = {
         ...summarizeBatchResults(error.results),
+        status: "incomplete",
         cleanup_status: "failed",
-        cleanup_warning: errorMessage(error.cause || error),
+        cleanup_warning: cleanupReason,
+        failure_stage: "cleanup",
+        failure_reason: cleanupReason,
       };
     } else {
       result = {
@@ -448,7 +455,7 @@ export async function main(argv) {
     }
   } finally {
     try {
-      if (attached) await closeContext(attached);
+      if (attached && !options.batchFile) await closeAttachedContext(attached);
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
       if (!result) {
@@ -460,6 +467,9 @@ export async function main(argv) {
           output_dir: null,
         };
       } else {
+        if (result.status === "completed") result.status = "incomplete";
+        result.failure_stage = "cleanup";
+        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}context cleanup failed: ${cleanupReason}`;
         result.cleanup_status = "failed";
         result.cleanup_warning = cleanupReason;
       }

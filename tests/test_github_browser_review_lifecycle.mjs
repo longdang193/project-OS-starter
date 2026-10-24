@@ -13,12 +13,14 @@ import {
   openReviewTab,
   readVisibleInterruption,
   runReviewPromptInNewTab,
+  waitForReviewCompletion,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
   atomicWrite,
   closeContext,
   createResult,
   createRunOutputDirectory,
+  main,
   parseArguments,
   readBatchReviews,
   runReviewBatch,
@@ -577,6 +579,168 @@ test("prompt entry validation tolerates rich-link whitespace in contenteditable 
   assert.equal(await isPromptVisibleInComposer(composer, prompt), true);
 });
 
+test("completion polling avoids full assistant text reads while generating", async () => {
+  let stopChecks = 0;
+  let innerTextReads = 0;
+  const assistantTurn = {
+    async getAttribute(attribute) {
+      return attribute === "data-message-id" ? "assistant-1" : null;
+    },
+    async innerText() {
+      innerTextReads += 1;
+      return "Finding: exact revision confirmed.";
+    },
+  };
+  const assistantTurns = {
+    async count() {
+      return 1;
+    },
+    nth() {
+      return assistantTurn;
+    },
+  };
+  const interruption = {
+    first() {
+      return this;
+    },
+    async count() {
+      return 0;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const stopButton = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      stopChecks += 1;
+      return stopChecks <= 2;
+    },
+  };
+  const responseAction = {
+    last() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const composer = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const page = {
+    locator(selector) {
+      if (selector.includes("data-message-author-role")) return assistantTurns;
+      if (selector.includes("[role=\"alert\"]")) return interruption;
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options) {
+      if (role === "button" && options.name.source.includes("Stop generating")) return stopButton;
+      if (role === "button" && options.name.source.includes("Regenerate response")) return responseAction;
+      if (role === "textbox") return composer;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() {
+      return "https://chatgpt.com/c/probe";
+    },
+    async waitForTimeout() {},
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: { assistantTurnCount: 0 },
+    timeoutMs: 100,
+  });
+
+  assert.equal(result.status, "confirmed");
+  assert.equal(innerTextReads, 3);
+});
+
+test("completion timeout preserves visible partial assistant text", async () => {
+  const assistantTurn = {
+    async getAttribute(attribute) {
+      return attribute === "data-message-id" ? "assistant-1" : null;
+    },
+    async innerText() {
+      return "Partial finding before timeout.";
+    },
+  };
+  const assistantTurns = {
+    async count() {
+      return 1;
+    },
+    nth() {
+      return assistantTurn;
+    },
+  };
+  const interruption = {
+    first() {
+      return this;
+    },
+    async count() {
+      return 0;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const stopButton = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const responseAction = {
+    last() {
+      return this;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const composer = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const page = {
+    locator(selector) {
+      if (selector.includes("data-message-author-role")) return assistantTurns;
+      if (selector.includes("[role=\"alert\"]")) return interruption;
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options) {
+      if (role === "button" && options.name.source.includes("Stop generating")) return stopButton;
+      if (role === "button" && options.name.source.includes("Regenerate response")) return responseAction;
+      if (role === "textbox") return composer;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() {
+      return "https://chatgpt.com/c/probe";
+    },
+    async waitForTimeout() {},
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: { assistantTurnCount: 0 },
+    timeoutMs: 0,
+  });
+
+  assert.equal(result.status, "incomplete");
+  assert.equal(result.response, "Partial finding before timeout.");
+});
+
 test("result records the requested and observed lifecycle state", () => {
   const result = createResult({ model: "GPT-5.6-Sol", effort: "High" });
 
@@ -801,6 +965,41 @@ test("cleanup failure preserves completed review and records a cleanup warning",
   }
 });
 
+test("successful transaction writes the pending cleanup checkpoint once", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-pending-checkpoint-"));
+  const writes = [];
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: { async close() {} },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => ({ response: "response", status: "confirmed" }),
+        writeResult: async (outputDir, value) => {
+          writes.push({ cleanup_status: value.cleanup_status, status: value.status });
+          await writeResult(outputDir, value);
+        },
+      },
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(writes.filter((write) => write.cleanup_status === "pending").length, 1);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("result and response writes are atomic and preserve final evidence", async () => {
   const outputDir = await mkdtemp(join(tmpdir(), "github-review-runner-"));
   try {
@@ -841,6 +1040,72 @@ test("owned persistent cleanup closes the context exactly once", async () => {
   });
 
   assert.deepEqual(events, ["context-close"]);
+});
+
+test("failed context cleanup does not mark the context closed", async () => {
+  const attached = {
+    context: {
+      async close() {
+        throw new Error("context close failed");
+      },
+    },
+    ownsContext: true,
+  };
+
+  await assert.rejects(() => closeContext(attached), /context close failed/);
+  assert.equal(attached.closed, undefined);
+});
+
+test("batch main delegates context cleanup to the batch owner", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-main-batch-"));
+  try {
+    await writeFile(join(parent, "review.md"), "review\n", "utf8");
+    await writeFile(join(parent, "reviews.json"), JSON.stringify({
+      reviews: [{ model: "GPT-6", effort: "High", prompt_file: "review.md" }],
+    }), "utf8");
+    let outerCleanupCalls = 0;
+
+    const exitCode = await main([
+      "--user-data-dir", "profile",
+      "--batch-file", join(parent, "reviews.json"),
+    ], {
+      openReviewContext: async () => ({ context: {}, ownsContext: true }),
+      runReviewBatch: async () => [{ status: "completed", output_dir: "run-a" }],
+      closeContext: async () => {
+        outerCleanupCalls += 1;
+      },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(outerCleanupCalls, 0);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("owned context cleanup failure makes the CLI invocation nonzero", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-main-cleanup-"));
+  try {
+    const promptFile = join(parent, "review.md");
+    await writeFile(promptFile, "review\n", "utf8");
+
+    const exitCode = await main([
+      "--user-data-dir", "profile",
+      "--model", "GPT-6",
+      "--effort", "High",
+      "--prompt-file", promptFile,
+    ], {
+      openReviewContext: async () => ({ context: {}, ownsContext: true }),
+      runReviewTransaction: async () => ({ status: "completed", output_dir: "run-a" }),
+      closeContext: async () => {
+        throw new Error("context close failed");
+      },
+    });
+
+    assert.equal(exitCode, 1);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("each output allocation creates a distinct run directory", async () => {

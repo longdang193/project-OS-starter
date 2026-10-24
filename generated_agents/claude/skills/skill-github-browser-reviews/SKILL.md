@@ -192,14 +192,18 @@ node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.m
   --output-dir <review-output-directory>
 ```
 
-One normal invocation is one bounded review transaction. It selects and visibly
-verifies the requested model and effort, submits at most once, waits for a new
-stable visible assistant turn, writes `response.md` and a small `result.json`,
-and only then closes the owned browser context. Terminal runner results are
-`completed`, `incomplete`, or `blocked`; a nonzero exit code accompanies the
-last two. The controller, not the runner, validates revision-specific review
-evidence and may classify the overall workflow as `verified`. The runner never
-retries or silently recovers a failed submission.
+ One normal invocation is one bounded review transaction. It selects and visibly
+ verifies the requested model and effort, submits at most once, waits for a new
+ stable visible assistant turn, writes `response.md` and a small `result.json`,
+ and only then closes the owned browser context. While the response is visibly
+ generating, completion observation polls cheap visible state and defers full
+ assistant-text extraction until generation stops and stability can be checked.
+ Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
+ owned-context cleanup preserves the review artifacts but makes the invocation
+ nonzero and records the cleanup failure. The controller, not the runner,
+ validates revision-specific review evidence and may classify the overall
+ workflow as `verified`. The runner never retries or silently recovers a failed
+ submission.
 
 For a multi-model review, keep the same transaction boundary but call the
 CLI module's `openReviewContext(options)` once, then call
@@ -218,10 +222,11 @@ standalone CLI also accepts a manifest:
 Pass it as `--batch-file <reviews.json>` instead of the single-review flags.
 The runner validates every entry before opening the browser, reuses one
 authenticated context for sequential fresh-tab transactions, allocates a
-separate `run-*` directory per review, persists response and result artifacts
-before page cleanup, closes the shared context once, prints a JSON summary, and
-returns nonzero if any review is not `completed`. Do not add a keep-open flag
-or a second browser lifecycle owner.
+ separate `run-*` directory per review, persists response and result artifacts
+ before page cleanup, closes the shared context once through the batch owner,
+ prints a JSON summary, and returns nonzero if any review is not `completed` or
+ the shared context cannot be closed. Do not add a keep-open flag or a second
+ browser lifecycle owner.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The
