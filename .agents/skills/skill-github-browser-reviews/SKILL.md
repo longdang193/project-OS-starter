@@ -210,6 +210,14 @@ last two. The controller, not the runner, validates revision-specific review
 evidence and may classify the overall workflow as `verified`. The runner never
 retries or silently recovers a failed submission.
 
+For a multi-model review, keep the same transaction boundary but call the
+CLI module's `openReviewContext(options)` once, then call
+`runReviewBatch({ attached, reviews, outputDir })` from the Node controller. It
+reuses one authenticated context for sequential reviews, allocates a separate
+`run-*` output directory per review, closes each review page after its artifacts
+are persisted, and closes the shared context once at the end. Do not add a
+keep-open flag or a second browser lifecycle owner.
+
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The
 CLI imports `run-review-prompt.mjs` through Node's ESM loader and submits

@@ -20,6 +20,7 @@ import {
   createResult,
   createRunOutputDirectory,
   parseArguments,
+  runReviewBatch,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
 import {
@@ -421,6 +422,55 @@ test("each output allocation creates a distinct run directory", async () => {
     assert.notEqual(first.runId, second.runId);
     assert.match(first.outputDir, /run-/);
     assert.match(second.outputDir, /run-/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("review batch reuses one context, isolates runs, and closes the context once", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-batch-"));
+  const context = {};
+  const attached = {
+    browser: null,
+    context,
+    ownsContext: true,
+  };
+  const seenContexts = [];
+  const seenPages = [];
+  const results = [];
+  let contextCloseCount = 0;
+
+  attached.context.close = async () => {
+    contextCloseCount += 1;
+  };
+
+  try {
+    const batch = await runReviewBatch({
+      attached,
+      outputDir: parent,
+      reviews: [
+        { model: "GPT-5.6-Sol", effort: "High", prompt: "first" },
+        { model: "GPT-6", effort: "High", prompt: "second" },
+      ],
+      runTransaction: async (reviewContext, review) => {
+        const allocation = await createRunOutputDirectory(review.outputDir);
+        const page = {
+          async close() {
+            seenPages.push(page);
+          },
+        };
+        seenContexts.push(reviewContext);
+        results.push({ outputDir: allocation.outputDir, page });
+        await page.close();
+        return { outputDir: allocation.outputDir, status: "completed" };
+      },
+    });
+
+    assert.equal(batch.length, 2);
+    assert.deepEqual(seenContexts, [context, context]);
+    assert.notEqual(results[0].outputDir, results[1].outputDir);
+    assert.equal(seenPages.length, 2);
+    assert.equal(contextCloseCount, 1);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

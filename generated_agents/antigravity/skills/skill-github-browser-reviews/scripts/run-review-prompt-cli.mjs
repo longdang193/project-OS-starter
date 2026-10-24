@@ -160,6 +160,11 @@ async function openContext(chromium, options) {
   }
 }
 
+export async function openReviewContext(options) {
+  const chromium = await loadPlaywright();
+  return openContext(chromium, options);
+}
+
 export async function closeContext({ browser, context, ownsContext, page }) {
   if (ownsContext && context) return context.close();
 
@@ -174,20 +179,10 @@ export async function closeContext({ browser, context, ownsContext, page }) {
   if (cleanupError) throw cleanupError;
 }
 
-export async function main(argv) {
-  if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
-    console.log(USAGE);
-    return 0;
-  }
-
-  const options = parseArguments(argv);
-  const prompt = await readFile(options.promptFile, "utf8");
-  if (!prompt.trim()) usageError("Prompt file must not be empty");
-
+export async function runReviewTransaction(context, options) {
   let result = createResult(options);
   let outputDir;
   let runId;
-  let attached;
   let page;
   let failure;
 
@@ -241,7 +236,7 @@ export async function main(argv) {
     result.submission = result.submission_attempted ? "ambiguous" : result.submission;
   } finally {
     try {
-      if (attached) await closeContext({ ...attached, page });
+      if (page) await page.close();
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
       if (!failure) {
@@ -268,10 +263,81 @@ export async function main(argv) {
     }
   }
 
-  console.log(JSON.stringify({
+  return {
     ...result,
     output_dir: outputDir ? relative(process.cwd(), outputDir) : null,
-  }));
+  };
+}
+
+export async function runReviewBatch({ attached, outputDir, reviews, runTransaction = runReviewTransaction }) {
+  if (!attached?.context) throw new Error("attached authenticated context is required");
+  if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
+
+  const results = [];
+  try {
+    for (const review of reviews) {
+      results.push(await runTransaction(attached.context, {
+        ...review,
+        outputDir,
+      }));
+    }
+    return results;
+  } finally {
+    await closeContext(attached);
+  }
+}
+
+export async function main(argv) {
+  if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
+    console.log(USAGE);
+    return 0;
+  }
+
+  const options = parseArguments(argv);
+  const prompt = await readFile(options.promptFile, "utf8");
+  if (!prompt.trim()) usageError("Prompt file must not be empty");
+
+  let result;
+  let attached;
+
+  try {
+    attached = await openReviewContext(options);
+    result = await runReviewTransaction(attached.context, {
+      effort: options.effort,
+      model: options.model,
+      outputDir: options.outputDir,
+      prompt,
+    });
+  } catch (error) {
+    result = {
+      ...createResult(options),
+      status: "blocked",
+      failure_stage: "browser",
+      failure_reason: error instanceof Error ? error.message : String(error),
+      output_dir: null,
+    };
+  } finally {
+    try {
+      if (attached) await closeContext(attached);
+    } catch (error) {
+      const cleanupReason = error instanceof Error ? error.message : String(error);
+      if (!result) {
+        result = {
+          ...createResult(options),
+          status: "incomplete",
+          failure_stage: "cleanup",
+          failure_reason: cleanupReason,
+          output_dir: null,
+        };
+      } else {
+        result.status = "incomplete";
+        result.failure_stage = "cleanup";
+        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}cleanup failed: ${cleanupReason}`;
+      }
+    }
+  }
+
+  console.log(JSON.stringify(result));
   return result.status === "completed" ? 0 : 1;
 }
 
