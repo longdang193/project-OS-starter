@@ -28,8 +28,11 @@ The central behavioral correction is to distinguish recoverable candidate-local
 inspection failures from global discovery failures. A pane with an incompatible
 context must be rejected and allow allocation to continue; malformed or
 partially unavailable evidence that is isolated to that candidate must not
-prevent the authorized replacement-pane fallback. Global workspace identity,
-transport integrity, and ownership failures remain fail-closed.
+prevent the authorized replacement-pane fallback. A valid session-wide agent
+listing may expose pane-specific evidence that is rejectable, but failure of
+the session-wide listing command, timeout, or envelope remains a global
+identity failure. Global workspace identity, transport integrity, and
+ownership failures remain fail-closed.
 
 ## Implementation Outcomes
 
@@ -127,7 +130,7 @@ retry framework, persistent pane registry, or scheduler is added.
   launcher seams.
 
 **Template Profile:**
-- Controller-selected: `none (lead controller)`.
+- Controller-selected: `none (lead controller)`
 - Selection basis: bounded test-first work with source-authoritative contracts.
 
 **Files And Symbols:**
@@ -143,11 +146,16 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: contradictory source contracts, unrelated tracked changes, live runtime mutation, or any need to edit outside the listed test files.
 
 **Steps:**
-- [ ] Add a candidate-local agent-list/process-info failure case where another
-  matching pane has an incompatible context; assert the selector reaches the
-  allocation branch and returns a validated new pane.
-- [ ] Add a global snapshot identity corruption case; assert it remains
-  fail-closed as structured target-resolution evidence.
+- [ ] Add a candidate-local pane-agent evidence failure case after a valid
+  session-wide agent response, with another matching pane having an
+  incompatible context; assert the selector reaches allocation and returns a
+  validated new pane.
+- [ ] Retain the existing candidate-local process-info invalid-envelope and
+  timeout coverage; do not add a general process-info rewrite unless a new
+  focused regression identifies a distinct gap.
+- [ ] Add global snapshot identity corruption and session-wide agent-list
+  command/timeout/envelope failure cases; assert each remains fail-closed as
+  structured target-resolution evidence.
 - [ ] Add slow named-session pane-list coverage proving the allocation reserve
   is preserved.
 - [ ] Add dry-run auto-resolution coverage proving no split and no stale-agent
@@ -156,6 +164,9 @@ retry framework, persistent pane registry, or scheduler is added.
   coverage, and concurrent allocation coverage.
 - [ ] Add collision-marker, verified-retry constraint, and malformed-retirement
   policy coverage.
+- [ ] Add launcher-level retired-provider/model alias coverage proving rejection
+  occurs before executable lookup, identity discovery, pane locking, or
+  dispatch; retain the narrower registry alias tests as-is.
 
 **Verification:**
 - [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` demonstrates the new tests fail for the current revision or otherwise records an existing contract mismatch before implementation.
@@ -175,6 +186,10 @@ retry framework, persistent pane registry, or scheduler is added.
 - Implement the smallest typed boundary changes in the launcher; do not catch
   all exceptions indiscriminately.
 
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: bounded launcher changes with explicit fail-closed ownership.
+
 **Files And Symbols:**
 - Modify: `scripts/herdr_main_launcher.py:_candidate_json_command`, `_agent_for_pane`, `_herdr_pane`, `_inspect_auto_candidate`, `_resolve_target_selector`.
 - Add or reuse: a short session/workspace allocation lock helper adjacent to the
@@ -189,15 +204,22 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: a proposed catch-all that would swallow global identity failure, a new persistent registry/scheduler, or any external Herdr mutation outside bounded tests.
 
 **Steps:**
-- [ ] Convert isolated agent-list, process-info, and candidate-local transport/
-  envelope failures into `TargetCandidateRejected` with rejection evidence.
-- [ ] Keep malformed current-workspace snapshot identity, unavailable global
-  snapshot envelopes, and global transport failures as `TargetResolutionBlocked`.
+- [ ] Convert only pane-attributable agent evidence and candidate-local
+  transport/envelope failures, after a valid session-wide response, into
+  `TargetCandidateRejected` with rejection evidence. Preserve the existing
+  `_candidate_json_command` process-info behavior unless a new focused test
+  proves a distinct gap.
+- [ ] Keep session-wide agent-list command, timeout, and envelope failures,
+  malformed current-workspace snapshot identity, unavailable global snapshot
+  envelopes, and global transport failures as `TargetResolutionBlocked` with
+  `global_identity` or the established global failure kind.
 - [ ] Apply the candidate deadline minus `_TARGET_ALLOCATION_RESERVE_SECONDS`
   to named-session pane listing as well as global snapshot discovery.
-- [ ] Protect only the allocation transition with a keyed session/workspace
-  lock: re-read or revalidate the current candidate set under the lock, split
-  once, then release immediately.
+- [ ] Protect the allocation transition and action selection with a keyed
+  session/workspace lock: re-read or revalidate the current candidate set under
+  the lock, then atomically choose a still-compatible reuse action, one split,
+  or a re-resolution result before releasing the lock. Do not release after a
+  recheck while dispatch still holds a stale precomputed action.
 - [ ] Preserve partial-allocation evidence and validate the returned pane before
   selecting it; do not retry an uncertain split blindly.
 
@@ -206,9 +228,13 @@ retry framework, persistent pane registry, or scheduler is added.
   pane.
 - [ ] Global identity corruption remains fail-closed.
 - [ ] Named-session slow-list test leaves the allocation reserve intact.
-- [ ] Concurrent allocation test proves one split for the same session/workspace
-  transition and distinct safe dispatch ownership afterward.
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+- [ ] Concurrent allocation tests prove that the same session/workspace
+  transition does not duplicate a split, that a changed pane state cannot cause
+  a stale action to dispatch, and that genuinely incompatible contexts may
+  allocate distinct panes with safe ownership.
+- [ ] The Task 2-owned candidate-classification, deadline, allocation, and race
+  tests pass; later dry-run, collision, retry, and policy tests remain explicit
+  expected failures until their owning tasks.
 
 **Exit Criteria:**
 - The original `--session auto --pane auto` bottleneck is corrected without
@@ -219,6 +245,10 @@ retry framework, persistent pane registry, or scheduler is added.
 **Purpose:**
 - Make dry-run truthful and serialize only the short dispatch boundary needed for
   Codex safety and deduplication.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: bounded lifecycle changes with direct mocked dispatch proof.
 
 **Files And Symbols:**
 - Modify: `scripts/herdr_main_launcher.py:_main_body`, `resolve_launch`, `_run_with_pane_ownership`, Codex prompt-submission branch around `claim_model_submission` and `_submit_codex_prompt`.
@@ -235,23 +265,34 @@ retry framework, persistent pane registry, or scheduler is added.
 
 **Steps:**
 - [ ] Separate dry-run target proposal from mutating split/stale-agent release;
-  dry-run must not create, release, or otherwise mutate Herdr state.
+  dry-run must not create, release, or otherwise mutate Herdr state. When
+  allocation would be required, return explicit `allocation.status =
+  "would_allocate"` evidence with no fabricated pane ID and no executable
+  command, and short-circuit real-pane preparation.
 - [ ] Claim the submission gate for Codex when a logical operation identity is
   present, before `_submit_codex_prompt`, and preserve existing uncertain/
   acknowledged settlement states.
 - [ ] Keep a short exclusive dispatch lease from final reuse validation through
   prompt submission; release it after the delivery boundary, not after model
-  completion.
-- [ ] Preserve final pane/process/context validation immediately before dispatch.
+  completion. The lease-held validation must choose the executable action, and
+  dispatch must execute that returned action rather than a stale command built
+  before the lease.
+- [ ] Preserve final pane/process/context validation immediately before dispatch
+  and re-resolve when the state changed. Same-context concurrent launches may
+  converge on one safely reused pane; incompatible contexts may allocate
+  separately.
 
 **Verification:**
 - [ ] Dry-run auto path has no split/release side effect.
 - [ ] Two Codex launches with one logical operation produce one gate claim and
   one admitted prompt submission.
 - [ ] Concurrent compatible reuse cannot submit to the same pane concurrently.
+- [ ] A race that changes a pane from empty to reusable between resolution and
+  dispatch never issues a duplicate agent start from stale resolution evidence.
 - [ ] Delivery timeout remains `delivery_uncertain` and is not replayed without
   reconciliation.
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+- [ ] The Task 3-owned dry-run, gate, ownership, and race tests pass; later
+  collision/retry/policy tests remain explicit expected failures until Task 4.
 
 **Exit Criteria:**
 - Dry-run is non-mutating and Codex dispatch is deduplicated and ownership-safe
@@ -263,10 +304,15 @@ retry framework, persistent pane registry, or scheduler is added.
 - Prevent collision and retry paths from silently degrading pane reuse or error
   contracts.
 
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: narrow identity and error-contract preservation.
+
 **Files And Symbols:**
 - Modify: `scripts/herdr_main_launcher.py:_unique_agent_name`, verified-start retry branch around `_resolve_target_selector`, `_herdr_pane`, and `_profile`.
-- Modify: `scripts/agent_profile_registry.py` only if a narrow typed exception
-  boundary is needed; do not move retirement policy ownership.
+- Inspect: `scripts/agent_profile_registry.py` and its tests for the existing
+  `RuntimeError` contract; do not modify the registry or move retirement policy
+  ownership for this defect.
 - Modify: `tests/test_herdr_main_launcher.py`, `tests/test_agent_profile_registry.py`.
 
 **Dependencies:**
@@ -282,7 +328,8 @@ retry framework, persistent pane registry, or scheduler is added.
 - [ ] Pass the existing dispatch profile and context identity into verified-start
   retry resolution and follow-up pane validation.
 - [ ] Translate `RuntimeError` raised by retirement-policy loading into the
-  launcher’s structured `LaunchBlocked` contract at the profile-loading boundary.
+  launcher’s structured `LaunchBlocked` contract at `_profile`; leave
+  `_load_retirement_policy` and its registry tests unchanged.
 - [ ] Keep CGW aliases rejected before executable lookup, Git identity, Herdr
   discovery, pane locking, or dispatch.
 
@@ -308,6 +355,10 @@ retry framework, persistent pane registry, or scheduler is added.
 **Task Function:**
 - Establish a before/after baseline using existing performance evidence and
   bounded mocked workloads before changing data flow.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: measurement-gated optimization with bounded scope.
 
 **Files And Symbols:**
 - Inspect: `scripts/herdr_main_launcher.py:resolve_launch`, `_resolve_target_selector`, `_herdr_pane`, existing performance evidence helpers.
@@ -351,6 +402,10 @@ retry framework, persistent pane registry, or scheduler is added.
 
 **Purpose:**
 - Reconcile source, tests, docs, CGW retirement evidence, and final acceptance.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: final source/test/doc reconciliation and acceptance proof.
 
 **Files And Symbols:**
 - Update, only where semantics changed: `docs/operating_system/runtime/runtime-surfaces.md` and `docs/operating_system/procedures/runtime-adapter-procedure.md`.
