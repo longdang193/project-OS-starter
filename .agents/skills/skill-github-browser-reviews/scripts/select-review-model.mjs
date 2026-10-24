@@ -140,15 +140,21 @@ export async function selectReviewModel(page, { model, effort }) {
   assertSupported(effort, SUPPORTED_EFFORTS, "effort");
 
   let menu = await openModelMenu(page);
+  const reopenModelMenu = async () => {
+    await page.keyboard.press("Escape");
+    await menu.waitFor({ state: "hidden", timeout: 1500 });
+    return openModelMenu(page);
+  };
   menu = await openModelList(menu, {
     model,
-    reopen: async () => {
-      await page.keyboard.press("Escape");
-      await menu.waitFor({ state: "hidden", timeout: 1500 });
-      return openModelMenu(page);
-    },
+    reopen: reopenModelMenu,
   });
-  await selectModel(menu, model);
+  try {
+    await selectModel(menu, model);
+  } catch {
+    menu = await reopenModelMenu();
+    await selectModel(menu, model);
+  }
   await setEffort(menu, effort);
   await verifySelection(menu, model, effort);
 

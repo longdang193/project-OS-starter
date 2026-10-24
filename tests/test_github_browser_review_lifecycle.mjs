@@ -26,6 +26,7 @@ import {
 import {
   findModelOption,
   openModelList,
+  selectReviewModel,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
 
 test("normal CLI arguments keep the runner contract small", () => {
@@ -185,6 +186,109 @@ test("model selection reopens when the requested model row is covered", async ()
 
   assert.equal(reopened, true);
   assert.equal(result, reopenedMenu);
+});
+
+test("model selection reopens when the real requested-row click is intercepted", async () => {
+  let menuVisible = false;
+  let firstClick = true;
+  let selected = false;
+  const radioOptions = {
+    count: async () => 2,
+    nth(index) {
+      return {
+        async innerText() {
+          return index === 0 ? "GPT-6" : "GPT-5.6 Sol";
+        },
+        async getAttribute(name) {
+          assert.equal(name, "aria-checked");
+          return index === 1 && selected ? "true" : "false";
+        },
+        async click(options = {}) {
+          if (options.trial) return;
+          if (firstClick) {
+            firstClick = false;
+            throw new Error("real click intercepted");
+          }
+          selected = true;
+        },
+      };
+    },
+    first() {
+      return this.nth(0);
+    },
+  };
+  const menu = {
+    async isVisible() {
+      return menuVisible;
+    },
+    async waitFor({ state }) {
+      if (state === "hidden") menuVisible = false;
+      if (state === "visible") menuVisible = true;
+    },
+    locator(selector) {
+      if (selector === '[role="menuitemradio"]:visible') return radioOptions;
+      if (selector === '[role="status"]') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async innerText() {
+                return "High";
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options = {}) {
+      if (role === "menuitem" && options.name === "Power") {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async focus() {},
+              async press() {},
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected menu role lookup: ${role}`);
+    },
+  };
+  const page = {
+    getByRole(role, options = {}) {
+      if (role === "menu") {
+        return { first: () => menu };
+      }
+      if (role === "button" && options.name === "Select ChatGPT model") {
+        return {
+          first() {
+            return {
+              async waitFor() {},
+              async click() {
+                menuVisible = true;
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected page role lookup: ${role}`);
+    },
+    keyboard: {
+      async press(key) {
+        assert.equal(key, "Escape");
+        menuVisible = false;
+      },
+    },
+  };
+
+  await selectReviewModel(page, { model: "GPT-5.6-Sol", effort: "High" });
+  assert.equal(selected, true);
 });
 
 test("completion requires a new stable visible assistant turn and conversation", () => {
