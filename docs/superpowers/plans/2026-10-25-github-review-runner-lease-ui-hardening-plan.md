@@ -78,12 +78,12 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `completed` | current | `lead` | none | lease lifecycle tests | 60 lifecycle tests pass; lease race, rollback, malformed-lock, and token-release cases pass |
-| Task 2 | `completed` | current | `lead` | Task 1 | cleanup and persistence tests | cleanup persistence, lease retention, and shared-context stop cases pass |
-| Task 3 | `completed` | current | `lead` | none | bounded action and readiness tests | bounded UI actions, composer readiness, and submission cases pass |
-| Task 4 | `completed` | current | `lead` | Task 3 | completion and interruption tests | completion without response-action buttons and scoped alert handling pass |
-| Task 5 | `completed` | current | `lead` | Tasks 2–4 | model-menu and batch ownership tests | one bounded recovery owner and transition-aware close cases pass; canonical skill text already aligned |
-| Task 6 | `active` | current | `lead` | Tasks 1–5 | full local suite, adapter check, live probe | local checks pass; live probe awaits immutable pushed revision and Git publication authorization |
+| Task 1 | `completed` | current | `codex` | none | lease lifecycle tests | 60 lifecycle tests pass; lease race, rollback, malformed-lock, and token-release cases pass |
+| Task 2 | `completed` | current | `codex` | Task 1 | cleanup and persistence tests | cleanup persistence, lease retention, and shared-context stop cases pass |
+| Task 3 | `completed` | current | `codex` | none | bounded action and readiness tests | bounded UI actions, composer readiness, and submission cases pass |
+| Task 4 | `completed` | current | `codex` | Task 3 | completion and interruption tests | completion without response-action buttons and scoped alert handling pass |
+| Task 5 | `completed` | current | `codex` | Tasks 2–4 | model-menu and batch ownership tests | one bounded recovery owner and transition-aware close cases pass; canonical skill text already aligned |
+| Task 6 | `active` | current | `codex` | Tasks 1–5 | full local suite, adapter check, live probe | local checks pass; live probe awaits immutable pushed revision and Git publication authorization |
 
 ## Task Breakdown
 
@@ -93,7 +93,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Implement the profile lease ownership contract and its deterministic concurrency proof.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** GPT-6 stale-recovery race; GPT-5.6-Sol metadata-write rollback finding; exclusive ownership invariant.
 
@@ -128,7 +129,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Align context cleanup, single-review final persistence, and batch cleanup classification.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** GPT-6 failed-shutdown lease release; GPT-6 single-run result persistence; GPT-6 uncertain page cleanup continuation.
 
@@ -163,7 +165,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Centralize UI action/readiness timeout tiers without changing completion polling backoff.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** GPT-5.6-Sol unbounded initial model-menu click; GPT-6 unbounded submission actions; both models’ delayed composer readiness finding.
 
@@ -199,7 +202,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Refine completion predicates and interruption classification while preserving fail-closed ambiguity handling.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** GPT-6 response-action dependency and broad-alert findings.
 
@@ -233,7 +237,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Simplify one bounded model-menu recovery path and update the canonical skill documentation.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** GPT-5.6-Sol and GPT-6 overlapping recovery finding; GPT-5.6-Sol final menu-close finding; documented timeout and ownership invariants.
 
@@ -270,7 +275,8 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 
 **Task Function:** Reconcile all task proof, run the complete test set, and perform one read-only sequential live probe after the implementation is committed and pushed by an explicitly authorized workflow.
 
-**Template Profile:** `unresolved`
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** All validated findings and the existing one-context/fresh-tab operational contract.
 
