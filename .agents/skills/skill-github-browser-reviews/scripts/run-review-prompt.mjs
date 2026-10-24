@@ -114,6 +114,7 @@ export async function isPromptVisibleInComposer(composer, prompt) {
 async function readCompletionSnapshot(page) {
   const assistantMessage = await readVisibleAssistantMessage(page);
   const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
+  const responseAction = page.getByRole("button", { name: /^(Regenerate response|Rate response)$/i }).last();
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
   const currentUrl = page.url();
   const conversationId = extractConversationIdentity(currentUrl);
@@ -125,6 +126,7 @@ async function readCompletionSnapshot(page) {
     currentUrl,
     generating: await stopButton.isVisible(),
     interrupted: await readVisibleInterruption(page),
+    responseActionsReady: await responseAction.isVisible(),
   };
 }
 
@@ -136,6 +138,7 @@ export function evaluateReviewCompletion({
   conversationId,
   generating,
   interrupted,
+  responseActionsReady,
   stableSampleCount,
 }) {
   return !generating
@@ -144,6 +147,7 @@ export function evaluateReviewCompletion({
     && Boolean(conversationId)
     && assistantTurnCount > baselineAssistantTurnCount
     && Boolean(assistantText.trim())
+    && responseActionsReady
     && stableSampleCount >= 2;
 }
 

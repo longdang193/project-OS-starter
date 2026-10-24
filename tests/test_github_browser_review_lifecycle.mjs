@@ -143,6 +143,7 @@ test("completion requires a new stable visible assistant turn and conversation",
     conversationId: "conversation-1",
     generating: false,
     interrupted: false,
+    responseActionsReady: true,
     stableSampleCount: 2,
   }), true);
 
@@ -154,6 +155,7 @@ test("completion requires a new stable visible assistant turn and conversation",
     conversationId: null,
     generating: false,
     interrupted: false,
+    responseActionsReady: true,
     stableSampleCount: 2,
   }), false);
 
@@ -165,6 +167,19 @@ test("completion requires a new stable visible assistant turn and conversation",
     conversationId: "conversation-1",
     generating: false,
     interrupted: false,
+    responseActionsReady: true,
+    stableSampleCount: 2,
+  }), false);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantText: "I’ll verify the exact commit before reviewing it.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generating: false,
+    interrupted: false,
+    responseActionsReady: false,
     stableSampleCount: 2,
   }), false);
 });
