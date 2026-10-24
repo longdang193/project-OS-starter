@@ -102,7 +102,7 @@ class TargetCandidateRejected(LaunchBlocked):
     """Raised when one auto-discovery candidate fails eligibility checks."""
 
 
-class PaneProcessInfoIncomplete(LaunchBlocked):
+class PaneProcessInfoIncomplete(TargetCandidateRejected):
     """Raised while an allocated pane has not published process information yet."""
 
 
@@ -634,6 +634,7 @@ def _herdr_pane(
     context_identity: str | None = None,
     candidate_local: bool = False,
     candidate_deadline: float | None = None,
+    agent_cache: dict[str, list[Any]] | None = None,
 ) -> dict[str, Any]:
     def command_timeout() -> float:
         if candidate_deadline is None:
@@ -674,6 +675,7 @@ def _herdr_pane(
             pane,
             env=env,
             timeout=command_timeout(),
+            agent_cache=agent_cache,
         )
         if not isinstance(agent_info, dict):
             raise TargetCandidateRejected(f"Pane agent identity is unavailable: {pane}")
@@ -771,6 +773,7 @@ def _inspect_auto_candidate(
     expected_profile: AgentProfile | None,
     context_identity: str | None,
     candidate_deadline: float | None,
+    agent_cache: dict[str, list[Any]] | None,
 ) -> dict[str, Any]:
     return _herdr_pane(
         cwd,
@@ -785,6 +788,7 @@ def _inspect_auto_candidate(
         context_identity=context_identity,
         candidate_local=True,
         candidate_deadline=candidate_deadline,
+        agent_cache=agent_cache,
     )
 
 
@@ -947,6 +951,15 @@ def _resolve_target_selector(
             return 0.0
         return remaining
 
+    def candidate_discovery_timeout() -> float:
+        timeout = candidate_timeout()
+        if timeout <= 0:
+            raise TargetResolutionBlocked(
+                "target discovery deadline expired",
+                {"status": "incomplete", "mode": "auto", "failure_kind": "deadline"},
+            )
+        return timeout
+
     def allocation_timeout(allocation_deadline: float) -> float:
         remaining = min(deadline, allocation_deadline) - time.monotonic()
         if remaining <= 0:
@@ -976,7 +989,7 @@ def _resolve_target_selector(
                 _json_command(
                     [herdr, "api", "snapshot"],
                     env=env,
-                    timeout=remaining_timeout(),
+                    timeout=candidate_discovery_timeout(),
                 ),
                 "snapshot",
             )
@@ -1005,6 +1018,7 @@ def _resolve_target_selector(
         raise global_snapshot_block("snapshot_envelope_invalid", str(exc)) from exc
     candidates: list[tuple[bool, str, str]] = []
     source_panes: list[dict[str, Any]] = []
+    agent_cache: dict[str, list[Any]] = {}
     if not isinstance(panes, list):
         raise global_snapshot_block("panes_not_list", "snapshot panes is not an array")
     for raw_item in panes:
@@ -1035,6 +1049,9 @@ def _resolve_target_selector(
         candidate_budget = candidate_timeout()
         if candidate_budget <= 0:
             break
+        candidate_agents = None
+        if bool(item.get("agent") or item.get("agent_status") not in (None, "unknown")):
+            candidate_agents = agent_cache
         try:
             _inspect_auto_candidate(
                 cwd,
@@ -1048,6 +1065,7 @@ def _resolve_target_selector(
                 expected_profile=expected_profile,
                 context_identity=context_identity,
                 candidate_deadline=deadline - _TARGET_ALLOCATION_RESERVE_SECONDS,
+                agent_cache=candidate_agents,
             )
         except TargetCandidateRejected as exc:
             rejections.append({
@@ -2302,15 +2320,21 @@ def _agent_for_pane(
     *,
     env: dict[str, str] | None,
     timeout: float,
+    agent_cache: dict[str, list[Any]] | None = None,
 ) -> dict[str, Any] | None:
-    payload = _json_command(
-        [herdr, "--session", session, "agent", "list"],
-        env=env,
-        timeout=timeout,
-    )
-    agents = _result(payload, "agents")
-    if not isinstance(agents, list):
-        raise LaunchBlocked("Herdr agent list is not an array.")
+    if agent_cache is not None and session in agent_cache:
+        agents = agent_cache[session]
+    else:
+        payload = _json_command(
+            [herdr, "--session", session, "agent", "list"],
+            env=env,
+            timeout=timeout,
+        )
+        agents = _result(payload, "agents")
+        if not isinstance(agents, list):
+            raise LaunchBlocked("Herdr agent list is not an array.")
+        if agent_cache is not None:
+            agent_cache[session] = agents
     return next(
         (
             item for item in agents

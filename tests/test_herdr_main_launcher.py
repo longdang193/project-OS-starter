@@ -3055,6 +3055,7 @@ def test_target_selector_candidate_deadline_preserves_allocation_reserve(
     }
     now = 0.0
     commands: list[list[str]] = []
+    timeouts: list[float] = []
 
     def fake_monotonic() -> float:
         return now
@@ -3062,6 +3063,7 @@ def test_target_selector_candidate_deadline_preserves_allocation_reserve(
     def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
         nonlocal now
         commands.append(command)
+        timeouts.append(float(kwargs["timeout"]))
         if command[1:3] == ["api", "snapshot"]:
             return {"result": {"snapshot": {"panes": [source]}}}
         if command[3:5] == ["agent", "list"]:
@@ -3102,6 +3104,89 @@ def test_target_selector_candidate_deadline_preserves_allocation_reserve(
         ["pane", "split"],
         ["pane", "process-info"],
     ]
+    assert timeouts[0] == pytest.approx(4.0)
+    assert timeouts[2] == pytest.approx(0.9, abs=0.1)
+
+
+def test_target_selector_rejects_incomplete_existing_candidate_and_allocates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+        "agent_status": "idle",
+    }
+    allocated = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p2",
+        "cwd": str(ROOT),
+        "focused": False,
+    }
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        if command[3:5] == ["pane", "process-info"]:
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        if command[3:5] == ["agent", "list"]:
+            return {"result": {"agents": []}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_inspect_auto_candidate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.PaneProcessInfoIncomplete("Herdr pane process information is incomplete.")
+        ),
+    )
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT,
+        "auto",
+        "auto",
+        "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["allocation"]["status"] == "allocated"
+    assert resolution["rejections"][0]["failure_kind"] == "candidate_rejected"
+
+
+def test_agent_for_pane_reuses_session_agent_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    cache: dict[str, list[object]] = {}
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {
+            "result": {
+                "agents": [
+                    {"pane_id": "p1", "name": "agent-1"},
+                    {"pane_id": "p2", "name": "agent-2"},
+                ],
+            },
+        }
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    first = LAUNCHER._agent_for_pane(
+        "herdr.exe", "session", "p1", env=None, timeout=1.0, agent_cache=cache,
+    )
+    second = LAUNCHER._agent_for_pane(
+        "herdr.exe", "session", "p2", env=None, timeout=1.0, agent_cache=cache,
+    )
+
+    assert calls == 1
+    assert first == {"pane_id": "p1", "name": "agent-1"}
+    assert second == {"pane_id": "p2", "name": "agent-2"}
 
 
 @pytest.mark.parametrize(
