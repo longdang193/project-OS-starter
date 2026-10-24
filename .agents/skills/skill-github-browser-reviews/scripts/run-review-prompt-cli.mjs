@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
+import { basename, join, relative, resolve } from "node:path";
 
 import {
-  probeReviewModelInNewTab,
   runReviewPromptInNewTab,
+  waitForReviewCompletion,
 } from "./run-review-prompt.mjs";
 import {
   SUPPORTED_EFFORTS,
@@ -13,33 +15,28 @@ import {
 } from "./select-review-model.mjs";
 
 const DEFAULT_CONTEXT_INDEX = 0;
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> [--probe-only] [--prompt-file <path>] [--context-index <number>]";
-const FLAG_ARGUMENTS = new Set(["--probe-only"]);
+const DEFAULT_OUTPUT_DIR = "review-output";
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> [--output-dir <path>] [--context-index <number>]";
+const FLAG_ARGUMENTS = new Set();
 
 function usageError(message) {
   throw new Error(`${message}\n${USAGE}`);
 }
-function parseArguments(argv) {
+
+export function parseArguments(argv) {
   const argumentsByName = new Map();
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (!argument.startsWith("--")) {
-      usageError(`Unexpected argument: ${argument}`);
-    }
+    if (!argument.startsWith("--")) usageError(`Unexpected argument: ${argument}`);
     if (FLAG_ARGUMENTS.has(argument)) {
-      if (argumentsByName.has(argument)) {
-        usageError(`Duplicate argument: ${argument}`);
-      }
+      if (argumentsByName.has(argument)) usageError(`Duplicate argument: ${argument}`);
       argumentsByName.set(argument, true);
       continue;
     }
+
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      usageError(`Missing value for argument: ${argument}`);
-    }
-    if (argumentsByName.has(argument)) {
-      usageError(`Duplicate argument: ${argument}`);
-    }
+    if (!value || value.startsWith("--")) usageError(`Missing value for argument: ${argument}`);
+    if (argumentsByName.has(argument)) usageError(`Duplicate argument: ${argument}`);
     argumentsByName.set(argument, value);
     index += 1;
   }
@@ -49,103 +46,297 @@ function parseArguments(argv) {
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
-  const probeOnly = argumentsByName.has("--probe-only");
   const contextIndexValue = argumentsByName.get("--context-index");
+  const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
-  if (!cdpEndpoint && contextIndexValue !== undefined) {
-    usageError("--context-index requires --cdp-endpoint");
-  }
+  if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
   if (!model) usageError("Missing required argument: --model");
   if (!effort) usageError("Missing required argument: --effort");
-  if (!probeOnly && !promptFile) usageError("Missing required argument: --prompt-file");
+  if (!promptFile) usageError("Missing required argument: --prompt-file");
   if (!SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
   if (!SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
 
-  const contextIndex = contextIndexValue === undefined
-    ? DEFAULT_CONTEXT_INDEX
-    : Number(contextIndexValue);
-  if (!Number.isInteger(contextIndex) || contextIndex < 0) {
-    usageError(`Invalid context index: ${contextIndexValue}`);
-  }
+  const contextIndex = contextIndexValue === undefined ? DEFAULT_CONTEXT_INDEX : Number(contextIndexValue);
+  if (!Number.isInteger(contextIndex) || contextIndex < 0) usageError(`Invalid context index: ${contextIndexValue}`);
 
-  return { cdpEndpoint, contextIndex, effort, model, probeOnly, promptFile, userDataDir };
+  return {
+    cdpEndpoint,
+    contextIndex,
+    effort,
+    model,
+    outputDir,
+    promptFile,
+    userDataDir,
+  };
 }
-async function main(argv) {
-  if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
-    console.log(USAGE);
-    return;
-  }
-  const options = parseArguments(argv);
-  const prompt = options.probeOnly ? undefined : await readFile(options.promptFile, "utf8");
-  if (!options.probeOnly && !prompt.trim()) usageError("Prompt file must not be empty");
 
-  let chromium;
+export function createResult(options) {
+  return {
+    status: "running",
+    run_id: options.runId || null,
+    model_requested: options.model,
+    model_verified: null,
+    effort_requested: options.effort,
+    effort_verified: null,
+    submission_attempted: false,
+    submission: "not_started",
+    completion: "not_started",
+    conversation_url: null,
+    conversation_id: null,
+    assistant_message_id: null,
+    assistant_turn_index: null,
+    response_path: "response.md",
+    failure_stage: null,
+    failure_reason: null,
+  };
+}
+
+export async function createRunOutputDirectory(parentDir) {
+  const parent = resolve(parentDir);
+  await mkdir(parent, { recursive: true });
+  const outputDir = await mkdtemp(join(parent, "run-"));
+  return { outputDir, runId: basename(outputDir) };
+}
+
+export async function atomicWrite(filePath, content) {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
   try {
-    ({ chromium } = await import("playwright"));
+    await writeFile(tempPath, content, "utf8");
+    await rename(tempPath, filePath);
+  } finally {
+    await rm(tempPath, { force: true }).catch(() => {});
+  }
+}
+
+export async function writeResult(outputDir, result) {
+  await atomicWrite(join(outputDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
+}
+
+function structuredFailure({ error, failureStage, outputDir }) {
+  return {
+    status: "blocked",
+    failure_stage: failureStage,
+    failure_reason: error instanceof Error ? error.message : String(error),
+    output_dir: outputDir || null,
+  };
+}
+
+async function loadPlaywright() {
+  try {
+    const { chromium } = await import("playwright");
+    return chromium;
   } catch (error) {
     const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`Playwright is required for the Node review runner${detail}`);
   }
+}
 
-  let browser;
-  let context;
-  let ownsContext = false;
+async function openContext(chromium, options) {
+  if (options.cdpEndpoint) {
+    const browser = await chromium.connectOverCDP(options.cdpEndpoint);
+    const contexts = browser.contexts();
+    const context = contexts[options.contextIndex];
+    if (!context) {
+      await browser.close().catch(() => {});
+      throw new Error(`Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`);
+    }
+    return { browser, context, ownsContext: false };
+  }
+
   try {
-    if (options.cdpEndpoint) {
-      browser = await chromium.connectOverCDP(options.cdpEndpoint);
-      const contexts = browser.contexts();
-      context = contexts[options.contextIndex];
-      if (!context) {
-        throw new Error(
-          `Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`,
-        );
-      }
-    } else {
-      try {
-        context = await chromium.launchPersistentContext(options.userDataDir, {
-          headless: false,
-        });
-        ownsContext = true;
-      } catch (error) {
-        const detail = error instanceof Error ? `: ${error.message}` : "";
-        throw new Error(`Could not launch the Playwright browser profile${detail}`);
-      }
-    }
-
-    const { page, ...result } = options.probeOnly
-      ? await probeReviewModelInNewTab(context, {
-        effort: options.effort,
-        model: options.model,
-      })
-      : await runReviewPromptInNewTab(context, {
-        effort: options.effort,
-        model: options.model,
-        prompt,
-      });
-    const expectedSubmissionState = options.probeOnly ? false : true;
-    if (result.promptSubmitted !== expectedSubmissionState) {
-      throw new Error(
-        options.probeOnly
-          ? "Model and effort probe was not confirmed by the helper"
-          : "Review prompt submission was not confirmed by the helper",
-      );
-    }
-    console.log(JSON.stringify({ ...result, pageUrl: page.url() }));
-  } finally {
-    if (ownsContext && context) {
-      await context.close();
-    } else if (browser) {
-      await browser.close();
-    }
+    const context = await chromium.launchPersistentContext(options.userDataDir, { headless: false });
+    return { browser: null, context, ownsContext: true };
+  } catch (error) {
+    const detail = error instanceof Error ? `: ${error.message}` : "";
+    throw new Error(`Could not launch the Playwright browser profile${detail}`);
   }
 }
 
-try {
-  await main(process.argv.slice(2));
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exitCode = 1;
+export async function openReviewContext(options) {
+  const chromium = await loadPlaywright();
+  return openContext(chromium, options);
+}
+
+export async function closeContext({ browser, context, ownsContext, page }) {
+  if (ownsContext && context) return context.close();
+
+  let cleanupError;
+  try {
+    if (page) await page.close();
+  } catch (error) {
+    cleanupError = error;
+  } finally {
+    if (browser) await browser.close();
+  }
+  if (cleanupError) throw cleanupError;
+}
+
+export async function runReviewTransaction(context, options) {
+  let result = createResult(options);
+  let outputDir;
+  let runId;
+  let page;
+  let failure;
+
+  try {
+    ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
+    result = createResult({ ...options, runId });
+    result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
+    await writeResult(outputDir, result);
+
+    const review = await runReviewPromptInNewTab(context, {
+      effort: options.effort,
+      model: options.model,
+      prompt: options.prompt,
+      beforeSubmit: async () => {
+        result.submission_attempted = true;
+        result.submission = "attempted";
+        await writeResult(outputDir, result);
+      },
+    });
+    page = review.page;
+    if (review.promptSubmitted !== true) throw new Error("Review prompt submission was not confirmed by the helper");
+    result.model_verified = review.model;
+    result.effort_verified = review.effort;
+    result.submission = review.submission;
+    result.completion = "waiting";
+    await writeResult(outputDir, result);
+
+    const completion = await waitForReviewCompletion(page, { baseline: review });
+    result.completion = completion.status;
+    result.conversation_url = completion.currentUrl || null;
+    result.conversation_id = completion.conversationId || null;
+    result.assistant_message_id = completion.assistantMessageId || null;
+    result.assistant_turn_index = completion.assistantTurnIndex ?? null;
+
+    if (completion.response) await atomicWrite(join(outputDir, "response.md"), `${completion.response}\n`);
+    if (completion.status === "confirmed") {
+      result.status = "completed";
+    } else {
+      result.status = "incomplete";
+      result.failure_stage = "completion";
+      result.failure_reason = completion.failureReason || "Review completion was not confirmed";
+    }
+  } catch (error) {
+    failure = error;
+    result.status = result.submission_attempted ? "incomplete" : "blocked";
+    result.failure_stage = result.submission_attempted ? "submission" : "browser";
+    result.failure_reason = error instanceof Error ? error.message : String(error);
+    result.submission = result.submission_attempted ? "ambiguous" : result.submission;
+  } finally {
+    try {
+      if (page) await page.close();
+    } catch (error) {
+      const cleanupReason = error instanceof Error ? error.message : String(error);
+      if (!failure) {
+        result.status = "incomplete";
+        result.failure_stage = "cleanup";
+        result.failure_reason = cleanupReason;
+      } else {
+        result.failure_reason = `${result.failure_reason}; cleanup failed: ${cleanupReason}`;
+      }
+    }
+
+    try {
+      if (!outputDir) throw new Error("Review output directory was not allocated");
+      await writeResult(outputDir, result);
+    } catch (error) {
+      console.error(JSON.stringify(structuredFailure({
+        error,
+        failureStage: "artifacts",
+        outputDir,
+      })));
+      result.status = "blocked";
+      result.failure_stage = "artifacts";
+      result.failure_reason = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return {
+    ...result,
+    output_dir: outputDir ? relative(process.cwd(), outputDir) : null,
+  };
+}
+
+export async function runReviewBatch({ attached, outputDir, reviews, runTransaction = runReviewTransaction }) {
+  if (!attached?.context) throw new Error("attached authenticated context is required");
+  if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
+
+  const results = [];
+  try {
+    for (const review of reviews) {
+      results.push(await runTransaction(attached.context, {
+        ...review,
+        outputDir,
+      }));
+    }
+    return results;
+  } finally {
+    await closeContext(attached);
+  }
+}
+
+export async function main(argv) {
+  if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
+    console.log(USAGE);
+    return 0;
+  }
+
+  const options = parseArguments(argv);
+  const prompt = await readFile(options.promptFile, "utf8");
+  if (!prompt.trim()) usageError("Prompt file must not be empty");
+
+  let result;
+  let attached;
+
+  try {
+    attached = await openReviewContext(options);
+    result = await runReviewTransaction(attached.context, {
+      effort: options.effort,
+      model: options.model,
+      outputDir: options.outputDir,
+      prompt,
+    });
+  } catch (error) {
+    result = {
+      ...createResult(options),
+      status: "blocked",
+      failure_stage: "browser",
+      failure_reason: error instanceof Error ? error.message : String(error),
+      output_dir: null,
+    };
+  } finally {
+    try {
+      if (attached) await closeContext(attached);
+    } catch (error) {
+      const cleanupReason = error instanceof Error ? error.message : String(error);
+      if (!result) {
+        result = {
+          ...createResult(options),
+          status: "incomplete",
+          failure_stage: "cleanup",
+          failure_reason: cleanupReason,
+          output_dir: null,
+        };
+      } else {
+        result.status = "incomplete";
+        result.failure_stage = "cleanup";
+        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}cleanup failed: ${cleanupReason}`;
+      }
+    }
+  }
+
+  console.log(JSON.stringify(result));
+  return result.status === "completed" ? 0 : 1;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    process.exitCode = await main(process.argv.slice(2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

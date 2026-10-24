@@ -112,6 +112,24 @@ def test_delivery_phase_expiry_remains_blocked_for_reconciliation(tmp_path: Path
     assert blocked["reason"] == "delivery is uncertain"
 
 
+def test_not_delivered_settlement_allows_a_later_admission_claim(tmp_path: Path) -> None:
+    operation_id = derive_logical_operation_id(**operation_identity())
+    path = gate_path(operation_id, root=tmp_path)
+    claim_submission(path, operation_id=operation_id, attempt_id="attempt-1", binding=binding())
+    settle_submission(path, attempt_id="attempt-1", state="not_delivered")
+
+    recovered = claim_submission(
+        path,
+        operation_id=operation_id,
+        attempt_id="attempt-2",
+        binding=binding(),
+    )
+
+    assert recovered["state"] == "claimed"
+    assert recovered["record"]["attempt_id"] == "attempt-2"
+    assert recovered["record"]["phase"] == "admission"
+
+
 def test_prepare_submission_persists_delivery_phase(tmp_path: Path) -> None:
     operation_id = derive_logical_operation_id(**operation_identity())
     path = gate_path(operation_id, root=tmp_path)

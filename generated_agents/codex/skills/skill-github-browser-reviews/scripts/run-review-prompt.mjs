@@ -7,7 +7,17 @@
 import { selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
+export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
+const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
+export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
+export const INTERRUPTION_UI_SELECTOR = '[role="alert"]:visible, [data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
+const COMPLETION_TIMEOUT_MS = 900000;
+const COMPLETION_INITIAL_BACKOFF_MS = 250;
+const COMPLETION_MAX_BACKOFF_MS = 1000;
 
+function normalizeComposerText(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
 function assertPrompt(prompt) {
   if (typeof prompt !== "string" || prompt.trim() === "") {
     throw new Error("prompt must be a non-empty string");
@@ -32,8 +42,13 @@ async function openChatGPT(page) {
  */
 export async function openReviewTab(context) {
   const page = await context.newPage();
-  await openChatGPT(page);
-  return page;
+  try {
+    await openChatGPT(page);
+    return page;
+  } catch (error) {
+    await page.close().catch(() => {});
+    throw error;
+  }
 }
 
 async function closeModelMenu(page) {
@@ -46,15 +61,111 @@ async function closeModelMenu(page) {
   }
 }
 
-async function submitPrompt(page, composer, prompt) {
+function extractConversationIdentity(url) {
+  const match = url.match(/\/c\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
+
+async function readVisibleAssistantTurns(page) {
+  const assistantMessages = page.locator(ASSISTANT_TURN_SELECTOR);
+  if (await assistantMessages.count()) return assistantMessages;
+  return page.locator(ASSISTANT_FALLBACK_SELECTOR);
+}
+
+export async function readVisibleInterruption(page) {
+  const interruption = page.locator(INTERRUPTION_UI_SELECTOR).first();
+  return (await interruption.count()) > 0 && await interruption.isVisible();
+}
+
+async function readVisibleAssistantMessage(page) {
+  const turns = await readVisibleAssistantTurns(page);
+  const count = await turns.count();
+  if (count === 0) {
+    return {
+      assistantMessageId: null,
+      assistantText: "",
+      assistantTurnCount: 0,
+    };
+  }
+
+  const selected = turns.nth(count - 1);
+  let assistantMessageId = null;
+  for (const attribute of ["data-message-id", "data-turn-id", "data-testid", "id"]) {
+    const value = await selected.getAttribute(attribute);
+    if (value) {
+      assistantMessageId = value;
+      break;
+    }
+  }
+
+  return {
+    assistantMessageId,
+    assistantText: (await selected.innerText()).trim(),
+    assistantTurnCount: count,
+  };
+}
+
+export async function isPromptVisibleInComposer(composer, prompt) {
+  const expectedPrompt = normalizeComposerText(prompt);
+
+  try {
+    if (normalizeComposerText(await composer.inputValue()) === expectedPrompt) return true;
+  } catch {
+    // Contenteditable composers do not expose inputValue.
+  }
+
+  return normalizeComposerText(await composer.innerText()) === expectedPrompt;
+}
+
+async function readCompletionSnapshot(page) {
+  const assistantMessage = await readVisibleAssistantMessage(page);
+  const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
+  const responseAction = page.getByRole("button", { name: /^(Regenerate response|Rate response)$/i }).last();
+  const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
+  const currentUrl = page.url();
+  const conversationId = extractConversationIdentity(currentUrl);
+
+  return {
+    ...assistantMessage,
+    composerReady: await composer.isVisible() && !(await stopButton.isVisible()),
+    conversationId,
+    currentUrl,
+    generating: await stopButton.isVisible(),
+    interrupted: await readVisibleInterruption(page),
+    responseActionsReady: await responseAction.isVisible(),
+  };
+}
+
+export function evaluateReviewCompletion({
+  assistantText,
+  assistantTurnCount,
+  baselineAssistantTurnCount,
+  composerReady,
+  conversationId,
+  generating,
+  interrupted,
+  responseActionsReady,
+  stableSampleCount,
+}) {
+  return !generating
+    && composerReady
+    && !interrupted
+    && Boolean(conversationId)
+    && assistantTurnCount > baselineAssistantTurnCount
+    && Boolean(assistantText.trim())
+    && responseActionsReady
+    && stableSampleCount >= 2;
+}
+
+async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
   await composer.fill(prompt);
 
-  const visiblePrompt = page.getByText(prompt, { exact: true }).first();
-  if (!(await visiblePrompt.isVisible())) {
+  if (!(await isPromptVisibleInComposer(composer, prompt))) {
     throw new Error("Prompt was not visibly entered");
   }
 
   const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
+  if (beforeSubmit) await beforeSubmit();
   if (await sendButton.isVisible()) {
     await sendButton.click();
   } else {
@@ -62,9 +173,11 @@ async function submitPrompt(page, composer, prompt) {
   }
 
   await page.waitForTimeout(250);
-  if ((await composer.innerText()).trim() === prompt.trim()) {
+  if (await isPromptVisibleInComposer(composer, prompt)) {
     throw new Error("Prompt submission was not visibly acknowledged");
   }
+
+  return { submission: "acknowledged" };
 }
 
 async function prepareReviewPrompt(page, { model, effort }) {
@@ -75,38 +188,84 @@ async function prepareReviewPrompt(page, { model, effort }) {
 }
 
 /**
- * Navigate an existing authenticated ChatGPT page, select and verify the
- * requested review model and thinking effort, and stop before prompt entry.
- *
- * The caller owns the browser session. This helper never launches a browser,
- * authenticates, retries, reruns, or submits a review request.
- */
-export async function probeReviewModel(page, options) {
-  const { effort, model } = await prepareReviewPrompt(page, options);
-  return { effort, model, promptSubmitted: false };
-}
-
-/**
  * Navigate an existing authenticated ChatGPT page, select the requested
  * review model and effort, fill the prompt, and submit it exactly once.
  *
  * The caller owns the browser session. This helper never launches a browser,
- * authenticates, retries, reruns, or interprets the review response.
+ * authenticates, retries, or reruns a review request.
  */
-export async function runReviewPrompt(page, { model, effort, prompt }) {
+export async function waitForReviewCompletion(page, {
+  baseline,
+  timeoutMs = COMPLETION_TIMEOUT_MS,
+} = {}) {
+  if (!baseline) throw new Error("baseline is required for completion observation");
+
+  const deadline = Date.now() + timeoutMs;
+  let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
+  let previousText = "";
+  let previousMessageId = null;
+  let stableSampleCount = 0;
+  let snapshot;
+
+  while (Date.now() <= deadline) {
+    snapshot = await readCompletionSnapshot(page);
+    const sameMessage = !snapshot.assistantMessageId
+      || !previousMessageId
+      || snapshot.assistantMessageId === previousMessageId;
+    if (snapshot.assistantText === previousText && sameMessage && snapshot.assistantText) {
+      stableSampleCount += 1;
+    } else {
+      stableSampleCount = 0;
+      previousText = snapshot.assistantText;
+    }
+    previousMessageId = snapshot.assistantMessageId;
+
+    if (evaluateReviewCompletion({
+      ...snapshot,
+      baselineAssistantTurnCount: baseline.assistantTurnCount,
+      stableSampleCount,
+    })) {
+      return {
+        ...snapshot,
+        assistantTurnIndex: snapshot.assistantTurnCount - 1,
+        response: snapshot.assistantText,
+        status: "confirmed",
+      };
+    }
+
+    await page.waitForTimeout(backoffMs);
+    backoffMs = Math.min(backoffMs * 2, COMPLETION_MAX_BACKOFF_MS);
+  }
+
+  const finalSnapshot = snapshot || await readCompletionSnapshot(page);
+  return {
+    ...finalSnapshot,
+    response: finalSnapshot.assistantText,
+    status: "incomplete",
+    failureReason: "bounded completion timeout or ambiguous response association",
+  };
+}
+
+export async function runReviewPrompt(page, { beforeSubmit, model, effort, prompt }) {
   assertPrompt(prompt);
   const { composer } = await prepareReviewPrompt(page, { model, effort });
-  await submitPrompt(page, composer, prompt);
+  const baselineTurns = await readVisibleAssistantTurns(page);
+  const baseline = {
+    assistantTurnCount: await baselineTurns.count(),
+    conversationId: extractConversationIdentity(page.url()),
+    conversationUrl: page.url(),
+  };
+  const submission = await submitPrompt(page, composer, prompt, { beforeSubmit });
 
-  return { model, effort, promptSubmitted: true };
+  return { ...baseline, ...submission, model, effort, promptSubmitted: true };
 }
 
 export async function runReviewPromptInNewTab(context, options) {
   const page = await openReviewTab(context);
-  return { page, ...(await runReviewPrompt(page, options)) };
-}
-
-export async function probeReviewModelInNewTab(context, options) {
-  const page = await openReviewTab(context);
-  return { page, ...(await probeReviewModel(page, options)) };
+  try {
+    return { page, ...(await runReviewPrompt(page, options)) };
+  } catch (error) {
+    await page.close().catch(() => {});
+    throw error;
+  }
 }

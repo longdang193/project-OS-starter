@@ -166,13 +166,9 @@ to ChatGPT, selects and verifies the model and effort, fills the prompt, and
 submits it once. `openReviewTab(context)` and
 `runReviewPromptInNewTab(context, options)` can create a tab from an existing
 authenticated Playwright context; they do not launch a browser or
-authenticate. The helpers never retry, rerun, or interpret the review response.
-
-For a non-submitting validation, use `probeReviewModelInNewTab(context,
-options)` or the CLI's `--probe-only` mode. It opens a fresh authenticated tab,
-selects and verifies the requested model and effort, closes the selector, and
-returns `promptSubmitted: false`; it never submits a prompt. Use this probe
-before an explicitly authorized end-to-end submission.
+authenticate. The submission helper never retries or reruns a review request;
+the completion helper only observes visible completion signals and returns the
+  final visible assistant turn for the caller to record.
 
 ### Helper execution boundary
 
@@ -209,23 +205,31 @@ node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.m
   --user-data-dir <authenticated-playwright-profile> \
   --model GPT-6 \
   --effort High \
-  --prompt-file <review-prompt.txt>
+  --prompt-file <review-prompt.txt> \
+  --output-dir <review-output-directory>
 ```
 
-To verify model and effort without entering or submitting prompt content:
+One normal invocation is one bounded review transaction. It selects and visibly
+verifies the requested model and effort, submits at most once, waits for a new
+stable visible assistant turn, writes `response.md` and a small `result.json`,
+and only then closes the owned browser context. Terminal runner results are
+`completed`, `incomplete`, or `blocked`; a nonzero exit code accompanies the
+last two. The controller, not the runner, validates revision-specific review
+evidence and may classify the overall workflow as `verified`. The runner never
+retries or silently recovers a failed submission.
 
-```bash
-node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
-  --user-data-dir <authenticated-playwright-profile> \
-  --model GPT-6 \
-  --effort High \
-  --probe-only
-```
+For a multi-model review, keep the same transaction boundary but call the
+CLI module's `openReviewContext(options)` once, then call
+`runReviewBatch({ attached, reviews, outputDir })` from the Node controller. It
+reuses one authenticated context for sequential reviews, allocates a separate
+`run-*` output directory per review, closes each review page after its artifacts
+are persisted, and closes the shared context once at the end. Do not add a
+keep-open flag or a second browser lifecycle owner.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The
-CLI imports `run-review-prompt.mjs` through Node's ESM loader and either
-performs the non-submitting probe or submits exactly once. It never authenticates
+CLI imports `run-review-prompt.mjs` through Node's ESM loader and submits
+exactly once. It never authenticates
 a profile for the user. A pipe-backed Playwright MCP browser cannot be used
 with `--cdp-endpoint`; use the owned-profile mode or MCP directly.
 `browser_run_code_unsafe` is not an ESM module runner; do not pass this CLI or
@@ -243,7 +247,7 @@ Use visible page state as the authority for model, response mode, completion,
 and interruption status; do not infer these from hidden DOM or transport
 metadata.
 
-Use this shape:
+Use this shape, with every GitHub URL pinned to the expected full commit SHA:
 
 ```text
 @GitHub Review this exact file revision:
@@ -272,10 +276,10 @@ retry a bloated request.
 
 ### 5. Verify review evidence
 
-The reviewer must confirm that it read the requested revision by citing a known
-heading, hash, file marker, or equivalent evidence before the review is accepted.
-A URL being present, or a response that discusses the topic without revision
-evidence, is not proof that the requested file was reviewed.
+The reviewer should confirm that it read the requested revision by citing a
+known heading, hash, file marker, or equivalent evidence before the review is
+accepted. The runner records the completed response and conversation identity;
+the caller remains responsible for judging file-specific review evidence.
 
 ### 6. Handle unavailable revisions
 

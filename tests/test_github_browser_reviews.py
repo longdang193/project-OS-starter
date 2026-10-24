@@ -87,6 +87,8 @@ def test_skill_has_bounded_playwright_model_selection_helper() -> None:
     assert "scripts/select-review-model.mjs" in skill
     assert "selectReviewModel(page" in skill
     assert 'getByRole("button", { name: "Select ChatGPT model" })' in helper
+    assert 'waitFor({ state: "visible", timeout: MODEL_MENU_TIMEOUT_MS })' in helper
+    assert "const MODEL_MENU_TIMEOUT_MS = 10000" in helper
     assert '[role="menuitemradio"]' in helper
     assert 'getByRole("menuitem", { name: "Select model", exact: true })' in helper
     assert 'getByRole("menuitem", { name: "Power", exact: true })' in helper
@@ -101,7 +103,8 @@ def test_model_selection_avoids_overlapping_power_control_hit_target() -> None:
 
     assert "position: { x: 12, y: 12 }" in helper
     assert "element.click()" not in helper
-    assert "filter({ hasText: expectedLabel })" in helper
+    assert '[role="menuitemradio"]:visible' in helper
+    assert "normalizeText(await option.innerText()) === expectedLabel" in helper
 
 
 def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
@@ -119,13 +122,30 @@ def test_skill_has_bounded_end_to_end_prompt_helper() -> None:
     assert "retries" in helper
 
 
-def test_skill_documents_non_submitting_probe_boundary() -> None:
+def test_completion_wait_allows_long_repository_reviews() -> None:
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "const COMPLETION_TIMEOUT_MS = 900000" in helper
+
+
+def test_completion_selector_supports_current_markdown_response_surface() -> None:
+    helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
+
+    assert "main [class*=\"MarkdownRoot-\"]:visible" in helper
+    assert "ASSISTANT_FALLBACK_SELECTOR" in helper
+    assert "assistantMessageId" in helper
+    assert "INTERRUPTION_UI_SELECTOR" in helper
+
+
+def test_skill_documents_controller_owned_evidence_boundary() -> None:
     skill = CANONICAL_SKILL.read_text(encoding="utf-8")
     helper = REVIEW_PROMPT_HELPER.read_text(encoding="utf-8")
 
-    assert "probe-only" in skill
-    assert "probeReviewModelInNewTab(context, options)" in helper
-    assert "submits a review request" in helper
+    assert "Terminal runner results are" in skill
+    assert "`completed`, `incomplete`, or `blocked`" in skill
+    assert "controller" in skill
+    assert "probe-only" not in skill
+    assert "probeReviewModelInNewTab" not in helper
 
 
 def test_skill_documents_file_backed_helper_execution_boundary() -> None:
