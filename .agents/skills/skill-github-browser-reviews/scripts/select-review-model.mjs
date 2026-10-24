@@ -34,11 +34,14 @@ async function openModelMenu(page) {
   return menu;
 }
 
-export async function openModelList(menu, { reopen } = {}) {
+export async function openModelList(menu, { model, reopen } = {}) {
   const visibleModelOptions = menu.locator('[role="menuitemradio"]:visible');
   if (await visibleModelOptions.count()) {
     try {
-      await visibleModelOptions.first().click({ trial: true, timeout: 1500 });
+      const requestedOption = model
+        ? await findModelOption(menu, model)
+        : visibleModelOptions.first();
+      await requestedOption.click({ trial: true, timeout: 1500 });
       return menu;
     } catch {
       // A visible but covered option means the effort subview is still active.
@@ -138,6 +141,7 @@ export async function selectReviewModel(page, { model, effort }) {
 
   let menu = await openModelMenu(page);
   menu = await openModelList(menu, {
+    model,
     reopen: async () => {
       await page.keyboard.press("Escape");
       await menu.waitFor({ state: "hidden", timeout: 1500 });

@@ -148,6 +148,45 @@ test("model selection opens the model view when visible radios are covered", asy
   assert.equal(result, reopenedMenu);
 });
 
+test("model selection reopens when the requested model row is covered", async () => {
+  let reopened = false;
+  const modelOptions = {
+    count: async () => 2,
+    nth(index) {
+      return {
+        async innerText() {
+          return index === 0 ? "GPT-6" : "GPT-5.6 Sol";
+        },
+        async click(options) {
+          assert.equal(options.trial, true);
+          if (index === 1) throw new Error("effort view intercepts requested row");
+        },
+      };
+    },
+    first() {
+      return this.nth(0);
+    },
+  };
+  const menu = {
+    locator(selector) {
+      assert.equal(selector, '[role="menuitemradio"]:visible');
+      return modelOptions;
+    },
+  };
+  const reopenedMenu = { reopened: true };
+
+  const result = await openModelList(menu, {
+    model: "GPT-5.6-Sol",
+    reopen: async () => {
+      reopened = true;
+      return reopenedMenu;
+    },
+  });
+
+  assert.equal(reopened, true);
+  assert.equal(result, reopenedMenu);
+});
+
 test("completion requires a new stable visible assistant turn and conversation", () => {
   assert.equal(evaluateReviewCompletion({
     assistantText: "Finding: src/example.js:12 uses the requested revision.",
