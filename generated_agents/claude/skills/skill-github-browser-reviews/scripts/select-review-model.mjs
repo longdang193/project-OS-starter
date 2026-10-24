@@ -50,7 +50,17 @@ export async function openModelList(menu, { model, reopen } = {}) {
       await requestedOption.click({ trial: true, timeout: 1500 });
       return menu;
     } catch {
-      // A visible but covered option means the effort subview is still active.
+      // A visible but covered option may mean the effort subview is already active.
+      for (const selector of [
+        '[role="menuitem"][aria-label="Power"]:visible',
+        '[role="slider"]:visible',
+      ]) {
+        try {
+          const control = menu.locator(selector).first();
+          if (await control.isVisible()) return menu;
+        } catch {
+        }
+      }
       if (reopen) return reopen();
       throw new Error("Visible model options are covered and no reopen handler was provided");
     }
@@ -107,19 +117,45 @@ async function readEffort(menu) {
   throw new Error("Visible thinking effort was not found");
 }
 
-async function setEffort(menu, effort) {
-  const power = menu.getByRole("menuitem", { name: "Power", exact: true }).first();
-  if (!(await power.isVisible())) {
-    throw new Error("Visible thinking-effort power control was not found");
+export async function setEffort(menu, effort) {
+  const currentEffort = await readEffort(menu);
+  const controls = [];
+  try {
+    controls.push(menu.getByRole("menuitem", { name: "Power", exact: true }).first());
+  } catch {
+  }
+  for (const selector of [
+    '[role="menuitem"][aria-label="Power"]:visible',
+    `[role="menuitem"][aria-label="${currentEffort}"]:visible`,
+    '[role="slider"]:visible',
+  ]) {
+    try {
+      controls.push(menu.locator(selector).first());
+    } catch {
+    }
+  }
+  try {
+    controls.push(menu.getByRole("menuitem", { name: currentEffort, exact: true }).first());
+  } catch {
   }
 
-  const currentEffort = await readEffort(menu);
+  let control;
+  for (const candidate of controls) {
+    if (await candidate.isVisible()) {
+      control = candidate;
+      break;
+    }
+  }
+  if (!control) {
+    throw new Error("Visible thinking-effort control was not found");
+  }
+
   const delta = EFFORT_ORDER.indexOf(effort) - EFFORT_ORDER.indexOf(currentEffort);
-  await power.focus();
+  await control.focus();
 
   const key = delta < 0 ? "ArrowLeft" : "ArrowRight";
   for (let index = 0; index < Math.abs(delta); index += 1) {
-    await power.press(key);
+    await control.press(key);
   }
 }
 
