@@ -2964,6 +2964,7 @@ def test_target_selector_reuses_snapshot_and_keeps_rejection_reasons(
     assert resolution["rejections"] == [{
         "session": "default",
         "pane": "w1:p1",
+        "failure_kind": "candidate_rejected",
         "reason": "Pane already has agent state: w1:p1",
     }]
 
@@ -2995,8 +2996,205 @@ def test_target_selector_rejects_malformed_snapshot_entries(
         lambda command, **kwargs: {"result": {"snapshot": {"panes": [None]}}},
     )
 
-    with pytest.raises(LAUNCHER.LaunchBlocked, match="malformed pane entries"):
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
         LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution == {
+        "status": "incomplete",
+        "mode": "auto",
+        "failure_kind": "global_snapshot",
+        "reason_code": "pane_entry_not_object",
+        "detail": "snapshot contains a non-object pane entry",
+        "rejections": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "candidate_failure",
+    [
+        LAUNCHER.LaunchBlocked("invalid candidate process-info JSON"),
+        LAUNCHER.CommandTransportTimeout("candidate process-info timeout"),
+    ],
+    ids=["invalid-json", "transport-timeout"],
+)
+def test_target_selector_allocates_after_candidate_process_inspection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_failure: Exception,
+) -> None:
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+    }
+    allocated = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p2",
+        "cwd": str(ROOT),
+        "focused": False,
+    }
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "process-info"]:
+            if command[-1] == source["pane_id"]:
+                raise candidate_failure
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["allocation"]["status"] == "allocated"
+    assert resolution["rejections"][0]["pane"] == "w1:p1"
+
+
+def test_target_selector_keeps_session_wide_agent_identity_failure_global(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"),
+        "normal",
+        "9router",
+        "combo-normal",
+        20,
+        "test",
+        "do not modify files",
+    )
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "agent_status": "idle",
+    }
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["agent", "list"]:
+            raise LAUNCHER.LaunchBlocked("agent list is invalid")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(
+            ROOT,
+            "auto",
+            "auto",
+            "herdr.exe",
+            expected_profile=profile,
+            context_identity="ctx",
+        )
+
+    assert error.value.resolution == {
+        "status": "incomplete",
+        "mode": "auto",
+        "failure_kind": "global_identity",
+        "reason_code": "agent_identity_unavailable",
+        "detail": "agent list is invalid",
+        "rejections": [],
+    }
+
+
+def test_target_selector_skips_malformed_unrelated_cwd_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    panes = [
+        {"cwd": str(ROOT / "other-workspace")},
+        {"workspace_id": "w1", "pane_id": "w1:p1", "cwd": str(ROOT)},
+    ]
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {"result": {"snapshot": {"panes": panes}}},
+    )
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", lambda *args, **kwargs: {"pane": panes[1]})
+
+    session, pane, _ = LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert (session, pane) == ("default", "w1:p1")
+
+
+def test_target_selector_reports_current_workspace_snapshot_identity_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    panes = [{"cwd": str(ROOT)}]
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {"result": {"snapshot": {"panes": panes}}},
+    )
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution["failure_kind"] == "global_snapshot"
+    assert error.value.resolution["reason_code"] == "pane_identity_missing"
+
+
+def test_target_selector_caps_candidate_inspection_timeout_to_leave_allocation_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = {"workspace_id": "w1", "pane_id": "w1:p1", "cwd": str(ROOT)}
+    allocated = {"workspace_id": "w1", "pane_id": "w1:p2", "cwd": str(ROOT)}
+    observed_timeouts: list[float] = []
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "process-info"]:
+            observed_timeouts.append(float(kwargs["timeout"]))
+            if command[-1] == source["pane_id"]:
+                raise LAUNCHER.CommandTransportTimeout("candidate timeout")
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    _, pane, _ = LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert pane == "w1:p2"
+    assert observed_timeouts[0] < LAUNCHER._TARGET_DISCOVERY_TIMEOUT
+    assert observed_timeouts[0] <= (
+        LAUNCHER._TARGET_DISCOVERY_TIMEOUT - LAUNCHER._TARGET_ALLOCATION_RESERVE_SECONDS
+    )
+
+
+def test_target_selector_allocates_when_candidate_budget_reaches_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = {"workspace_id": "w1", "pane_id": "w1:p1", "cwd": str(ROOT)}
+    allocated = {"workspace_id": "w1", "pane_id": "w1:p2", "cwd": str(ROOT)}
+    clock = iter([0.0, 0.0, 4.1, 4.1, 4.2, 4.3])
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", lambda: next(clock))
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        if command[3:5] == ["pane", "process-info"]:
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["allocation"]["status"] == "allocated"
 
 
 def test_target_selector_deadline_is_not_reported_as_not_found(

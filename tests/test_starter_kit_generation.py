@@ -170,6 +170,16 @@ def test_starter_manifest_omits_private_provider_setup() -> None:
     assert "docs/operating_system/tooling/runtime-tool-resolution.md" not in manifest["copyPaths"]
 
 
+def test_starter_manifest_keeps_cgw_retirement_runtime_in_shared_paths() -> None:
+    manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
+    shared_scripts = manifest["sharedPaths"]["scripts"]
+
+    assert "scripts/herdr_main_launcher.py" in shared_scripts
+    assert "scripts/retired-model-policy.json" in shared_scripts
+    assert "scripts/herdr_main_launcher.py" not in manifest["copyPaths"]
+    assert "scripts/retired-model-policy.json" not in manifest["copyPaths"]
+
+
 def test_canonical_manifest_excludes_consumer_tests() -> None:
     manifest = json.loads(read_source("repo_config/starter-kit-manifest.json"))
     assert not any(path == "tests" or path.startswith("tests/") for path in manifest["copyPaths"])
