@@ -2987,6 +2987,30 @@ def test_target_selector_reports_incomplete_discovery_on_transport_timeout(
     assert error.value.resolution["failure_kind"] == "transport_timeout"
 
 
+def test_target_selector_reports_malformed_snapshot_envelope_as_global_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.LaunchBlocked("Herdr response missing result.snapshot.")
+        ),
+    )
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution == {
+        "status": "incomplete",
+        "mode": "auto",
+        "failure_kind": "global_snapshot",
+        "reason_code": "snapshot_envelope_invalid",
+        "detail": "Herdr response missing result.snapshot.",
+        "rejections": [],
+    }
+
+
 def test_target_selector_rejects_malformed_snapshot_entries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3007,6 +3031,77 @@ def test_target_selector_rejects_malformed_snapshot_entries(
         "detail": "snapshot contains a non-object pane entry",
         "rejections": [],
     }
+
+
+def test_target_selector_candidate_deadline_preserves_allocation_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = "task:subject-1"
+    profile = LAUNCHER.AgentProfile(
+        Path("normal.toml"), "normal", "9router", "combo-normal", 20, "test", "test",
+    )
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+        "agent_status": "idle",
+    }
+    allocated = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p2",
+        "cwd": str(ROOT),
+        "focused": False,
+    }
+    now = 0.0
+    commands: list[list[str]] = []
+
+    def fake_monotonic() -> float:
+        return now
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        nonlocal now
+        commands.append(command)
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["agent", "list"]:
+            now = 4.1
+            return {
+                "result": {
+                    "agents": [{
+                        "pane_id": source["pane_id"],
+                        "name": LAUNCHER._contextual_agent_name("normal", context),
+                        "agent_status": "idle",
+                    }],
+                },
+            }
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        if command[3:5] == ["pane", "process-info"]:
+            if command[-1] == source["pane_id"]:
+                raise AssertionError("candidate process-info consumed the allocation reserve")
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT,
+        "auto",
+        "auto",
+        "herdr.exe",
+        expected_profile=profile,
+        context_identity=context,
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["allocation"]["status"] == "allocated"
+    assert [command[3:5] for command in commands[1:]] == [
+        ["agent", "list"],
+        ["pane", "split"],
+        ["pane", "process-info"],
+    ]
 
 
 @pytest.mark.parametrize(
@@ -3274,7 +3369,7 @@ def test_target_selector_allocates_pane_when_all_matching_panes_are_ineligible(
             raise LAUNCHER.TargetCandidateRejected("Pane context mismatch")
         allocated_inspections += 1
         if allocated_inspections == 1:
-            raise LAUNCHER.LaunchBlocked("Herdr pane process information is incomplete.")
+            raise LAUNCHER.PaneProcessInfoIncomplete("Herdr pane process information is incomplete.")
         return {"pane": allocated, "process_info": {"foreground_processes": []}}
 
     monkeypatch.setattr(LAUNCHER, "_herdr_pane", inspect_candidate)

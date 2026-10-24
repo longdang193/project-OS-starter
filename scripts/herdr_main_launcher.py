@@ -102,6 +102,10 @@ class TargetCandidateRejected(LaunchBlocked):
     """Raised when one auto-discovery candidate fails eligibility checks."""
 
 
+class PaneProcessInfoIncomplete(LaunchBlocked):
+    """Raised while an allocated pane has not published process information yet."""
+
+
 class TargetResolutionBlocked(LaunchBlocked):
     def __init__(self, message: str, resolution: dict[str, Any]) -> None:
         super().__init__(message)
@@ -629,13 +633,22 @@ def _herdr_pane(
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
     candidate_local: bool = False,
+    candidate_deadline: float | None = None,
 ) -> dict[str, Any]:
+    def command_timeout() -> float:
+        if candidate_deadline is None:
+            return timeout
+        remaining = candidate_deadline - time.monotonic()
+        if remaining <= 0:
+            raise TargetCandidateRejected("Candidate inspection deadline expired.")
+        return min(timeout, remaining)
+
     if panes is None:
         panes = _result(
             _json_command(
                 [herdr, "--session", session, "pane", "list"],
                 env=env,
-                timeout=timeout,
+                timeout=command_timeout(),
             ),
             "panes",
         )
@@ -660,7 +673,7 @@ def _herdr_pane(
             session,
             pane,
             env=env,
-            timeout=timeout,
+            timeout=command_timeout(),
         )
         if not isinstance(agent_info, dict):
             raise TargetCandidateRejected(f"Pane agent identity is unavailable: {pane}")
@@ -679,13 +692,13 @@ def _herdr_pane(
             [herdr, "--session", session, "pane", "process-info", "--pane", pane],
             operation="pane process-info",
             env=env,
-            timeout=timeout,
+            timeout=command_timeout(),
         )
         if candidate_local
         else _json_command(
             [herdr, "--session", session, "pane", "process-info", "--pane", pane],
             env=env,
-            timeout=timeout,
+            timeout=command_timeout(),
         )
     )
     try:
@@ -697,7 +710,7 @@ def _herdr_pane(
     if not isinstance(process_info, dict):
         raise TargetCandidateRejected("Herdr pane process information is invalid.")
     if "foreground_processes" not in process_info:
-        raise TargetCandidateRejected("Herdr pane process information is incomplete.")
+        raise PaneProcessInfoIncomplete("Herdr pane process information is incomplete.")
     foreground = process_info["foreground_processes"]
     if not isinstance(foreground, list):
         raise TargetCandidateRejected("Herdr pane process information is invalid.")
@@ -724,7 +737,7 @@ def _herdr_pane(
                     pane,
                     agent_info,
                     env=env,
-                    timeout=timeout,
+                    timeout=command_timeout(),
                     candidate_local=candidate_local,
                 )
                 return {"pane": selected, "process_info": process_info, "stale_released": True}
@@ -757,6 +770,7 @@ def _inspect_auto_candidate(
     timeout: float,
     expected_profile: AgentProfile | None,
     context_identity: str | None,
+    candidate_deadline: float | None,
 ) -> dict[str, Any]:
     return _herdr_pane(
         cwd,
@@ -770,6 +784,7 @@ def _inspect_auto_candidate(
         expected_profile=expected_profile,
         context_identity=context_identity,
         candidate_local=True,
+        candidate_deadline=candidate_deadline,
     )
 
 
@@ -954,6 +969,7 @@ def _resolve_target_selector(
             },
         )
 
+    rejections: list[dict[str, str]] = []
     try:
         if session == "auto":
             snapshot = _result(
@@ -981,8 +997,13 @@ def _resolve_target_selector(
             "target discovery transport timed out",
             {"status": "incomplete", "mode": "auto", "failure_kind": "transport_timeout"},
         ) from exc
+    except TargetResolutionBlocked:
+        raise
+    except LaunchBlocked as exc:
+        if session != "auto":
+            raise
+        raise global_snapshot_block("snapshot_envelope_invalid", str(exc)) from exc
     candidates: list[tuple[bool, str, str]] = []
-    rejections: list[dict[str, str]] = []
     source_panes: list[dict[str, Any]] = []
     if not isinstance(panes, list):
         raise global_snapshot_block("panes_not_list", "snapshot panes is not an array")
@@ -1026,6 +1047,7 @@ def _resolve_target_selector(
                 timeout=candidate_budget,
                 expected_profile=expected_profile,
                 context_identity=context_identity,
+                candidate_deadline=deadline - _TARGET_ALLOCATION_RESERVE_SECONDS,
             )
         except TargetCandidateRejected as exc:
             rejections.append({
@@ -1101,9 +1123,7 @@ def _resolve_target_selector(
                             context_identity=context_identity,
                         )
                         break
-                    except LaunchBlocked as exc:
-                        if str(exc) != "Herdr pane process information is incomplete.":
-                            raise
+                    except PaneProcessInfoIncomplete:
                         time.sleep(min(0.1, allocation_timeout(allocation_deadline)))
             except TargetCandidateRejected as exc:
                 raise TargetResolutionBlocked(
