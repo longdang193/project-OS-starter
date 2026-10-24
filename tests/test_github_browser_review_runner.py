@@ -27,8 +27,10 @@ def test_review_runner_is_a_real_node_entrypoint() -> None:
     assert "--expected-sha" not in content
     assert "promptSubmitted" in content
     assert "submission_attempted" in content
-    assert "await mkdir(outputDir, { recursive: true })" in content
-    assert "if (!context) {\n      throw new Error" in content
+    assert "createRunOutputDirectory" in content
+    assert "if (!context) {\n      await browser.close().catch(() => {});" in content
+    assert "export async function closeContext" in content
+    assert "await browser.close();" in content
     assert "result.json" in content
     assert "response.md" in content
 

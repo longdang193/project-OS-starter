@@ -2628,7 +2628,20 @@ def test_main_reports_failed_assignment_after_start(
     }
     calls = 0
 
-    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    def fake_resolve(**kwargs):
+        kwargs["submission_gate_callback"](
+            {
+                "task_sha256": "task-digest",
+                "repository_identity": "repo/example",
+                "plan_identity": "plan/example",
+                "profile": "xhigh",
+                "model_identity": "9router/combo-xhigh",
+                "grant_digest": "grant-digest",
+            }
+        )
+        return ["herdr"], evidence
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", fake_resolve)
 
     def fake_run(command, **kwargs):
         nonlocal calls
@@ -2641,6 +2654,7 @@ def test_main_reports_failed_assignment_after_start(
         [
             "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
             "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+            "--logical-operation-id", "operation-start-failure",
         ]
     ) == 7
     output = capsys.readouterr().out.splitlines()
@@ -2662,6 +2676,11 @@ def test_main_reports_failed_assignment_after_start(
     assert assignment["launcher_exit_code"] == 7
     assert assignment["worker_exit_code"] is None
     assert assignment["performance"]["status"] == "measured"
+    gate_files = list((tmp_path / "submission-gates").glob("*.json"))
+    assert len(gate_files) == 1
+    gate_record = json.loads(gate_files[0].read_text(encoding="utf-8"))
+    assert gate_record["state"] == "not_delivered"
+    assert gate_record["phase"] == "settled"
 
 
 def test_main_retries_default_agent_name_after_name_taken(
@@ -5999,6 +6018,54 @@ def test_pane_safety_releases_idle_stale_agent_state(
     assert result["stale_released"] is True
     release_command = next(command for command in commands if "release-agent" in command)
     assert release_command[release_command.index("release-agent") + 1] == "p1"
+
+
+def test_candidate_inspection_reports_stale_idle_agent_without_releasing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
+    )
+    commands: list[list[str]] = []
+    responses = iter([
+        {
+            "result": {
+                "agents": [{
+                    "name": LAUNCHER._contextual_agent_name("high", "task:subject-1"),
+                    "agent_status": "idle", "completion_seq": 9, "pane_id": "p1",
+                    "agent_session": {"source": "herdr:codex"},
+                }]
+            }
+        },
+        {"result": {"process_info": {"foreground_processes": [{"pid": 1, "name": "powershell.exe", "children": []}]}}},
+    ])
+
+    def fake_json(command: list[str], **kwargs):
+        commands.append(command)
+        return next(responses)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+    result = LAUNCHER._inspect_auto_candidate(
+        tmp_path,
+        "session",
+        "p1",
+        "herdr",
+        executor="codex",
+        env={},
+        panes=[{
+            "pane_id": "p1", "cwd": str(tmp_path),
+            "agent": "codex", "agent_status": "idle",
+        }],
+        timeout=1.0,
+        expected_profile=profile,
+        context_identity="task:subject-1",
+        candidate_deadline=None,
+        agent_cache=None,
+    )
+
+    assert result["stale_idle_agent"]["completion_seq"] == 9
+    assert not any("release-agent" in command for command in commands)
 
 
 def test_pane_safety_dry_run_does_not_release_idle_stale_agent_state(

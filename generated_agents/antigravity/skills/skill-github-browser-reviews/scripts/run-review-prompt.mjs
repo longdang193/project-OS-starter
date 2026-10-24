@@ -7,8 +7,10 @@
 import { selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
-export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible, main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
+export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
+const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
+export const INTERRUPTION_UI_SELECTOR = '[role="alert"]:visible, [data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
 const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;
@@ -65,19 +67,42 @@ function extractConversationIdentity(url) {
 }
 
 async function readVisibleAssistantTurns(page) {
-  return page.locator(ASSISTANT_TURN_SELECTOR);
+  const assistantMessages = page.locator(ASSISTANT_TURN_SELECTOR);
+  if (await assistantMessages.count()) return assistantMessages;
+  return page.locator(ASSISTANT_FALLBACK_SELECTOR);
 }
 
-async function readVisibleAssistantText(page) {
+export async function readVisibleInterruption(page) {
+  const interruption = page.locator(INTERRUPTION_UI_SELECTOR).first();
+  return (await interruption.count()) > 0 && await interruption.isVisible();
+}
+
+async function readVisibleAssistantMessage(page) {
   const turns = await readVisibleAssistantTurns(page);
   const count = await turns.count();
-  if (count === 0) return "";
-  return (await turns.nth(count - 1).innerText()).trim();
-}
+  if (count === 0) {
+    return {
+      assistantMessageId: null,
+      assistantText: "",
+      assistantTurnCount: 0,
+    };
+  }
 
-async function readVisibleInterruption(page) {
-  const interruption = page.getByText(INTERRUPTION_PATTERN).first();
-  return await interruption.isVisible();
+  const selected = turns.nth(count - 1);
+  let assistantMessageId = null;
+  for (const attribute of ["data-message-id", "data-turn-id", "data-testid", "id"]) {
+    const value = await selected.getAttribute(attribute);
+    if (value) {
+      assistantMessageId = value;
+      break;
+    }
+  }
+
+  return {
+    assistantMessageId,
+    assistantText: (await selected.innerText()).trim(),
+    assistantTurnCount: count,
+  };
 }
 
 export async function isPromptVisibleInComposer(composer, prompt) {
@@ -93,17 +118,14 @@ export async function isPromptVisibleInComposer(composer, prompt) {
 }
 
 async function readCompletionSnapshot(page) {
-  const turns = await readVisibleAssistantTurns(page);
-  const assistantTurnCount = await turns.count();
-  const assistantText = await readVisibleAssistantText(page);
+  const assistantMessage = await readVisibleAssistantMessage(page);
   const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
   const currentUrl = page.url();
   const conversationId = extractConversationIdentity(currentUrl);
 
   return {
-    assistantText,
-    assistantTurnCount,
+    ...assistantMessage,
     composerReady: await composer.isVisible() && !(await stopButton.isVisible()),
     conversationId,
     currentUrl,
@@ -177,17 +199,22 @@ export async function waitForReviewCompletion(page, {
   const deadline = Date.now() + timeoutMs;
   let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
   let previousText = "";
+  let previousMessageId = null;
   let stableSampleCount = 0;
   let snapshot;
 
   while (Date.now() <= deadline) {
     snapshot = await readCompletionSnapshot(page);
-    if (snapshot.assistantText === previousText && snapshot.assistantText) {
+    const sameMessage = !snapshot.assistantMessageId
+      || !previousMessageId
+      || snapshot.assistantMessageId === previousMessageId;
+    if (snapshot.assistantText === previousText && sameMessage && snapshot.assistantText) {
       stableSampleCount += 1;
     } else {
       stableSampleCount = 0;
       previousText = snapshot.assistantText;
     }
+    previousMessageId = snapshot.assistantMessageId;
 
     if (evaluateReviewCompletion({
       ...snapshot,
@@ -206,9 +233,10 @@ export async function waitForReviewCompletion(page, {
     backoffMs = Math.min(backoffMs * 2, COMPLETION_MAX_BACKOFF_MS);
   }
 
+  const finalSnapshot = snapshot || await readCompletionSnapshot(page);
   return {
-    ...(snapshot || await readCompletionSnapshot(page)),
-    response: await readVisibleAssistantText(page),
+    ...finalSnapshot,
+    response: finalSnapshot.assistantText,
     status: "incomplete",
     failureReason: "bounded completion timeout or ambiguous response association",
   };

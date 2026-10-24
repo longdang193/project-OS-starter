@@ -740,6 +740,12 @@ def _herdr_pane(
                     raise TargetCandidateRejected(
                         "Dry-run suppressed stale idle-agent release."
                     )
+                if candidate_local:
+                    return {
+                        "pane": selected,
+                        "process_info": process_info,
+                        "stale_idle_agent": agent_info,
+                    }
                 _release_stale_idle_agent(
                     herdr,
                     session,
@@ -4040,7 +4046,7 @@ def _main_body(args: argparse.Namespace) -> int:
         ):
             fallback_state = (
                 "not_delivered"
-                if attempt_context.get("submission_gate_phase") == "pre_dispatch"
+                if attempt_context.get("submission_gate_phase") in {"pre_dispatch", "admission"}
                 else "delivery_uncertain"
             )
             try:
@@ -4587,7 +4593,6 @@ def _main_body(args: argparse.Namespace) -> int:
                         nonlocal agent_name, command
                         nonlocal codex_start_confirmed, codex_prompt_submitted
                         nonlocal codex_prompt_result, codex_assignment_result, codex_transport_timeout
-                        prepare_model_submission()
                         dispatch_command = command
                         if args.executor == "codex" and (
                             evidence["herdr"].get("reuse") is True
@@ -4669,6 +4674,7 @@ def _main_body(args: argparse.Namespace) -> int:
                                 agent_name,
                                 delivery_task,
                             )
+                            prepare_model_submission()
                             codex_assignment_result, codex_prompt_result, codex_transport_timeout = (
                                 _submit_codex_prompt(assignment, env=environment)
                             )
@@ -4854,8 +4860,12 @@ def _main_body(args: argparse.Namespace) -> int:
         if result.stderr:
             _write_runtime_output(sys.stderr, result.stderr)
         if result.returncode:
-            if args.executor == "deepagents" and attempt_context.get("submission_gate_state") == "prepared":
-                settle_model_submission("delivery_uncertain")
+            if attempt_context.get("submission_gate_state") == "prepared":
+                settle_model_submission(
+                    "delivery_uncertain"
+                    if args.executor == "deepagents"
+                    else "not_delivered"
+                )
             record_phase("delivery", attempt_started, attempt_id=attempt_id)
             print(json.dumps(emit_assignment({
                 "assignment": {
@@ -4947,7 +4957,9 @@ def _main_body(args: argparse.Namespace) -> int:
             timeout_policy = registry_launcher.get("timeout_policy")
             if not isinstance(timeout_policy, dict):
                 timeout_policy = _timeout_policy(registry_launcher)
-            submit_prompt = lambda: _submit_codex_prompt(assignment, env=environment)
+            def submit_prompt():
+                prepare_model_submission()
+                return _submit_codex_prompt(assignment, env=environment)
             if evidence["herdr"].get("reuse") is True:
                 assignment_result, prompt_result, transport_timeout = _run_with_pane_ownership(
                     args.cwd,

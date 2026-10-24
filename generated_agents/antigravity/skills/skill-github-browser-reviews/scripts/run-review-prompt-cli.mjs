@@ -6,10 +6,10 @@
 // To update: edit canonical source, then run sync.
 
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 
 import {
   runReviewPromptInNewTab,
@@ -81,6 +81,7 @@ export function parseArguments(argv) {
 export function createResult(options) {
   return {
     status: "running",
+    run_id: options.runId || null,
     model_requested: options.model,
     model_verified: null,
     effort_requested: options.effort,
@@ -90,11 +91,19 @@ export function createResult(options) {
     completion: "not_started",
     conversation_url: null,
     conversation_id: null,
+    assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
     failure_stage: null,
     failure_reason: null,
   };
+}
+
+export async function createRunOutputDirectory(parentDir) {
+  const parent = resolve(parentDir);
+  await mkdir(parent, { recursive: true });
+  const outputDir = await mkdtemp(join(parent, "run-"));
+  return { outputDir, runId: basename(outputDir) };
 }
 
 export async function atomicWrite(filePath, content) {
@@ -136,6 +145,7 @@ async function openContext(chromium, options) {
     const contexts = browser.contexts();
     const context = contexts[options.contextIndex];
     if (!context) {
+      await browser.close().catch(() => {});
       throw new Error(`Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`);
     }
     return { browser, context, ownsContext: false };
@@ -150,9 +160,18 @@ async function openContext(chromium, options) {
   }
 }
 
-async function closeContext({ context, ownsContext, page }) {
+export async function closeContext({ browser, context, ownsContext, page }) {
   if (ownsContext && context) return context.close();
-  if (page) return page.close();
+
+  let cleanupError;
+  try {
+    if (page) await page.close();
+  } catch (error) {
+    cleanupError = error;
+  } finally {
+    if (browser) await browser.close();
+  }
+  if (cleanupError) throw cleanupError;
 }
 
 export async function main(argv) {
@@ -165,14 +184,17 @@ export async function main(argv) {
   const prompt = await readFile(options.promptFile, "utf8");
   if (!prompt.trim()) usageError("Prompt file must not be empty");
 
-  const outputDir = resolve(options.outputDir);
   let result = createResult(options);
+  let outputDir;
+  let runId;
   let attached;
   let page;
   let failure;
 
   try {
-    await mkdir(outputDir, { recursive: true });
+    ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
+    result = createResult({ ...options, runId });
+    result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
     await writeResult(outputDir, result);
 
     const chromium = await loadPlaywright();
@@ -200,6 +222,7 @@ export async function main(argv) {
     result.completion = completion.status;
     result.conversation_url = completion.currentUrl || null;
     result.conversation_id = completion.conversationId || null;
+    result.assistant_message_id = completion.assistantMessageId || null;
     result.assistant_turn_index = completion.assistantTurnIndex ?? null;
 
     if (completion.response) await atomicWrite(join(outputDir, "response.md"), `${completion.response}\n`);
@@ -231,6 +254,7 @@ export async function main(argv) {
     }
 
     try {
+      if (!outputDir) throw new Error("Review output directory was not allocated");
       await writeResult(outputDir, result);
     } catch (error) {
       console.error(JSON.stringify(structuredFailure({
@@ -244,7 +268,10 @@ export async function main(argv) {
     }
   }
 
-  console.log(JSON.stringify({ ...result, output_dir: relative(process.cwd(), outputDir) }));
+  console.log(JSON.stringify({
+    ...result,
+    output_dir: outputDir ? relative(process.cwd(), outputDir) : null,
+  }));
   return result.status === "completed" ? 0 : 1;
 }
 

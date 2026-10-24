@@ -7,17 +7,23 @@ import test from "node:test";
 import {
   ASSISTANT_TURN_SELECTOR,
   INTERRUPTION_PATTERN,
+  INTERRUPTION_UI_SELECTOR,
   evaluateReviewCompletion,
   isPromptVisibleInComposer,
   openReviewTab,
+  readVisibleInterruption,
+  runReviewPromptInNewTab,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
   atomicWrite,
+  closeContext,
   createResult,
+  createRunOutputDirectory,
   parseArguments,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
 import {
+  findModelOption,
   openModelList,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
 
@@ -164,12 +170,67 @@ test("completion requires a new stable visible assistant turn and conversation",
 });
 
 test("assistant fallback excludes rich-text user turns", () => {
-  assert.match(ASSISTANT_TURN_SELECTOR, /:not\(\.rich-text-user-turn\)/);
+  assert.match(ASSISTANT_TURN_SELECTOR, /data-message-author-role="assistant"/);
+  assert.match(ASSISTANT_TURN_SELECTOR, /:not\(/);
+  assert.doesNotMatch(ASSISTANT_TURN_SELECTOR, /,\s*main/);
 });
 
 test("interruption detection ignores ordinary assistant text containing try again", () => {
   assert.equal(INTERRUPTION_PATTERN.test("You can try again with a narrower question."), false);
   assert.equal(INTERRUPTION_PATTERN.test("Something went wrong. Please try again."), true);
+});
+
+test("interruption detection reads only dedicated visible error UI", async () => {
+  let requestedSelector;
+  const page = {
+    locator(selector) {
+      requestedSelector = selector;
+      return {
+        first() {
+          return this;
+        },
+        async count() {
+          return 0;
+        },
+        async isVisible() {
+          return false;
+        },
+      };
+    },
+  };
+
+  assert.equal(await readVisibleInterruption(page), false);
+  assert.equal(requestedSelector, INTERRUPTION_UI_SELECTOR);
+});
+
+test("model lookup requires an exact visible label", async () => {
+  const options = [
+    { text: "GPT-6 Preview", checked: "false" },
+    { text: "GPT-6", checked: "true" },
+  ];
+  const menu = {
+    locator(selector) {
+      assert.equal(selector, '[role="menuitemradio"]:visible');
+      return {
+        async count() {
+          return options.length;
+        },
+        nth(index) {
+          return {
+            async innerText() {
+              return options[index].text;
+            },
+            async getAttribute(name) {
+              return name === "aria-checked" ? options[index].checked : null;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const option = await findModelOption(menu, "GPT-6");
+  assert.equal(await option.innerText(), "GPT-6");
 });
 
 test("review tab closes when authenticated composer setup fails", async () => {
@@ -194,6 +255,50 @@ test("review tab closes when authenticated composer setup fails", async () => {
   await assert.rejects(
     openReviewTab({ newPage: async () => page }),
     /Authenticated ChatGPT composer was not found/,
+  );
+  assert.equal(closed, true);
+});
+
+test("review tab closes when model preparation fails after newPage", async () => {
+  let closed = false;
+  const composer = { async isVisible() { return true; } };
+  const page = {
+    url: () => "https://chatgpt.com/",
+    getByRole(role, options = {}) {
+      if (role === "textbox") return { first() { return composer; } };
+      if (role === "menu") {
+        return {
+          first() {
+            return {
+              async isVisible() { return false; },
+              async waitFor() { throw new Error("model menu did not open"); },
+            };
+          },
+        };
+      }
+      if (role === "button" && options.name === "Select ChatGPT model") {
+        return {
+          first() {
+            return {
+              async waitFor() {},
+              async click() {},
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async close() {
+      closed = true;
+    },
+  };
+
+  await assert.rejects(
+    runReviewPromptInNewTab(
+      { newPage: async () => page },
+      { model: "GPT-6", effort: "High", prompt: "review" },
+    ),
+    /model menu did not open/,
   );
   assert.equal(closed, true);
 });
@@ -231,6 +336,7 @@ test("result records the requested and observed lifecycle state", () => {
 
   assert.deepEqual(result, {
     status: "running",
+    run_id: null,
     model_requested: "GPT-5.6-Sol",
     model_verified: null,
     effort_requested: "High",
@@ -240,6 +346,7 @@ test("result records the requested and observed lifecycle state", () => {
     completion: "not_started",
     conversation_url: null,
     conversation_id: null,
+    assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
     failure_stage: null,
@@ -262,5 +369,44 @@ test("result and response writes are atomic and preserve final evidence", async 
     assert.equal(await readFile(join(outputDir, "response.md"), "utf8"), "Finding at line 12.\n");
   } finally {
     await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("attached cleanup closes the page and disconnects without closing the context", async () => {
+  const events = [];
+  await closeContext({
+    browser: { async close() { events.push("browser-close"); } },
+    context: { async close() { events.push("context-close"); } },
+    ownsContext: false,
+    page: { async close() { events.push("page-close"); } },
+  });
+
+  assert.deepEqual(events, ["page-close", "browser-close"]);
+});
+
+test("owned persistent cleanup closes the context exactly once", async () => {
+  const events = [];
+  await closeContext({
+    browser: { async close() { events.push("browser-close"); } },
+    context: { async close() { events.push("context-close"); } },
+    ownsContext: true,
+    page: { async close() { events.push("page-close"); } },
+  });
+
+  assert.deepEqual(events, ["context-close"]);
+});
+
+test("each output allocation creates a distinct run directory", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-runs-"));
+  try {
+    const first = await createRunOutputDirectory(parent);
+    const second = await createRunOutputDirectory(parent);
+
+    assert.notEqual(first.outputDir, second.outputDir);
+    assert.notEqual(first.runId, second.runId);
+    assert.match(first.outputDir, /run-/);
+    assert.match(second.outputDir, /run-/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
   }
 });
