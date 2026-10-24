@@ -56,10 +56,15 @@ def _is_toml_file(path: Path) -> bool:
 def _validate_text_header(path: Path, rel: str) -> list[Finding]:
     findings: list[Finding] = []
     text = path.read_text(encoding="utf-8", errors="ignore")
+    header_text = text
     valid_prefixes = ("---\n", "<!--\n")
     if path.suffix.lower() in JAVASCRIPT_SUFFIXES:
         valid_prefixes = (*valid_prefixes, "// GENERATED FILE - DO NOT EDIT\n")
-    if not text.startswith(valid_prefixes):
+        if header_text.startswith("#!"):
+            line_end = header_text.find("\n")
+            if line_end != -1:
+                header_text = header_text[line_end + 1 :]
+    if not header_text.startswith(valid_prefixes):
         findings.append(Finding("generated_header_error", rel, "generated text file must start with frontmatter, generated HTML comment header, or generated JavaScript comment header."))
         return findings
     if TEXT_HEADER_MARKER not in text:
