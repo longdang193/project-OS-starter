@@ -41,10 +41,23 @@ def _load_retirement_policy() -> dict[str, object]:
         raise RuntimeError(f"Cannot read retirement policy {policy_path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise RuntimeError(f"Retirement policy {policy_path} must be a JSON object.")
-    for key in ("retiredModelNames", "retiredModelPrefixes"):
+    for key in ("retiredModelNames", "retiredModelPrefixes", "retiredProviderIds"):
         values = payload.get(key)
-        if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+        if not isinstance(values, list) or not values or not all(
+            isinstance(value, str) and value for value in values
+        ):
             raise RuntimeError(f"Retirement policy {policy_path} `{key}` must be a non-empty string list.")
+    aliases = payload.get("providerAliases")
+    if not isinstance(aliases, dict) or not aliases or not all(
+        isinstance(alias, str)
+        and alias
+        and isinstance(provider, str)
+        and provider
+        for alias, provider in aliases.items()
+    ):
+        raise RuntimeError(
+            f"Retirement policy {policy_path} `providerAliases` must be a non-empty string mapping."
+        )
     return payload
 
 
@@ -77,10 +90,22 @@ def _required_string(payload: dict[str, object], key: str, source: Path) -> str:
     return value.strip()
 
 
-def validate_model_reference(model: str, source: Path | str) -> None:
+def validate_model_reference(
+    model: str,
+    source: Path | str,
+    provider: str | None = None,
+) -> None:
     policy = _retirement_policy()
     retired_names = frozenset(policy["retiredModelNames"])
     retired_prefixes = tuple(policy["retiredModelPrefixes"])
+    retired_providers = frozenset(policy["retiredProviderIds"])
+    provider_aliases = policy["providerAliases"]
+    normalized_provider = provider_aliases.get(provider, provider) if isinstance(provider, str) else None
+    if normalized_provider in retired_providers:
+        raise ValueError(
+            f"Agent profile {source} uses retired provider `{provider}`; "
+            f"normalized provider `{normalized_provider}` is unsupported."
+        )
     if model in retired_names or model.startswith(retired_prefixes):
         raise ValueError(
             f"Agent profile {source} uses retired model `{model}`; "
@@ -135,7 +160,7 @@ def load_agent_profiles(
         if name in profiles:
             raise ValueError(f"Duplicate agent profile: {name}")
         model = _required_string(payload, "model", source)
-        validate_model_reference(model, source)
+        validate_model_reference(model, source, model_provider)
         profiles[name] = AgentProfile(
             source=source,
             name=name,

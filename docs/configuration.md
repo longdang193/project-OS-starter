@@ -30,8 +30,22 @@ Herdr reuses a live Codex pane only when all of these facts match:
 - the incoming task has the same existing task, plan, or assignment identity;
 - the executor, provider, and model profile are compatible.
 
-Different or missing context always selects a new pane. The launcher records a
-short context marker in its generated agent name so reuse does not mix
-unrelated conversations. Idle panes with no live process are released through
-the existing Herdr lifecycle mechanism; no separate reconciliation store is
-created.
+Different or missing context selects a new pane when a validated source pane
+can be split. Candidate-local inspection failures, including incompatible
+context, malformed pane process metadata, or a candidate process-info timeout,
+are recorded as candidate rejections and do not suppress that replacement
+allocation. Global snapshot corruption or session-wide agent identity failures
+remain blocked with structured incomplete evidence rather than being treated as
+an individual pane defect. The selector reserves time inside its discovery
+budget for the split-and-poll allocation path; it does not create a scheduler,
+registry, or separate reconciliation store.
+
+The retirement policy is canonical in the upstream 9router source. The local
+`repo_config/retired-model-policy.json` and
+`scripts/retired-model-policy.json` files are synchronized projections used by
+repository validation and shared-runtime deployment. Starter-kit generation
+does not copy the shared-runtime launcher or policy projection into consumer
+repositories.
+
+Idle panes with no live process are released through the existing Herdr
+lifecycle mechanism.

@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 layer: change
 name: cgw-pane-lifecycle-hardening
 targets:
@@ -13,7 +13,9 @@ targets:
   - tests/test_agent_profile_registry.py
   - tests/test_herdr_main_launcher.py
   - tests/test_starter_kit_generation.py
+  - tests/test_deploy_agent_runtime.py
   - docs/configuration.md
+  - docs/superpowers/plans/2026-10-24-01-12-cgw-pane-lifecycle-hardening-plan.md
 ---
 
 # CGW Retirement And Auto-Pane Lifecycle Hardening
@@ -39,7 +41,11 @@ must not prevent safe allocation of a new pane when a valid source pane exists.
   `providerAliases` but profile admission validates only model strings.
 - Source-confirmed operational risk: the five-second discovery deadline can be
   consumed by per-pane inspection before the replacement-pane branch runs.
-- Existing closure work remains related context, not an execution dependency:
+- Policy ownership is an upstream dependency, not a local ownership decision:
+  `9router/open-sse/config/retiredModels.js` is canonical and the two local JSON
+  files are generated projections. The related closure plan is therefore an
+  execution dependency for policy provenance when policy contents or export
+  assumptions change:
   `docs/superpowers/plans/2026-10-23-22-10-cgw-retirement-consolidated-closure-plan.md`.
 
 ## Implementation Outcomes
@@ -48,8 +54,9 @@ must not prevent safe allocation of a new pane when a valid source pane exists.
 
 Profile admission normalizes provider aliases and rejects retired provider
 identities (`chatgpt-web` and `cg`) as well as retired model names and
-prefixes, before executable lookup, Herdr discovery, or dispatch. The
-packaged policy copy remains synchronized with its canonical repository policy.
+prefixes, before executable lookup, Herdr discovery, or dispatch. The local
+policy projections remain synchronized with the upstream canonical policy
+export.
 
 ### Safe automatic pane allocation
 
@@ -71,7 +78,7 @@ background supervisor, or second lifecycle state store.
 Tests cover provider aliases, candidate fault isolation, deadline exhaustion,
 replacement allocation, and fail-closed global corruption. Configuration
 documentation describes the resulting reuse/allocation contract and the
-canonical-versus-packaged policy ownership.
+upstream-versus-local/shared-runtime policy ownership.
 
 ## Execution Approach
 
@@ -89,17 +96,17 @@ canonical-versus-packaged policy ownership.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `main`
-- Base commit: `009b3417e1a5e7fc2df4d75bf403c349e50f875a`
+- Branch: `codex/cgw-pane-lifecycle-hardening-plan-review`
+- Base commit: `71f334f3f7f74122f5f17b88aa9e9fe17b69e1c4`
 - Expected workspace: `preserve existing untracked .playwright-mcp/, .runtime/, and node_modules/ artifacts`
-- Next action: implement Task 1 provider normalization and policy synchronization
+- Next action: none; implementation and verification complete
 - Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `unresolved` | none | registry tests and policy projection equality | pending |
-| Task 2 | `pending` | current | `unresolved` | Task 1 | focused auto-pane lifecycle tests | pending |
-| Task 3 | `pending` | current | `unresolved` | Task 2 | documentation, starter-kit, and final verification | pending |
+| Task 1 | `completed` | current | `codex` | none | registry tests and policy projection equality | 344-test suite; projections equal |
+| Task 2 | `completed` | current | `codex` | Task 1 | focused auto-pane lifecycle tests | target-selector and pane-safety regressions pass |
+| Task 3 | `completed` | current | `codex` | Task 2 | documentation, starter-kit, and final verification | docs, manifest assertions, validators pass |
 
 ## Task Breakdown
 
@@ -121,7 +128,11 @@ canonical-versus-packaged policy ownership.
 
 **Specification Coverage:**
 - Retired `chatgpt-web` and `cg` provider identities fail closed before launch side effects.
-- `repo_config/retired-model-policy.json` is the canonical source; `scripts/retired-model-policy.json` is a synchronized packaged projection.
+- `9router/open-sse/config/retiredModels.js` remains the canonical policy
+  source; `repo_config/retired-model-policy.json` is the local generated
+  projection consumed by source checkout code, and
+  `scripts/retired-model-policy.json` is its synchronized shared-runtime
+  projection. This plan does not redefine upstream ownership.
 
 **Required Skills:**
 - `skill-code-standards`
@@ -134,24 +145,39 @@ canonical-versus-packaged policy ownership.
 - Verify: `repo_config/retired-model-policy.json`, `scripts/retired-model-policy.json`, `repo_config/starter-kit-manifest.json`
 
 **Dependencies:**
-- Current policy fields and packaged-script ownership are source-confirmed.
+- Current policy fields and shared-runtime projection ownership are
+  source-confirmed. Before changing policy contents or export assumptions,
+  pin the upstream 9router policy revision/export contract; otherwise keep
+  both local JSON files read-only and limit the change to consumer validation.
 
 **Authority:**
-- Preauthorized local actions: edit registry, policy projection, and focused tests; run focused Python tests
-- Stop for: a required cross-repository canonical policy source, runtime-provider compatibility change, or generated-surface change not represented in the manifest
+- Preauthorized local actions: edit registry, synchronized projections only
+  after the upstream export contract is pinned, and focused tests; run focused
+  Python tests
+- Stop for: an unavailable or unpinned cross-repository canonical policy
+  source/export contract, a runtime-provider compatibility change, or a
+  generated-surface change not represented in the manifest.
 
 **Steps:**
-- [ ] Step 1: Define one normalization path that maps `cg` to `chatgpt-web` and compares normalized provider identity against `retiredProviderIds`.
-- [ ] Step 2: Keep model-name and model-prefix checks in the same retirement gate, with stable error wording that identifies the retired provider/model reference without exposing credentials.
-- [ ] Step 3: Add tests for direct `chatgpt-web`, alias `cg`, and maintained provider `9router`; assert rejection occurs before executable lookup or Herdr calls.
-- [ ] Step 4: Add a policy projection test that fails when the packaged script policy diverges from `repo_config/retired-model-policy.json`.
+- [x] Step 1: Define one normalization path that maps `cg` to `chatgpt-web` and compares normalized provider identity against `retiredProviderIds`.
+- [x] Step 2: Keep model-name and model-prefix checks in the same retirement gate, with stable error wording that identifies the retired provider/model reference without exposing credentials.
+- [x] Step 3: Add tests for direct `chatgpt-web`, alias `cg`, and maintained provider `9router`; assert rejection occurs before executable lookup or Herdr calls.
+- [x] Step 4: Add a policy projection test that fails when the shared-runtime
+  policy diverges from `repo_config/retired-model-policy.json`, and record the
+  upstream policy revision/export contract used for the projection; do not
+  make either local JSON file canonical.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py -k "retired or provider"`
-- Expected: direct and aliased retired providers fail before side effects; maintained profiles remain loadable.
+- [x] `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py -k "retired or provider or policy"` (32 passed, 242 deselected)
+- Expected: malformed or missing `retiredProviderIds` and `providerAliases`
+  fail policy loading; a missing primary policy file exercises the packaged
+  fallback; direct and aliased retired providers fail before side effects;
+  maintained profiles remain loadable.
 
 **Exit Criteria:**
-- Provider aliases and retired provider IDs are enforced by one tested gate, and the packaged policy cannot silently drift from the canonical policy.
+- Provider aliases and retired provider IDs are enforced by one tested gate,
+  and the local projections cannot silently drift from the pinned upstream
+  policy export or each other.
 
 ### Task 2: Isolate candidate failures and preserve safe auto-pane allocation
 
@@ -170,8 +196,14 @@ canonical-versus-packaged policy ownership.
 - Selection basis: validate both allocation and preserved fail-closed cases independently.
 
 **Specification Coverage:**
-- Candidate-local `LaunchBlocked`/`CommandTransportTimeout` failures become rejection evidence when the snapshot has enough identity to isolate that candidate.
-- Malformed unrelated snapshot rows do not abort discovery; malformed rows that prevent proving the current workspace/pane identity still block safely.
+- Only pane-scoped candidate inspection failures become rejection evidence:
+  `LaunchBlocked`/`CommandTransportTimeout` from process-info or candidate
+  metadata inspection may be isolated when the snapshot proves the candidate
+  identity. Session-wide agent discovery, snapshot retrieval, and other global
+  identity failures remain `TargetResolutionBlocked`.
+- Malformed unrelated snapshot rows do not abort discovery; rows whose `cwd`
+  cannot be read, or whose missing identity could belong to the current
+  workspace, fail closed as structured global corruption.
 - Discovery stops with an allocation reserve before the five-second deadline is consumed, then allocates from a validated source pane.
 
 **Required Skills:**
@@ -180,7 +212,9 @@ canonical-versus-packaged policy ownership.
 
 **Files And Symbols:**
 - Inspect: `scripts/herdr_main_launcher.py:_herdr_pane`, `_resolve_target_selector`, `_pane_ownership_lock`
-- Modify: `scripts/herdr_main_launcher.py:_resolve_target_selector` and `_inspect_auto_candidate`
+- Modify: `scripts/herdr_main_launcher.py:_resolve_target_selector` and a new
+  `_inspect_auto_candidate` (or equivalent) boundary with explicit operation
+  provenance
 - Modify: `tests/test_herdr_main_launcher.py`
 - Verify: target-resolution evidence fields and existing pane-lock behavior
 
@@ -193,14 +227,34 @@ canonical-versus-packaged policy ownership.
 - Stop for: changes to pane ownership semantics, new persistent lifecycle state, or a need to relax global identity validation
 
 **Steps:**
-- [ ] Step 1: Add a candidate-local inspection boundary that converts recoverable `LaunchBlocked` and `CommandTransportTimeout` results into `TargetCandidateRejected` with structured reasons.
-- [ ] Step 2: Reclassify snapshot validation so unrelated malformed rows are recorded/skipped, while missing identity for a row needed to establish the current workspace remains fail-closed.
-- [ ] Step 3: Add an explicit allocation reserve within `_TARGET_DISCOVERY_TIMEOUT`; when candidate inspection reaches the reserve and a valid source pane exists, stop scanning and allocate rather than returning a deadline failure.
-- [ ] Step 4: Preserve the existing split-and-poll behavior, structured `allocation` evidence, and exact-pane ownership verification.
-- [ ] Step 5: Add tests for incompatible context plus malformed peer, candidate invalid JSON, candidate transport timeout, deadline-before-allocation, successful allocation, and global snapshot corruption.
+- [x] Step 1: Add a candidate-local inspection boundary that preserves
+  operation provenance and converts only recoverable pane-scoped
+  `LaunchBlocked` and `CommandTransportTimeout` results into
+  `TargetCandidateRejected` with structured reasons. Do not catch all
+  `LaunchBlocked` values: session-wide `_agent_for_pane` discovery, snapshot
+  retrieval, and malformed global responses must remain globally blocked.
+- [x] Step 2: Reclassify snapshot validation so rows with a provably unrelated
+  `cwd` can be recorded/skipped, while missing `cwd`, a non-list snapshot, or
+  missing `workspace_id`/`pane_id` on a row that may belong to the current
+  workspace returns `TargetResolutionBlocked` with deterministic evidence:
+  `status=incomplete`, `mode=auto`, `failure_kind=global_snapshot`, a stable
+  reason code, and the retained validation detail. Candidate-local failures
+  use `failure_kind=candidate_rejected` and never masquerade as global
+  corruption.
+- [x] Step 3: Add an explicit allocation reserve within
+  `_TARGET_DISCOVERY_TIMEOUT`. Before each candidate inspection, cap its
+  timeout to the remaining deadline minus the reserve; once that candidate
+  budget is exhausted, stop scanning and use a separate bounded split/poll
+  budget for replacement allocation. The reserve must be protected before
+  starting a slow subprocess, not only checked after it returns.
+- [x] Step 4: Preserve the existing split-and-poll behavior, structured `allocation` evidence, and exact-pane ownership verification.
+- [x] Step 5: Add tests for incompatible context plus malformed peer, candidate
+  invalid JSON, candidate transport timeout, a candidate timeout that asserts
+  the capped timeout passed to the subprocess, deadline-before-allocation,
+  successful allocation, and each structured global snapshot-corruption case.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_herdr_main_launcher.py -k "target_selector or target_resolution or pane_ownership"`
+- [x] `python -m pytest -q tests/test_herdr_main_launcher.py -k "target_selector or target_resolution or pane_ownership"` (29 passed, 229 deselected)
 - Expected: incompatible/malformed/slow peers do not suppress safe allocation; global identity corruption still returns `TargetResolutionBlocked` with explicit evidence.
 
 **Exit Criteria:**
@@ -224,7 +278,9 @@ canonical-versus-packaged policy ownership.
 
 **Specification Coverage:**
 - Documentation states context mismatch and candidate inspection failure allocate a new pane when safe, while global identity failure remains blocked.
-- Starter-kit output contains the synchronized retirement policy and launcher behavior.
+- Starter-kit output excludes shared-runtime policy and launcher files, while
+  shared-runtime deployment contains the synchronized policy projection and
+  launcher behavior.
 
 **Required Skills:**
 - `skill-verification-before-completion`
@@ -232,35 +288,65 @@ canonical-versus-packaged policy ownership.
 **Files And Symbols:**
 - Inspect: `docs/configuration.md:Herdr pane affinity`, `repo_config/starter-kit-manifest.json`
 - Modify: `docs/configuration.md`
-- Verify: `scripts/build_starter_kit.py`, `scripts/validate_starter_kit.py`, `scripts/validate_repo_config.py`
+- Verify: `scripts/build_starter_kit.py`, `scripts/validate_starter_kit.py`,
+  `scripts/validate_repo_config.py`, `scripts/deploy_agent_runtime.py`, and
+  `tests/test_deploy_agent_runtime.py`
 
 **Dependencies:**
 - Tasks 1 and 2 complete with focused tests passing.
 
 **Authority:**
-- Preauthorized local actions: update the listed documentation and run build/validation commands using disposable output
+- Preauthorized local actions: update the listed documentation and this plan's
+  coordination/evidence sections, and run build/validation commands using
+  disposable output
 - Stop for: generated drift requiring edits outside canonical sources, failed policy ownership validation, or any untracked user artifact being deleted
 
 **Steps:**
-- [ ] Step 1: Update the pane-affinity documentation with the candidate-local versus global-failure contract and policy ownership.
-- [ ] Step 2: Build a temporary starter kit from `repo_config/starter-kit-manifest.json` and verify the packaged policy projection is present and equal to the canonical policy.
-- [ ] Step 3: Run the focused tests plus repository configuration and starter-kit validators; record exact output in the plan evidence.
+- [x] Step 1: Update the pane-affinity documentation with the candidate-local versus global-failure contract and policy ownership.
+- [x] Step 2: Build a temporary starter kit from
+  `repo_config/starter-kit-manifest.json` and verify that shared paths are
+  absent from the generated kit. Separately verify the shared-runtime
+  deployment/parity path contains `scripts/retired-model-policy.json` and
+  `scripts/herdr_main_launcher.py`, with the policy projection equal to
+  `repo_config/retired-model-policy.json`.
+- [x] Step 3: Run the focused tests plus repository configuration and starter-kit validators; record exact output in the plan evidence.
 
 **Verification:**
-- [ ] `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_starter_kit_generation.py tests/test_validate_repo_config.py`
-- [ ] `python scripts/validate_repo_config.py --repo-root . --starter-kit-manifest repo_config/starter-kit-manifest.json`
-- [ ] `python scripts/build_starter_kit.py --repo-root . --manifest repo_config/starter-kit-manifest.json --output-root "$env:TEMP\\project-os-starter-kit-plan-check"` followed by `python scripts/validate_starter_kit.py --repo-root . --manifest repo_config/starter-kit-manifest.json --kit-root "$env:TEMP\\project-os-starter-kit-plan-check\\project-OS-starter-kit"`
-- Expected: focused tests and validators pass; packaged output contains no retired maintained profile and contains the synchronized retirement policy.
+- [x] `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_starter_kit_generation.py tests/test_deploy_agent_runtime.py tests/test_validate_repo_config.py` (344 passed in 6.11s)
+- [x] `python scripts/validate_repo_config.py --repo-root . --starter-kit-manifest repo_config/starter-kit-manifest.json` (passed)
+- [x] Build and validate a disposable starter-kit output (both passed; shared launcher/policy absent from kit; projections equal).
+- Expected: focused tests and validators pass; the generated starter kit
+  contains no shared-runtime policy or launcher path, while shared-runtime
+  deployment contains the synchronized policy and launcher and no retired
+  maintained profile.
 
 **Exit Criteria:**
-- Source, tests, documentation, policy projection, and starter-kit output agree, with no new tracked lifecycle state or unresolved required finding.
+- Source, tests, documentation, policy projections, shared-runtime deployment,
+  and starter-kit boundaries agree, with no new tracked lifecycle state or
+  unresolved required finding.
 
 ## Verification
 
-- `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_starter_kit_generation.py tests/test_validate_repo_config.py`
+- `python -m pytest -q tests/test_agent_profile_registry.py tests/test_herdr_main_launcher.py tests/test_starter_kit_generation.py tests/test_deploy_agent_runtime.py tests/test_validate_repo_config.py`
 - `python scripts/validate_repo_config.py --repo-root . --starter-kit-manifest repo_config/starter-kit-manifest.json`
 - Build and validate a disposable starter-kit output using `scripts/build_starter_kit.py` and `scripts/validate_starter_kit.py`.
 - Inspect `git diff --check` and `git status --short`; preserve pre-existing untracked runtime/browser artifacts.
+
+## Evidence
+
+- Candidate-local `process-info` invalid responses and transport timeouts now
+  become `candidate_rejected` evidence and fall through to replacement
+  allocation; session-wide agent identity and current-workspace snapshot
+  failures remain structured `TargetResolutionBlocked` results.
+- The five-second discovery budget reserves one second for split/poll
+  allocation, with regressions asserting the capped candidate timeout and
+  successful allocation at the reserve boundary.
+- Shared runtime policy projections are byte-identical. The starter-kit
+  manifest keeps `scripts/herdr_main_launcher.py` and
+  `scripts/retired-model-policy.json` under `sharedPaths.scripts` and excludes
+  both from `copyPaths`.
+- Preserved untracked artifacts: `.playwright-mcp/`, `.runtime/`, and
+  `node_modules/`; no implementation commit was created during execution.
 
 ## Completion Criteria
 
@@ -268,12 +354,14 @@ The plan is ready for completion verification when:
 
 1. retired provider IDs and aliases fail before any launcher side effect;
 2. candidate-local pane defects no longer suppress safe replacement allocation;
-3. global snapshot corruption still fails closed with structured evidence;
+3. global snapshot corruption still fails closed with deterministic structured
+   evidence, while candidate-local failures retain candidate rejection scope;
 4. deadline behavior is bounded and covered without adding a second lifecycle store;
-5. policy source, packaged projection, docs, tests, and starter-kit output are reconciled;
+5. upstream policy ownership, local projections, shared-runtime deployment,
+   docs, tests, and starter-kit boundaries are reconciled;
 6. all required focused tests and validators pass with fresh output;
 7. no speculative cross-repository runtime, scheduler, or registry work is added.
 
-The plan remains `proposed` until implementation is explicitly approved. It may
-be marked `completed` only after `skill-verification-before-completion` returns
-`verified` against fresh repository evidence.
+The plan is `completed` after implementation approval and fresh repository
+evidence from the focused tests, validators, starter-kit build, projection
+parity check, and final diff/status inspection.

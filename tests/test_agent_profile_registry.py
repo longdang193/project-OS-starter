@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -133,6 +134,58 @@ def test_load_profiles_rejects_retired_models(tmp_path: Path, model: str) -> Non
 
     with pytest.raises(ValueError, match="retired model"):
         REGISTRY.load_agent_profiles(tmp_path / "agents")
+
+
+@pytest.mark.parametrize("provider", ["chatgpt-web", "cg"])
+def test_load_profiles_rejects_retired_provider_aliases(tmp_path: Path, provider: str) -> None:
+    write_profile(tmp_path, "retired-provider", None)
+    profile_path = tmp_path / "agents" / "retired-provider.toml"
+    profile_path.write_text(
+        profile_path.read_text(encoding="utf-8").replace('model_provider = "9router"', f'model_provider = "{provider}"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="retired provider"):
+        REGISTRY.load_agent_profiles(tmp_path / "agents")
+
+
+def test_retirement_policy_validates_provider_fields_and_uses_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "primary-policy.json"
+    fallback = tmp_path / "fallback-policy.json"
+    valid_policy = {
+        "retiredModelNames": ["combo-web-high"],
+        "retiredModelPrefixes": ["cgw/"],
+        "retiredProviderIds": ["chatgpt-web"],
+        "providerAliases": {"cg": "chatgpt-web"},
+    }
+    fallback.write_text(json.dumps(valid_policy), encoding="utf-8")
+    monkeypatch.setattr(REGISTRY, "_RETIREMENT_POLICY_PATHS", (primary, fallback))
+
+    primary.write_text(json.dumps({**valid_policy, "retiredProviderIds": [""]}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="retiredProviderIds"):
+        REGISTRY._load_retirement_policy()
+
+    for key in ("retiredModelNames", "retiredModelPrefixes", "retiredProviderIds"):
+        primary.write_text(json.dumps({**valid_policy, key: []}), encoding="utf-8")
+        with pytest.raises(RuntimeError, match=key):
+            REGISTRY._load_retirement_policy()
+
+    primary.write_text(json.dumps({**valid_policy, "providerAliases": []}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="providerAliases"):
+        REGISTRY._load_retirement_policy()
+
+    primary.unlink()
+    assert REGISTRY._load_retirement_policy() == valid_policy
+
+
+def test_retirement_policy_projection_matches_source_copy() -> None:
+    canonical = ROOT / "repo_config" / "retired-model-policy.json"
+    projection = ROOT / "scripts" / "retired-model-policy.json"
+
+    assert canonical.read_bytes() == projection.read_bytes()
 
 
 def test_load_profiles_rejects_duplicate_present_ranks(tmp_path: Path) -> None:
