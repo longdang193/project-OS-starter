@@ -71,7 +71,7 @@ export async function readVisibleInterruption(page) {
   return (await interruption.count()) > 0 && await interruption.isVisible();
 }
 
-async function readVisibleAssistantMessage(page) {
+async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
   const turns = await readVisibleAssistantTurns(page);
   const count = await turns.count();
   if (count === 0) {
@@ -94,7 +94,7 @@ async function readVisibleAssistantMessage(page) {
 
   return {
     assistantMessageId,
-    assistantText: (await selected.innerText()).trim(),
+    assistantText: includeText ? (await selected.innerText()).trim() : "",
     assistantTurnCount: count,
   };
 }
@@ -111,9 +111,12 @@ export async function isPromptVisibleInComposer(composer, prompt) {
   return normalizeComposerText(await composer.innerText()) === expectedPrompt;
 }
 
-async function readCompletionSnapshot(page) {
-  const assistantMessage = await readVisibleAssistantMessage(page);
+async function readCompletionSnapshot(page, { includeText } = {}) {
   const stopButton = page.getByRole("button", { name: /^(Stop generating|Stop response)$/i }).first();
+  const generating = await stopButton.isVisible();
+  const assistantMessage = await readVisibleAssistantMessage(page, {
+    includeText: includeText ?? !generating,
+  });
   const responseAction = page.getByRole("button", { name: /^(Regenerate response|Rate response)$/i }).last();
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
   const currentUrl = page.url();
@@ -121,10 +124,10 @@ async function readCompletionSnapshot(page) {
 
   return {
     ...assistantMessage,
-    composerReady: await composer.isVisible() && !(await stopButton.isVisible()),
+    composerReady: await composer.isVisible() && !generating,
     conversationId,
     currentUrl,
-    generating: await stopButton.isVisible(),
+    generating,
     interrupted: await readVisibleInterruption(page),
     responseActionsReady: await responseAction.isVisible(),
   };
@@ -231,7 +234,7 @@ export async function waitForReviewCompletion(page, {
     backoffMs = Math.min(backoffMs * 2, COMPLETION_MAX_BACKOFF_MS);
   }
 
-  const finalSnapshot = snapshot || await readCompletionSnapshot(page);
+  const finalSnapshot = await readCompletionSnapshot(page, { includeText: true });
   return {
     ...finalSnapshot,
     response: finalSnapshot.assistantText,

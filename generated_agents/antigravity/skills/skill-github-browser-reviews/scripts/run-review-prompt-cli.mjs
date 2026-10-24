@@ -60,7 +60,9 @@ export function parseArguments(argv) {
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
-  if (batchFile && (model || effort || promptFile)) usageError("Single-review arguments cannot be combined with --batch-file");
+  if (batchFile && (model || effort || promptFile)) {
+    usageError("Single-review arguments cannot be combined with --batch-file");
+  }
   if (!batchFile && !model) usageError("Missing required argument: --model");
   if (!batchFile && !effort) usageError("Missing required argument: --effort");
   if (!batchFile && !promptFile) usageError("Missing required argument: --prompt-file");
@@ -220,18 +222,10 @@ export async function persistCleanupFailure(result, outputDir, cleanupReason) {
   result.status = "incomplete";
   result.cleanup_status = "failed";
   result.cleanup_warning = cleanupReason;
+  result.failure_scope = result.failure_scope || "shared_context";
   result.failure_stage = "cleanup";
   result.failure_reason = cleanupReason;
   if (outputDir) await writeResult(outputDir, result);
-}
-
-function structuredFailure({ error, failureStage, outputDir }) {
-  return {
-    status: "blocked",
-    failure_stage: failureStage,
-    failure_reason: error instanceof Error ? error.message : String(error),
-    output_dir: outputDir || null,
-  };
 }
 
 async function loadPlaywright() {
@@ -272,25 +266,29 @@ export async function openReviewContext(options) {
   return openContext(chromium, options);
 }
 
-export async function closeContext({ browser, context, ownsContext, page, profileLease }) {
+export async function closeContext(attached) {
+  if (attached?.closed) return;
+  if (!attached) return;
+  const { browser, context, ownsContext, page, profileLease } = attached;
   let cleanupError;
   try {
     if (ownsContext && context) {
       await context.close();
-    } else {
-      try {
-        if (page) await page.close();
-      } catch (error) {
-        cleanupError = error;
-      }
-      try {
-        if (browser) await browser.close();
-      } catch (error) {
-        cleanupError ||= error;
-      }
     }
   } catch (error) {
-    cleanupError ||= error;
+    cleanupError = error;
+  }
+  if (!ownsContext) {
+    try {
+      if (page) await page.close();
+    } catch (error) {
+      cleanupError ||= error;
+    }
+    try {
+      if (browser) await browser.close();
+    } catch (error) {
+      cleanupError ||= error;
+    }
   }
   try {
     await releaseProfileLease(profileLease);
@@ -298,6 +296,30 @@ export async function closeContext({ browser, context, ownsContext, page, profil
     cleanupError ||= error;
   }
   if (cleanupError) throw cleanupError;
+  attached.closed = true;
+}
+
+function classifyFailureScope(stage) {
+  if (stage === "selection") return "shared_context";
+  if (stage === "submission" || stage === "completion") return "review";
+  return null;
+}
+
+function appendFailureReason(currentReason, suffix) {
+  return `${currentReason || "Review transaction failed"}; ${suffix}`;
+}
+
+function markCleanupFailure(result, cleanupReason) {
+  result.cleanup_status = "failed";
+  result.cleanup_warning = cleanupReason;
+  if (result.status === "completed") {
+    result.status = "incomplete";
+    result.failure_scope = "review";
+    result.failure_stage = "cleanup";
+    result.failure_reason = cleanupReason;
+  } else {
+    result.failure_reason = appendFailureReason(result.failure_reason, `cleanup failed: ${cleanupReason}`);
+  }
 }
 
 export async function runReviewTransaction(context, options) {
@@ -311,33 +333,51 @@ export async function runReviewTransaction(context, options) {
   let outputDir;
   let runId;
   let page;
-  let failure;
+  let stage = "artifacts";
+  let resultPersisted = false;
+
+  const persist = async () => {
+    if (!outputDir) throw new Error("Review output directory was not allocated");
+    await persistResult(outputDir, result);
+    resultPersisted = true;
+  };
 
   try {
     ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
     result = createResult({ ...options, runId });
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
-    await persistResult(outputDir, result);
+    await persist();
 
+    stage = "selection";
     const review = await runPrompt(context, {
       effort: options.effort,
       model: options.model,
       prompt: options.prompt,
       beforeSubmit: async () => {
+        stage = "submission";
         result.submission_attempted = true;
         result.submission = "attempted";
-        await persistResult(outputDir, result);
+        try {
+          await persist();
+        } catch (error) {
+          stage = "artifacts";
+          throw error;
+        }
       },
     });
     page = review.page;
-    if (review.promptSubmitted !== true) throw new Error("Review prompt submission was not confirmed by the helper");
+    if (review.promptSubmitted !== true) {
+      stage = "submission";
+      throw new Error("Review prompt submission was not confirmed by the helper");
+    }
     result.model_verified = review.model;
     result.effort_verified = review.effort;
     result.submission = review.submission;
     result.completion = "waiting";
-    result.cleanup_status = "pending";
-    await persistResult(outputDir, result);
+    stage = "artifacts";
+    await persist();
 
+    stage = "completion";
     const completion = await waitForCompletion(page, { baseline: review });
     result.completion = completion.status;
     result.conversation_url = completion.currentUrl || null;
@@ -345,7 +385,10 @@ export async function runReviewTransaction(context, options) {
     result.assistant_message_id = completion.assistantMessageId || null;
     result.assistant_turn_index = completion.assistantTurnIndex ?? null;
 
-    if (completion.response) await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
+    if (completion.response) {
+      stage = "artifacts";
+      await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
+    }
     if (completion.status === "confirmed") {
       result.status = "completed";
     } else {
@@ -355,47 +398,47 @@ export async function runReviewTransaction(context, options) {
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
   } catch (error) {
-    failure = error;
-    result.status = result.submission_attempted ? "incomplete" : "blocked";
-    result.failure_stage = result.submission_attempted ? "submission" : "browser";
-    result.failure_scope = result.submission_attempted ? "review" : "shared_context";
-    result.failure_reason = error instanceof Error ? error.message : String(error);
-    result.submission = result.submission_attempted ? "ambiguous" : result.submission;
+    result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
+    result.failure_scope = classifyFailureScope(stage);
+    result.failure_stage = stage;
+    result.failure_reason = errorMessage(error);
+    if (stage === "submission" && result.submission !== "acknowledged") result.submission = "ambiguous";
   } finally {
-    if (page) result.cleanup_status = "pending";
-    try {
-      if (page) {
-        await closePage(page);
-        result.cleanup_status = "completed";
-      } else {
-        result.cleanup_status = "not_needed";
-      }
-    } catch (error) {
-      const cleanupReason = error instanceof Error ? error.message : String(error);
-      result.cleanup_status = "failed";
-      result.cleanup_warning = cleanupReason;
-      if (!failure && result.status === "completed") {
-        result.status = "incomplete";
-        result.failure_scope = "review";
-        result.failure_stage = "cleanup";
-        result.failure_reason = cleanupReason;
-      } else {
-        result.failure_reason = `${result.failure_reason || "Review transaction failed"}; cleanup failed: ${cleanupReason}`;
+    if (outputDir) {
+      try {
+        stage = "artifacts";
+        result.cleanup_status = page ? "pending" : "not_needed";
+        await persist();
+      } catch (error) {
+        const artifactReason = errorMessage(error);
+        if (result.failure_stage !== "artifacts") {
+          result.status = "blocked";
+          result.failure_stage = "artifacts";
+          result.failure_reason = artifactReason;
+        } else {
+          result.failure_reason = `${result.failure_reason}; result write failed: ${artifactReason}`;
+        }
       }
     }
 
     try {
-      if (!outputDir) throw new Error("Review output directory was not allocated");
-      await persistResult(outputDir, result);
+      if (page) {
+        await closePage(page);
+        result.cleanup_status = "completed";
+      }
     } catch (error) {
-      console.error(JSON.stringify(structuredFailure({
-        error,
-        failureStage: "artifacts",
-        outputDir,
-      })));
-      result.status = "blocked";
-      result.failure_stage = "artifacts";
-      result.failure_reason = error instanceof Error ? error.message : String(error);
+      markCleanupFailure(result, errorMessage(error));
+    }
+
+    if (outputDir && resultPersisted && (result.cleanup_status === "completed" || result.cleanup_warning)) {
+      try {
+        await persistResult(outputDir, result);
+      } catch (error) {
+        const artifactReason = errorMessage(error);
+        result.cleanup_warning = result.cleanup_warning
+          ? `${result.cleanup_warning}; result update failed: ${artifactReason}`
+          : `result update failed: ${artifactReason}`;
+      }
     }
   }
 
@@ -406,11 +449,12 @@ export async function runReviewTransaction(context, options) {
 }
 
 export async function runReviewBatch({ attached, outputDir, reviews, runTransaction = runReviewTransaction }) {
-  if (!attached?.context) throw new Error("attached authenticated context is required");
-  if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
-
   const results = [];
+  let cleanupError;
   try {
+    if (!attached?.context) throw new Error("attached authenticated context is required");
+    if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
+
     for (const review of reviews) {
       const result = await runTransaction(attached.context, {
         ...review,
@@ -420,20 +464,27 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
       if (result.failure_scope === "shared_context") break;
     }
   } finally {
-    try {
-      await closeContext(attached);
-    } catch (error) {
-      const cleanupReason = error instanceof Error ? error.message : String(error);
-      for (const result of results) {
-        if (result.output_dir) {
-          await persistCleanupFailure(result, resolve(result.output_dir), cleanupReason);
-        }
+    if (attached) {
+      try {
+        await closeContext(attached);
+      } catch (error) {
+        cleanupError = error;
       }
-      const batchError = new Error(`Batch context cleanup failed: ${cleanupReason}`);
-      batchError.cause = error;
-      batchError.results = results;
-      throw batchError;
     }
+  }
+  if (cleanupError) {
+    for (const result of results) {
+      if (!result.output_dir) continue;
+      try {
+        await persistCleanupFailure(result, resolve(result.output_dir), errorMessage(cleanupError));
+      } catch {
+        // Preserve the batch cleanup error even if a partial result cannot be rewritten.
+      }
+    }
+    const batchError = new Error(`Batch context cleanup failed: ${errorMessage(cleanupError)}`);
+    batchError.cause = cleanupError;
+    batchError.results = results;
+    throw batchError;
   }
   return results;
 }
@@ -448,6 +499,7 @@ export async function main(argv, dependencies = {}) {
   const closeAttachedContext = dependencies.closeContext || closeContext;
   const runBatch = dependencies.runReviewBatch || runReviewBatch;
   const runTransaction = dependencies.runReviewTransaction || runReviewTransaction;
+
   const options = parseArguments(argv);
   const reviews = options.batchFile
     ? await readBatchReviews(options.batchFile)
@@ -484,17 +536,17 @@ export async function main(argv, dependencies = {}) {
       result = {
         ...summarizeBatchResults(error.results),
         status: "incomplete",
-        failure_stage: "cleanup",
-        failure_reason: cleanupReason,
         cleanup_status: "failed",
         cleanup_warning: cleanupReason,
+        failure_stage: "cleanup",
+        failure_reason: cleanupReason,
       };
     } else {
       result = {
         ...createResult(options),
         status: "blocked",
-        failure_stage: "browser",
         failure_scope: "shared_context",
+        failure_stage: "browser",
         failure_reason: errorMessage(error),
         output_dir: null,
       };
@@ -508,18 +560,17 @@ export async function main(argv, dependencies = {}) {
         result = {
           ...createResult(options),
           status: "incomplete",
-          failure_stage: "cleanup",
           failure_scope: "shared_context",
+          failure_stage: "cleanup",
           failure_reason: cleanupReason,
           output_dir: null,
         };
       } else {
-        const priorReason = result.failure_reason;
-        await persistCleanupFailure(
-          result,
-          result.output_dir ? resolve(result.output_dir) : null,
-          `${priorReason || ""}${priorReason ? "; " : ""}cleanup failed: ${cleanupReason}`,
-        );
+        if (result.status === "completed") result.status = "incomplete";
+        result.failure_stage = "cleanup";
+        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}context cleanup failed: ${cleanupReason}`;
+        result.cleanup_status = "failed";
+        result.cleanup_warning = cleanupReason;
       }
     }
   }

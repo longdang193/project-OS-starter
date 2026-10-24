@@ -115,24 +115,12 @@ level. The supported choices are:
 - `GPT-5.6-Sol` or `GPT-6`;
 - `Instant`, `Medium`, or `High` response mode.
 
-Use this bounded interaction sequence:
-
-1. Click the visible `Select ChatGPT model` button.
-2. Select the requested visible model radio item.
-3. Focus the visible `Power` control and press left or right until the
-   requested effort is displayed.
-4. Verify that the selected model radio item and effort label visibly match
-   the request.
-
-If the model remains unchanged after one normal click and one bounded
-visible-item fallback, stop as `incomplete` unless the requested model item is
-visibly marked disabled or locked; a failed click alone is not a lock signal.
-Likewise, do not treat a generic usage-limit banner as a model failure unless
-the UI visibly associates it with that model item. Do not use force-click
-loops, repeated resubmissions, or hidden DOM state to claim selection. Record
-any unscoped banner separately from model availability. Only after both the
-model radio item and the effort control are visibly verified may the review
-request be submitted.
+Use the bounded page helper to select the requested visible model and effort,
+then verify both visible values before submission. A failed click, pointer
+interception, unchanged page, or unscoped usage banner is not proof that a
+model is locked. Do not use force-click loops, hidden DOM state, repeated
+resubmissions, or automatic retries; stop as `incomplete` or `blocked` when
+visible verification cannot be completed.
 
 For repeatable browser automation, use the page-bound helper at
 `scripts/select-review-model.mjs`:
@@ -151,14 +139,9 @@ launch a browser, authenticate, submit a review, inspect hidden state, or retry
 indefinitely. If it cannot visibly confirm the requested model and effort, stop
 the review as `incomplete` or `blocked`.
 
-The model selector may open on the thinking-effort subview, leaving stale model
-rows in the DOM while the visible `Medium`/`High` power control covers them.
-Navigate through the visible `Select model` control before locating a model;
-then click a safe point in the upper part of the requested row, use real
-Playwright hit-testing, and verify `aria-checked` afterward. Do not replace
-that click with `element.click()`, `force`, or hidden-state inspection: pointer
-interception is a selector failure, not evidence that the model is locked.
-Match the model label separately from nearby status or usage-banner text.
+The helper owns the bounded navigation between the model and effort controls,
+uses real Playwright hit-testing, and verifies the visible selected state. Keep
+model labels separate from nearby status or usage-banner text.
 
 For an explicitly authorized end-to-end prompt submission, use
 `scripts/run-review-prompt.mjs`. It navigates an existing authenticated page
@@ -209,28 +192,46 @@ node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.m
   --output-dir <review-output-directory>
 ```
 
-One normal invocation is one bounded review transaction. It selects and visibly
-verifies the requested model and effort, submits at most once, waits for a new
-stable visible assistant turn, writes `response.md` and a small `result.json`,
-and only then closes the owned browser context. Terminal runner results are
-`completed`, `incomplete`, or `blocked`; a nonzero exit code accompanies the
-last two. The controller, not the runner, validates revision-specific review
-evidence and may classify the overall workflow as `verified`. The runner never
-retries or silently recovers a failed submission.
+ One normal invocation is one bounded review transaction. It selects and visibly
+ verifies the requested model and effort, submits at most once, waits for a new
+ stable visible assistant turn, writes `response.md` and a small `result.json`,
+ and only then closes the owned browser context. While the response is visibly
+ generating, completion observation polls cheap visible state and defers full
+ assistant-text extraction until generation stops and stability can be checked.
+ Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
+ owned-context cleanup preserves the review artifacts but makes the invocation
+ nonzero and records the cleanup failure. The controller, not the runner,
+ validates revision-specific review evidence and may classify the overall
+ workflow as `verified`. The runner never retries or silently recovers a failed
+ submission.
 
-For multiple reviews, keep the same transaction boundary but call the
+For a multi-model review, keep the same transaction boundary but call the
 CLI module's `openReviewContext(options)` once, then call
-`runReviewBatch({ attached, reviews, outputDir })` from the Node controller. It
-reuses one authenticated context for sequential reviews—including repeated
-reviews with the same model—allocates a separate
-`run-*` output directory per review, closes each review page after its artifacts
-are persisted, and closes the shared context once at the end. Do not add a
-keep-open flag or a second browser lifecycle owner. The optional `--batch-file`
-manifest is the standalone entry point for this mode. Persistent-profile mode
-holds an exclusive profile lease for the lifetime of the owned context, so
-overlapping launches fail before opening a second browser. If a review reports
-that the shared context is unusable, the controller stops the batch and closes
-the context rather than attempting later reviews against a broken session.
+`runReviewBatch({ attached, reviews, outputDir })` from the Node controller. The
+standalone CLI also accepts a manifest:
+
+```json
+{
+  "reviews": [
+    { "model": "GPT-5.6-Sol", "effort": "High", "prompt_file": "review-sol.txt" },
+    { "model": "GPT-6", "effort": "High", "prompt_file": "review-gpt6.txt" }
+  ]
+}
+```
+
+Pass it as `--batch-file <reviews.json>` instead of the single-review flags.
+The runner validates every entry before opening the browser, reuses one
+authenticated context for sequential fresh-tab transactions, allocates a
+ separate `run-*` directory per review, persists response and result artifacts
+ before page cleanup, closes the shared context once through the batch owner,
+ prints a JSON summary, and returns nonzero if any review is not `completed` or
+ the shared context cannot be closed. Repeated reviews with the same model use
+ the same authenticated context; persistent-profile mode holds an exclusive
+ profile lease for the lifetime of the owned context, so overlapping launches
+ fail before opening a second browser. If a review reports that the shared
+ context is unusable, the batch stops instead of attempting later reviews
+ against the broken session. Do not add a keep-open flag or a second browser
+ lifecycle owner.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The
