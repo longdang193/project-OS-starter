@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -187,28 +188,103 @@ function profileLeasePath(userDataDir) {
   return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
 }
 
-export async function acquireProfileLease(userDataDir) {
+function defaultIsProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+async function readLeaseMetadata(lockPath, profilePath) {
+  let metadata;
+  try {
+    metadata = JSON.parse(await readFile(lockPath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(metadata?.pid) || metadata.pid <= 0) return null;
+  if (metadata.profile !== profilePath || typeof metadata.token !== "string" || metadata.token.length === 0) {
+    return null;
+  }
+  return metadata;
+}
+
+async function restoreQuarantinedLease(quarantinePath, lockPath) {
+  try {
+    await rename(quarantinePath, lockPath);
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      await rm(quarantinePath, { force: true });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function recoverStaleProfileLease(lockPath, profilePath, isProcessAlive) {
+  const metadata = await readLeaseMetadata(lockPath, profilePath);
+  if (!metadata || await isProcessAlive(metadata.pid)) return false;
+
+  const quarantinePath = `${lockPath}.${metadata.token}.${randomUUID()}.stale`;
+  try {
+    await rename(lockPath, quarantinePath);
+  } catch {
+    return false;
+  }
+
+  try {
+    const quarantined = await readLeaseMetadata(quarantinePath, profilePath);
+    if (!quarantined || quarantined.pid !== metadata.pid || quarantined.token !== metadata.token) {
+      await restoreQuarantinedLease(quarantinePath, lockPath);
+      return false;
+    }
+    if (await isProcessAlive(quarantined.pid)) {
+      await restoreQuarantinedLease(quarantinePath, lockPath);
+      return false;
+    }
+    await rm(quarantinePath, { force: true });
+    return true;
+  } catch {
+    await restoreQuarantinedLease(quarantinePath, lockPath).catch(() => {});
+    return false;
+  }
+}
+
+export async function acquireProfileLease(userDataDir, { isProcessAlive = defaultIsProcessAlive } = {}) {
   const profilePath = resolve(userDataDir);
   const lockPath = profileLeasePath(profilePath);
   await mkdir(dirname(profilePath), { recursive: true });
 
-  let handle;
-  try {
-    handle = await open(lockPath, "wx");
-    await handle.writeFile(`${JSON.stringify({ pid: process.pid, profile: profilePath })}\n`, "utf8");
-    return { handle, lockPath };
-  } catch (error) {
-    await handle?.close().catch(() => {});
-    if (error?.code === "EEXIST") {
-      throw new Error(`Browser profile is already in use: ${profilePath}`);
+  while (true) {
+    let handle;
+    try {
+      handle = await open(lockPath, "wx");
+      const token = randomUUID();
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid, profile: profilePath, token })}\n`, "utf8");
+      return { handle, lockPath, profilePath, token };
+    } catch (error) {
+      await handle?.close().catch(() => {});
+      if (error?.code !== "EEXIST") throw error;
+      if (await recoverStaleProfileLease(lockPath, profilePath, isProcessAlive)) continue;
+      throw new Error(`Browser profile is already in use or has ambiguous ownership: ${profilePath}`);
     }
-    throw error;
   }
 }
 
 export async function releaseProfileLease(lease) {
   if (!lease) return;
   await lease.handle?.close().catch(() => {});
+  if (!lease.token) return;
+  let metadata;
+  try {
+    metadata = JSON.parse(await readFile(lease.lockPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw new Error(`Profile lease ownership is ambiguous: ${lease.profilePath || lease.lockPath}`, { cause: error });
+  }
+  if (metadata?.token !== lease.token) return;
   await rm(lease.lockPath, { force: true });
 }
 
@@ -293,8 +369,8 @@ export async function closeContext(attached) {
   attached.closed = true;
 }
 
-function classifyFailureScope(stage) {
-  if (stage === "selection") return "shared_context";
+function classifyFailureScope(stage, error) {
+  if (stage === "selection") return error?.failureScope === "review" ? "review" : "shared_context";
   if (stage === "submission" || stage === "completion") return "review";
   return null;
 }
@@ -393,7 +469,7 @@ export async function runReviewTransaction(context, options) {
     }
   } catch (error) {
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
-    result.failure_scope = classifyFailureScope(stage);
+    result.failure_scope = classifyFailureScope(stage, error);
     result.failure_stage = stage;
     result.failure_reason = errorMessage(error);
     if (stage === "submission" && result.submission !== "acknowledged") result.submission = "ambiguous";
@@ -455,7 +531,7 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
         outputDir,
       });
       results.push(result);
-      if (result.failure_scope === "shared_context") break;
+      if (result.status !== "completed" && result.failure_scope !== "review") break;
     }
   } finally {
     if (attached) {

@@ -2,7 +2,10 @@ const SUPPORTED_MODELS = new Set(["GPT-5.6-Sol", "GPT-6"]);
 const SUPPORTED_EFFORTS = new Set(["Instant", "Medium", "High"]);
 const MODEL_LABELS = { "GPT-5.6-Sol": "GPT-5.6 Sol", "GPT-6": "GPT-6" };
 const EFFORT_ORDER = ["Instant", "Medium", "High"];
-const MODEL_MENU_TIMEOUT_MS = 10000;
+export const UI_ACTION_TIMEOUT_MS = 5000;
+export const MENU_TRANSITION_TIMEOUT_MS = 5000;
+export const MODEL_MENU_TIMEOUT_MS = 10000;
+export const MODEL_MENU_INTERACTION_TIMEOUT_MS = UI_ACTION_TIMEOUT_MS;
 
 function assertSupported(value, supported, label) {
   if (!supported.has(value)) {
@@ -41,7 +44,7 @@ export async function openModelList(menu, { model, reopen } = {}) {
       const requestedOption = model
         ? await findModelOption(menu, model)
         : visibleModelOptions.first();
-      await requestedOption.click({ trial: true, timeout: 1500 });
+      await requestedOption.click({ trial: true, timeout: UI_ACTION_TIMEOUT_MS });
       return menu;
     } catch {
       // A visible but covered option may mean the effort subview is already active.
@@ -62,7 +65,7 @@ export async function openModelList(menu, { model, reopen } = {}) {
 
   const modelControl = menu.getByRole("menuitem", { name: "Select model", exact: true }).first();
   if ((await modelControl.count()) > 0 && (await modelControl.isVisible())) {
-    await modelControl.click({ timeout: 1500 });
+    await modelControl.click({ timeout: UI_ACTION_TIMEOUT_MS });
   }
 
   return menu;
@@ -84,7 +87,7 @@ export async function findModelOption(menu, model) {
 async function selectModel(menu, model) {
   const option = await findModelOption(menu, model);
   if ((await option.getAttribute("aria-checked")) !== "true") {
-    await option.click({ position: { x: 12, y: 12 }, timeout: 1500 });
+    await option.click({ position: { x: 12, y: 12 }, timeout: UI_ACTION_TIMEOUT_MS });
   }
 
   const selectedOption = await findModelOption(menu, model);
@@ -113,6 +116,7 @@ async function readEffort(menu) {
 
 export async function setEffort(menu, effort) {
   const currentEffort = await readEffort(menu);
+  if (currentEffort === effort) return;
   const controls = [];
   try {
     controls.push(menu.getByRole("menuitem", { name: "Power", exact: true }).first());
@@ -178,10 +182,10 @@ export async function selectReviewModel(page, { model, effort }) {
   let menu = await openModelMenu(page);
   const reopenModelMenu = async () => {
     await page.keyboard.press("Escape");
-    await menu.waitFor({ state: "hidden", timeout: 1500 });
+    await menu.waitFor({ state: "hidden", timeout: MENU_TRANSITION_TIMEOUT_MS });
     const reopenedMenu = await openModelMenu(page);
     const modelControl = reopenedMenu.getByRole("menuitem", { name: "Select model", exact: true }).first();
-    if (await modelControl.isVisible()) await modelControl.click({ timeout: 1500 });
+    if (await modelControl.isVisible()) await modelControl.click({ timeout: UI_ACTION_TIMEOUT_MS });
     return reopenedMenu;
   };
   menu = await openModelList(menu, {

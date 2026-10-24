@@ -9,6 +9,21 @@ const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;
 
+export class ReviewPromptError extends Error {
+  constructor(message, failureScope, cause) {
+    super(message);
+    this.name = "ReviewPromptError";
+    this.failureScope = failureScope;
+    if (cause) this.cause = cause;
+  }
+}
+
+function withFailureScope(error, failureScope) {
+  if (error?.failureScope) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  return new ReviewPromptError(message, failureScope, error);
+}
+
 function normalizeComposerText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -35,13 +50,18 @@ async function openChatGPT(page) {
  * The context must already own the user's authenticated session.
  */
 export async function openReviewTab(context) {
-  const page = await context.newPage();
+  let page;
+  try {
+    page = await context.newPage();
+  } catch (error) {
+    throw withFailureScope(error, "shared_context");
+  }
   try {
     await openChatGPT(page);
     return page;
   } catch (error) {
     await page.close().catch(() => {});
-    throw error;
+    throw withFailureScope(error, "shared_context");
   }
 }
 
@@ -179,7 +199,11 @@ async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
 
 async function prepareReviewPrompt(page, { model, effort }) {
   const composer = await openChatGPT(page);
-  await selectReviewModel(page, { model, effort });
+  try {
+    await selectReviewModel(page, { model, effort });
+  } catch (error) {
+    throw withFailureScope(error, "review");
+  }
   await closeModelMenu(page);
   return { composer, effort, model };
 }
@@ -263,6 +287,6 @@ export async function runReviewPromptInNewTab(context, options) {
     return { page, ...(await runReviewPrompt(page, options)) };
   } catch (error) {
     await page.close().catch(() => {});
-    throw error;
+    throw withFailureScope(error, "review");
   }
 }

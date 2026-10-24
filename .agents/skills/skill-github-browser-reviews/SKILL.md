@@ -220,10 +220,18 @@ authenticated context for sequential fresh-tab transactions, allocates a
  the shared context cannot be closed. Repeated reviews with the same model use
  the same authenticated context; persistent-profile mode holds an exclusive
  profile lease for the lifetime of the owned context, so overlapping launches
- fail before opening a second browser. If a review reports that the shared
- context is unusable, the batch stops instead of attempting later reviews
- against the broken session. Do not add a keep-open flag or a second browser
- lifecycle owner.
+ fail before opening a second browser. A lease is recoverable only when its
+ recorded owner is proven dead; malformed, live, or ambiguous ownership stays
+ blocked, and release removes only the current lease token. Selection failures
+ carry an explicit scope: the batch continues only for a review-scoped failure
+ and stops for shared-context or unknown failures. The failed review is never
+ resubmitted or silently switched to another model. Do not add a keep-open flag
+ or a second browser lifecycle owner.
+
+Model-menu interaction uses a five-second UI action/transition timeout. Initial
+model-menu opening remains ten seconds, completion observation remains bounded
+by its separate long timeout, and polling backoff values are not changed to
+compensate for slow clicks.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 optional attach mode and `--context-index` selects its browser context. The

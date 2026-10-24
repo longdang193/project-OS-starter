@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -32,10 +32,46 @@ import {
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
 import {
   findModelOption,
+  MENU_TRANSITION_TIMEOUT_MS,
+  MODEL_MENU_INTERACTION_TIMEOUT_MS,
+  UI_ACTION_TIMEOUT_MS,
   openModelList,
   selectReviewModel,
   setEffort,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
+
+test("model-menu interactions use the bounded five-second timeout", async () => {
+  const clickOptions = [];
+  const modelControl = {
+    async count() {
+      return 1;
+    },
+    async isVisible() {
+      return true;
+    },
+    async click(options) {
+      clickOptions.push(options);
+    },
+  };
+  const menu = {
+    locator(selector) {
+      assert.equal(selector, '[role="menuitemradio"]:visible');
+      return { async count() { return 0; } };
+    },
+    getByRole(role, options) {
+      assert.equal(role, "menuitem");
+      assert.deepEqual(options, { name: "Select model", exact: true });
+      return { first() { return modelControl; } };
+    },
+  };
+
+  await openModelList(menu, { model: "GPT-6" });
+
+  assert.equal(MODEL_MENU_INTERACTION_TIMEOUT_MS, 5000);
+  assert.equal(UI_ACTION_TIMEOUT_MS, 5000);
+  assert.equal(MENU_TRANSITION_TIMEOUT_MS, 5000);
+  assert.deepEqual(clickOptions, [{ timeout: 5000 }]);
+});
 
 test("normal CLI arguments keep the runner contract small", () => {
   const parsed = parseArguments([
@@ -647,6 +683,34 @@ test("effort selection falls back to the visible slider when named controls are 
   assert.equal(currentEffort, "High");
   assert.deepEqual(pressedKeys, ["ArrowRight"]);
 });
+
+test("unchanged effort skips control discovery and focus", async () => {
+  const menu = {
+    locator(selector) {
+      if (selector === '[role="status"]') {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                return true;
+              },
+              async innerText() {
+                return "High, 3 of 3.";
+              },
+            };
+          },
+        };
+      }
+      throw new Error("control lookup should not run");
+    },
+    getByRole() {
+      throw new Error("control lookup should not run");
+    },
+  };
+
+  await setEffort(menu, "High");
+});
+
 test("completion requires a new stable visible assistant turn and conversation", () => {
   assert.equal(evaluateReviewCompletion({
     assistantText: "Finding: src/example.js:12 uses the requested revision.",
@@ -787,6 +851,21 @@ test("review tab closes when authenticated composer setup fails", async () => {
   assert.equal(closed, true);
 });
 
+test("review tab marks context setup failures as shared-context failures", async () => {
+  await assert.rejects(
+    openReviewTab({
+      async newPage() {
+        throw new Error("new page failed");
+      },
+    }),
+    (error) => {
+      assert.equal(error.failureScope, "shared_context");
+      assert.match(error.message, /new page failed/);
+      return true;
+    },
+  );
+});
+
 test("review tab closes when model preparation fails after newPage", async () => {
   let closed = false;
   const composer = { async isVisible() { return true; } };
@@ -826,7 +905,11 @@ test("review tab closes when model preparation fails after newPage", async () =>
       { newPage: async () => page },
       { model: "GPT-6", effort: "High", prompt: "review" },
     ),
-    /model menu did not open/,
+    (error) => {
+      assert.equal(error.failureScope, "review");
+      assert.match(error.message, /model menu did not open/);
+      return true;
+    },
   );
   assert.equal(closed, true);
 });
@@ -1094,13 +1177,16 @@ test("selection failure is not reported as submission ambiguity", async () => {
       prompt: "review",
       dependencies: {
         runReviewPromptInNewTab: async () => {
-          throw new Error("model selection failed");
+          throw Object.assign(new Error("model selection failed"), {
+            failureScope: "review",
+          });
         },
       },
     });
 
     assert.equal(result.status, "blocked");
     assert.equal(result.failure_stage, "selection");
+    assert.equal(result.failure_scope, "review");
     assert.equal(result.submission, "not_started");
     assert.equal(result.cleanup_status, "not_needed");
   } finally {
@@ -1483,6 +1569,58 @@ test("review batch stops after a shared-context failure", async () => {
   assert.equal(closeCount, 1);
 });
 
+test("batch continues after an explicit review-scoped failure", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  let closeCount = 0;
+  context.close = async () => {
+    closeCount += 1;
+  };
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return review.prompt === "first"
+        ? { status: "blocked", failure_scope: "review" }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(results.length, 2);
+  assert.equal(closeCount, 1);
+});
+
+test("batch stops after an unknown failure scope", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return { status: "blocked", failure_scope: "unknown" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first"]);
+  assert.equal(results.length, 1);
+});
+
 test("profile lease prevents overlapping persistent-profile launches", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-profile-"));
   const profile = join(parent, "profile");
@@ -1492,6 +1630,63 @@ test("profile lease prevents overlapping persistent-profile launches", async () 
     await releaseProfileLease(first);
     const second = await acquireProfileLease(profile);
     await releaseProfileLease(second);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("profile lease recovers only a lease whose owner is proven dead", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-stale-profile-"));
+  const profile = join(parent, "profile");
+  const lockPath = `${resolve(profile)}.codex-review-profile.lock`;
+  try {
+    await writeFile(lockPath, `${JSON.stringify({
+      pid: 999999,
+      profile: resolve(profile),
+      token: "stale-token",
+    })}\n`, "utf8");
+
+    const lease = await acquireProfileLease(profile, {
+      isProcessAlive: async () => false,
+    });
+    const current = JSON.parse(await readFile(lockPath, "utf8"));
+    assert.notEqual(current.token, "stale-token");
+    await releaseProfileLease(lease);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("profile lease refuses malformed ownership metadata", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-malformed-profile-"));
+  const profile = join(parent, "profile");
+  const lockPath = `${resolve(profile)}.codex-review-profile.lock`;
+  try {
+    await writeFile(lockPath, "not-json\n", "utf8");
+    await assert.rejects(
+      acquireProfileLease(profile, { isProcessAlive: async () => false }),
+      /profile is already in use|ambiguous profile lease/,
+    );
+    assert.equal(await readFile(lockPath, "utf8"), "not-json\n");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("profile lease release preserves a replacement owner's lock", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-replacement-profile-"));
+  const profile = join(parent, "profile");
+  const lockPath = `${resolve(profile)}.codex-review-profile.lock`;
+  try {
+    const lease = await acquireProfileLease(profile);
+    await writeFile(lockPath, `${JSON.stringify({
+      pid: process.pid,
+      profile: resolve(profile),
+      token: "replacement-token",
+    })}\n`, "utf8");
+    await releaseProfileLease(lease);
+    assert.match(await readFile(lockPath, "utf8"), /replacement-token/);
+    await rm(lockPath, { force: true });
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
