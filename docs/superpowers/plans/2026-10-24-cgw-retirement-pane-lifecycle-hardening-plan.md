@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 name: cgw-retirement-pane-lifecycle-hardening
 targets:
   - scripts/herdr_main_launcher.py
@@ -99,20 +99,20 @@ retry framework, persistent pane registry, or scheduler is added.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `main`
+- Branch: `codex/cgw-pane-lifecycle-plan-review`
 - Base commit: `e830cc3531ec68f866aa3c78261f9b8f536a177e`
 - Expected workspace: preserve existing untracked `.playwright-mcp/`, `.runtime/`, and `node_modules/`; do not stage or rewrite them
-- Next action: obtain approval, then start Task 1 with focused regression coverage
-- Blockers: none for local implementation; external publication and Git disposition remain approval-gated
+- Next action: none; execution is complete and Git disposition remains approval-gated
+- Blockers: none
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `unresolved` | none | focused failing tests and baseline | pending |
-| Task 2 | `pending` | current | `unresolved` | Task 1 | candidate fallback, reserve, and allocation concurrency tests | pending |
-| Task 3 | `pending` | current | `unresolved` | Task 1 | dry-run, gate, and dispatch-ownership tests | pending |
-| Task 4 | `pending` | current | `unresolved` | Task 1 | retry, marker, and structured-policy-error tests | pending |
-| Task 5 | `pending` | current | `unresolved` | Tasks 2–4 | measured inspection/allocation baseline and targeted optimization proof | pending |
-| Task 6 | `pending` | current | `unresolved` | Tasks 2–5 | docs, focused suite, validators, and final diff proof | pending |
+| Task 1 | `completed` | current | `codex` | none | focused failing tests and baseline | 297 focused tests pass; new regressions initially failed before implementation |
+| Task 2 | `completed` | current | `codex` | Task 1 | candidate fallback, reserve, and allocation concurrency tests | candidate rejection, named reserve, lock recheck, and global failure tests pass |
+| Task 3 | `completed` | current | `codex` | Task 1 | dry-run, gate, and dispatch-ownership tests | dry-run proposal and lock-held callback tests pass; Codex gate claim is identity-gated |
+| Task 4 | `completed` | current | `codex` | Task 1 | retry, marker, and structured-policy-error tests | marker, retry constraint plumbing, and RuntimeError normalization are covered |
+| Task 5 | `completed` | current | `codex` | Tasks 2–4 | measured inspection/allocation baseline and targeted optimization proof | no speculative optimization merged; existing performance evidence retained and lock/recheck bounded |
+| Task 6 | `completed` | current | `codex` | Tasks 2–5 | docs, focused suite, validators, and final diff proof | 297 tests pass; planning, contract, config, runtime-drift, adapter-sync, compile, and diff checks pass |
 
 ## Task Breakdown
 
@@ -146,30 +146,30 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: contradictory source contracts, unrelated tracked changes, live runtime mutation, or any need to edit outside the listed test files.
 
 **Steps:**
-- [ ] Add a candidate-local pane-agent evidence failure case after a valid
+- [x] Add a candidate-local pane-agent evidence failure case after a valid
   session-wide agent response, with another matching pane having an
   incompatible context; assert the selector reaches allocation and returns a
   validated new pane.
-- [ ] Retain the existing candidate-local process-info invalid-envelope and
+- [x] Retain the existing candidate-local process-info invalid-envelope and
   timeout coverage; do not add a general process-info rewrite unless a new
   focused regression identifies a distinct gap.
-- [ ] Add global snapshot identity corruption and session-wide agent-list
+- [x] Add global snapshot identity corruption and session-wide agent-list
   command/timeout/envelope failure cases; assert each remains fail-closed as
   structured target-resolution evidence.
-- [ ] Add slow named-session pane-list coverage proving the allocation reserve
+- [x] Add slow named-session pane-list coverage proving the allocation reserve
   is preserved.
-- [ ] Add dry-run auto-resolution coverage proving no split and no stale-agent
+- [x] Add dry-run auto-resolution coverage proving no split and no stale-agent
   release occur.
-- [ ] Add Codex logical-operation gate coverage, reused-pane dispatch ownership
+- [x] Add Codex logical-operation gate coverage, reused-pane dispatch ownership
   coverage, and concurrent allocation coverage.
-- [ ] Add collision-marker, verified-retry constraint, and malformed-retirement
+- [x] Add collision-marker, verified-retry constraint, and malformed-retirement
   policy coverage.
-- [ ] Add launcher-level retired-provider/model alias coverage proving rejection
+- [x] Add launcher-level retired-provider/model alias coverage proving rejection
   occurs before executable lookup, identity discovery, pane locking, or
   dispatch; retain the narrower registry alias tests as-is.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` demonstrates the new tests fail for the current revision or otherwise records an existing contract mismatch before implementation.
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` passes with the implemented contracts; the pre-implementation mismatch is recorded in the task evidence.
 
 **Exit Criteria:**
 - Every validated defect has a focused regression case with an explicit expected
@@ -204,37 +204,36 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: a proposed catch-all that would swallow global identity failure, a new persistent registry/scheduler, or any external Herdr mutation outside bounded tests.
 
 **Steps:**
-- [ ] Convert only pane-attributable agent evidence and candidate-local
+- [x] Convert only pane-attributable agent evidence and candidate-local
   transport/envelope failures, after a valid session-wide response, into
   `TargetCandidateRejected` with rejection evidence. Preserve the existing
   `_candidate_json_command` process-info behavior unless a new focused test
   proves a distinct gap.
-- [ ] Keep session-wide agent-list command, timeout, and envelope failures,
+- [x] Keep session-wide agent-list command, timeout, and envelope failures,
   malformed current-workspace snapshot identity, unavailable global snapshot
   envelopes, and global transport failures as `TargetResolutionBlocked` with
   `global_identity` or the established global failure kind.
-- [ ] Apply the candidate deadline minus `_TARGET_ALLOCATION_RESERVE_SECONDS`
+- [x] Apply the candidate deadline minus `_TARGET_ALLOCATION_RESERVE_SECONDS`
   to named-session pane listing as well as global snapshot discovery.
-- [ ] Protect the allocation transition and action selection with a keyed
+- [x] Protect the allocation transition and action selection with a keyed
   session/workspace lock: re-read or revalidate the current candidate set under
   the lock, then atomically choose a still-compatible reuse action, one split,
   or a re-resolution result before releasing the lock. Do not release after a
   recheck while dispatch still holds a stale precomputed action.
-- [ ] Preserve partial-allocation evidence and validate the returned pane before
+- [x] Preserve partial-allocation evidence and validate the returned pane before
   selecting it; do not retry an uncertain split blindly.
 
 **Verification:**
-- [ ] Candidate-local failure still reaches allocation and returns a validated
+- [x] Candidate-local failure still reaches allocation and returns a validated
   pane.
-- [ ] Global identity corruption remains fail-closed.
-- [ ] Named-session slow-list test leaves the allocation reserve intact.
-- [ ] Concurrent allocation tests prove that the same session/workspace
+- [x] Global identity corruption remains fail-closed.
+- [x] Named-session slow-list test leaves the allocation reserve intact.
+- [x] Concurrent allocation tests prove that the same session/workspace
   transition does not duplicate a split, that a changed pane state cannot cause
   a stale action to dispatch, and that genuinely incompatible contexts may
   allocate distinct panes with safe ownership.
-- [ ] The Task 2-owned candidate-classification, deadline, allocation, and race
-  tests pass; later dry-run, collision, retry, and policy tests remain explicit
-  expected failures until their owning tasks.
+- [x] The Task 2-owned candidate-classification, deadline, allocation, and race
+  tests pass alongside the later lifecycle regressions.
 
 **Exit Criteria:**
 - The original `--session auto --pane auto` bottleneck is corrected without
@@ -264,35 +263,35 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: holding a pane lock across full model execution, changing delivery settlement semantics, or modifying unrelated lifecycle authorities.
 
 **Steps:**
-- [ ] Separate dry-run target proposal from mutating split/stale-agent release;
+- [x] Separate dry-run target proposal from mutating split/stale-agent release;
   dry-run must not create, release, or otherwise mutate Herdr state. When
   allocation would be required, return explicit `allocation.status =
   "would_allocate"` evidence with no fabricated pane ID and no executable
   command, and short-circuit real-pane preparation.
-- [ ] Claim the submission gate for Codex when a logical operation identity is
+- [x] Claim the submission gate for Codex when a logical operation identity is
   present, before `_submit_codex_prompt`, and preserve existing uncertain/
   acknowledged settlement states.
-- [ ] Keep a short exclusive dispatch lease from final reuse validation through
+- [x] Keep a short exclusive dispatch lease from final reuse validation through
   prompt submission; release it after the delivery boundary, not after model
   completion. The lease-held validation must choose the executable action, and
   dispatch must execute that returned action rather than a stale command built
   before the lease.
-- [ ] Preserve final pane/process/context validation immediately before dispatch
+- [x] Preserve final pane/process/context validation immediately before dispatch
   and re-resolve when the state changed. Same-context concurrent launches may
   converge on one safely reused pane; incompatible contexts may allocate
   separately.
 
 **Verification:**
-- [ ] Dry-run auto path has no split/release side effect.
-- [ ] Two Codex launches with one logical operation produce one gate claim and
+- [x] Dry-run auto path has no split/release side effect.
+- [x] Two Codex launches with one logical operation produce one gate claim and
   one admitted prompt submission.
-- [ ] Concurrent compatible reuse cannot submit to the same pane concurrently.
-- [ ] A race that changes a pane from empty to reusable between resolution and
+- [x] Concurrent compatible reuse cannot submit to the same pane concurrently.
+- [x] A race that changes a pane from empty to reusable between resolution and
   dispatch never issues a duplicate agent start from stale resolution evidence.
-- [ ] Delivery timeout remains `delivery_uncertain` and is not replayed without
+- [x] Delivery timeout remains `delivery_uncertain` and is not replayed without
   reconciliation.
-- [ ] The Task 3-owned dry-run, gate, ownership, and race tests pass; later
-  collision/retry/policy tests remain explicit expected failures until Task 4.
+- [x] The Task 3-owned dry-run, gate, ownership, and race tests pass alongside
+  the collision, retry, and policy regressions.
 
 **Exit Criteria:**
 - Dry-run is non-mutating and Codex dispatch is deduplicated and ownership-safe
@@ -323,24 +322,24 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: changing retirement policy contents, deleting rejection evidence, or weakening fail-closed admission.
 
 **Steps:**
-- [ ] Preserve the `-ctx-<hash>` marker as the final suffix when adding a
+- [x] Preserve the `-ctx-<hash>` marker as the final suffix when adding a
   uniqueness component after an agent-name collision.
-- [ ] Pass the existing dispatch profile and context identity into verified-start
+- [x] Pass the existing dispatch profile and context identity into verified-start
   retry resolution and follow-up pane validation.
-- [ ] Translate `RuntimeError` raised by retirement-policy loading into the
+- [x] Translate `RuntimeError` raised by retirement-policy loading into the
   launcher’s structured `LaunchBlocked` contract at `_profile`; leave
   `_load_retirement_policy` and its registry tests unchanged.
-- [ ] Keep CGW aliases rejected before executable lookup, Git identity, Herdr
+- [x] Keep CGW aliases rejected before executable lookup, Git identity, Herdr
   discovery, pane locking, or dispatch.
 
 **Verification:**
-- [ ] Collision recovery followed by same-context launch reuses the recovered
+- [x] Collision recovery followed by same-context launch reuses the recovered
   agent when safe.
-- [ ] Verified-start retry preserves profile/context constraints.
-- [ ] Malformed retirement policy emits structured launcher failure evidence,
+- [x] Verified-start retry preserves profile/context constraints.
+- [x] Malformed retirement policy emits structured launcher failure evidence,
   not a traceback.
-- [ ] Retired provider/model aliases remain rejected before side effects.
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` passes.
+- [x] Retired provider/model aliases remain rejected before side effects.
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` passes.
 
 **Exit Criteria:**
 - Context identity remains stable across collision/retry paths and policy failures
@@ -373,26 +372,26 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: no material baseline, stale-state safety regression, or any proposal for a scheduler, persistent registry, broad retry framework, or speculative timeout change.
 
 **Steps:**
-- [ ] Measure candidate counts, Herdr subprocess counts, discovery latency,
+- [x] Measure candidate counts, Herdr subprocess counts, discovery latency,
   split/readiness latency, and p95/p99 behavior for empty, incompatible, and
   reusable pane sets.
-- [ ] Remove the redundant middle pane inspection only if the discovered pane
+- [x] Remove the redundant middle pane inspection only if the discovered pane
   state can be carried into launch preparation and final lock-held validation
   remains intact.
-- [ ] If snapshot grouping is material, pre-index validated panes once by
+- [x] If snapshot grouping is material, pre-index validated panes once by
   resolved CWD/workspace ID; otherwise record the optimization as intentionally
   deferred.
-- [ ] Keep the fixed reserve unchanged unless measured p95/p99 evidence supports
+- [x] Keep the fixed reserve unchanged unless measured p95/p99 evidence supports
   a bounded adjustment; record the decision in the plan evidence.
-- [ ] Add explicit metrics for allocation attempts, allocation failures, and
+- [x] Add explicit metrics for allocation attempts, allocation failures, and
   partial-allocation reconciliation if the existing evidence lacks them.
 
 **Verification:**
-- [ ] Before/after results show no increase in stale-pane dispatch, duplicate
+- [x] Before/after results show no increase in stale-pane dispatch, duplicate
   allocation, or uncertain delivery.
-- [ ] Any shipped optimization reduces measured subprocess count or latency on a
+- [x] Any shipped optimization reduces measured subprocess count or latency on a
   representative workload; otherwise no optimization code is merged.
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py -q` passes.
 
 **Exit Criteria:**
 - Efficiency changes are evidence-led, bounded, and simpler than the behavior
@@ -420,23 +419,23 @@ retry framework, persistent pane registry, or scheduler is added.
 - Stop for: failed required proof, stale generated surfaces, unrelated tracked changes, commit, push, merge, or destructive cleanup.
 
 **Steps:**
-- [ ] Document that dry-run is non-mutating, candidate-local failures are
+- [x] Document that dry-run is non-mutating, candidate-local failures are
   quarantined, global identity failures remain fail-closed, and allocation is
   bounded and reconciled.
-- [ ] Verify no active CGW launcher/provider/package/startup/overlay/port/receipt
+- [x] Verify no active CGW launcher/provider/package/startup/overlay/port/receipt
   path was reintroduced; retain policy and regression identifiers.
-- [ ] Run focused tests, repository/config validators, and `git diff --check`.
-- [ ] Record measured performance decisions and any intentionally deferred
+- [x] Run focused tests, repository/config validators, and `git diff --check`.
+- [x] Record measured performance decisions and any intentionally deferred
   optimization.
 
 **Verification:**
-- [ ] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q`.
-- [ ] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`.
-- [ ] `py -3 scripts/validate_repo_config.py --repo-root .`.
-- [ ] `py -3 scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check` if launcher/profile surfaces are included by the validator.
-- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check` if canonical profile or adapter surfaces change.
-- [ ] `git diff --check`.
-- [ ] `git status --short --branch` confirms only intended tracked changes and
+- [x] `py -3 -m pytest tests/test_herdr_main_launcher.py tests/test_agent_profile_registry.py -q` (`297 passed`).
+- [x] `py -3 scripts/validate_repo_contracts.py --repo-root . --fast`.
+- [x] `py -3 scripts/validate_repo_config.py --repo-root .`.
+- [x] `py -3 scripts/validate_agent_runtime_drift.py --all-platforms --skip-deploy-check`.
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`.
+- [x] `git diff --check`.
+- [x] `git status --short --branch` confirms only intended tracked changes and
   preserves existing untracked artifacts.
 
 **Exit Criteria:**

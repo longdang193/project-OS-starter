@@ -126,10 +126,15 @@ IDs; workspace IDs are not session names. It filters panes with no agent state
 and shell-only foreground process, or reuses an existing Codex agent only when
 its context marker matches the current task identity. Completed agents without
 a context identity remain ineligible. It sorts candidates deterministically and
-selects the first. Candidate evidence records the full eligible set; no matching target returns
-`target_resolution:not_found`, while
-candidate rejection or incomplete discovery remains observable as `blocked` or
-`incomplete`. Mixed
+selects the first. Candidate evidence records the full eligible set. Candidate-local context,
+agent, or process inspection failures are recorded as rejections and permit safe
+replacement-pane allocation; session-wide identity, snapshot, and transport failures
+remain fail-closed. Allocation rechecks the current session/workspace under a short lock
+before choosing reuse or splitting, and validates the returned pane before selection.
+Dry-run resolution never releases agents or splits panes; when a split would be required
+it reports `allocation.status=would_allocate` without a pane ID or executable command.
+No matching target returns `target_resolution:not_found`, while candidate rejection or
+incomplete discovery remains observable as `blocked` or `incomplete`. Mixed
 exact/`auto` selectors fail closed. `HERDR_ENV` is not a CoS dispatch gate and
 is removed from launcher child environments.
 
