@@ -3,7 +3,7 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 import {
   runReviewPromptInNewTab,
@@ -16,7 +16,7 @@ import {
 
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) --model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> [--output-dir <path>] [--context-index <number>]";
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set();
 
 function usageError(message) {
@@ -46,17 +46,21 @@ export function parseArguments(argv) {
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
+  const batchFile = argumentsByName.get("--batch-file");
   const contextIndexValue = argumentsByName.get("--context-index");
   const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
-  if (!model) usageError("Missing required argument: --model");
-  if (!effort) usageError("Missing required argument: --effort");
-  if (!promptFile) usageError("Missing required argument: --prompt-file");
-  if (!SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
-  if (!SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
+  if (batchFile && (model || effort || promptFile)) {
+    usageError("Single-review arguments cannot be combined with --batch-file");
+  }
+  if (!batchFile && !model) usageError("Missing required argument: --model");
+  if (!batchFile && !effort) usageError("Missing required argument: --effort");
+  if (!batchFile && !promptFile) usageError("Missing required argument: --prompt-file");
+  if (model && !SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
+  if (effort && !SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
 
   const contextIndex = contextIndexValue === undefined ? DEFAULT_CONTEXT_INDEX : Number(contextIndexValue);
   if (!Number.isInteger(contextIndex) || contextIndex < 0) usageError(`Invalid context index: ${contextIndexValue}`);
@@ -66,6 +70,7 @@ export function parseArguments(argv) {
     contextIndex,
     effort,
     model,
+    batchFile,
     outputDir,
     promptFile,
     userDataDir,
@@ -88,6 +93,8 @@ export function createResult(options) {
     assistant_message_id: null,
     assistant_turn_index: null,
     response_path: "response.md",
+    cleanup_status: "not_started",
+    cleanup_warning: null,
     failure_stage: null,
     failure_reason: null,
   };
@@ -114,12 +121,63 @@ export async function writeResult(outputDir, result) {
   await atomicWrite(join(outputDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 }
 
-function structuredFailure({ error, failureStage, outputDir }) {
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function readBatchReviews(batchFile) {
+  const manifestPath = resolve(batchFile);
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read batch manifest ${manifestPath}: ${errorMessage(error)}`);
+  }
+
+  if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.reviews) || manifest.reviews.length === 0) {
+    throw new Error("Batch manifest must contain a non-empty reviews array");
+  }
+
+  return Promise.all(manifest.reviews.map(async (review, index) => {
+    if (!review || typeof review !== "object") {
+      throw new Error(`Batch review ${index + 1} must be an object`);
+    }
+    if (!SUPPORTED_MODELS.has(review.model)) {
+      throw new Error(`Batch review ${index + 1} has unsupported model: ${review.model}`);
+    }
+    if (!SUPPORTED_EFFORTS.has(review.effort)) {
+      throw new Error(`Batch review ${index + 1} has unsupported effort: ${review.effort}`);
+    }
+    if (typeof review.prompt_file !== "string" || !review.prompt_file.trim()) {
+      throw new Error(`Batch review ${index + 1} must provide prompt_file`);
+    }
+
+    const promptFile = resolve(dirname(manifestPath), review.prompt_file);
+    let prompt;
+    try {
+      prompt = await readFile(promptFile, "utf8");
+    } catch (error) {
+      throw new Error(`Could not read prompt file for batch review ${index + 1}: ${errorMessage(error)}`);
+    }
+    if (!prompt.trim()) throw new Error(`Prompt file for batch review ${index + 1} must not be empty`);
+
+    return {
+      effort: review.effort,
+      model: review.model,
+      prompt,
+      promptFile,
+    };
+  }));
+}
+
+export function summarizeBatchResults(results) {
+  const completedCount = results.filter((result) => result.status === "completed").length;
   return {
-    status: "blocked",
-    failure_stage: failureStage,
-    failure_reason: error instanceof Error ? error.message : String(error),
-    output_dir: outputDir || null,
+    status: completedCount === results.length ? "completed" : "incomplete",
+    review_count: results.length,
+    completed_count: completedCount,
+    failed_count: results.length - completedCount,
+    reviews: results,
   };
 }
 
@@ -159,59 +217,93 @@ export async function openReviewContext(options) {
   return openContext(chromium, options);
 }
 
-export async function closeContext({ browser, context, ownsContext, page }) {
-  if (ownsContext && context) return context.close();
-
-  let cleanupError;
+export async function closeContext(attached) {
+  if (attached?.closed) return;
+  if (!attached) return;
+  const { browser, context, ownsContext, page } = attached;
   try {
+    if (ownsContext && context) {
+      await context.close();
+      attached.closed = true;
+      return;
+    }
+
     if (page) await page.close();
-  } catch (error) {
-    cleanupError = error;
-  } finally {
     if (browser) await browser.close();
+    attached.closed = true;
+  } catch (error) {
+    attached.closed = true;
+    throw error;
   }
-  if (cleanupError) throw cleanupError;
 }
 
 export async function runReviewTransaction(context, options) {
+  const dependencies = options.dependencies || {};
+  const runPrompt = dependencies.runReviewPromptInNewTab || runReviewPromptInNewTab;
+  const waitForCompletion = dependencies.waitForReviewCompletion || waitForReviewCompletion;
+  const persistResult = dependencies.writeResult || writeResult;
+  const writeResponse = dependencies.writeResponse || ((filePath, content) => atomicWrite(filePath, content));
+  const closePage = dependencies.closePage || ((reviewPage) => reviewPage.close());
   let result = createResult(options);
   let outputDir;
   let runId;
   let page;
-  let failure;
+  let stage = "artifacts";
+  let resultPersisted = false;
+
+  const persist = async () => {
+    if (!outputDir) throw new Error("Review output directory was not allocated");
+    await persistResult(outputDir, result);
+    resultPersisted = true;
+  };
 
   try {
     ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
     result = createResult({ ...options, runId });
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
-    await writeResult(outputDir, result);
+    await persist();
 
-    const review = await runReviewPromptInNewTab(context, {
+    stage = "selection";
+    const review = await runPrompt(context, {
       effort: options.effort,
       model: options.model,
       prompt: options.prompt,
       beforeSubmit: async () => {
+        stage = "submission";
         result.submission_attempted = true;
         result.submission = "attempted";
-        await writeResult(outputDir, result);
+        try {
+          await persist();
+        } catch (error) {
+          stage = "artifacts";
+          throw error;
+        }
       },
     });
     page = review.page;
-    if (review.promptSubmitted !== true) throw new Error("Review prompt submission was not confirmed by the helper");
+    if (review.promptSubmitted !== true) {
+      stage = "submission";
+      throw new Error("Review prompt submission was not confirmed by the helper");
+    }
     result.model_verified = review.model;
     result.effort_verified = review.effort;
     result.submission = review.submission;
     result.completion = "waiting";
-    await writeResult(outputDir, result);
+    stage = "artifacts";
+    await persist();
 
-    const completion = await waitForReviewCompletion(page, { baseline: review });
+    stage = "completion";
+    const completion = await waitForCompletion(page, { baseline: review });
     result.completion = completion.status;
     result.conversation_url = completion.currentUrl || null;
     result.conversation_id = completion.conversationId || null;
     result.assistant_message_id = completion.assistantMessageId || null;
     result.assistant_turn_index = completion.assistantTurnIndex ?? null;
 
-    if (completion.response) await atomicWrite(join(outputDir, "response.md"), `${completion.response}\n`);
+    if (completion.response) {
+      stage = "artifacts";
+      await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
+    }
     if (completion.status === "confirmed") {
       result.status = "completed";
     } else {
@@ -219,38 +311,51 @@ export async function runReviewTransaction(context, options) {
       result.failure_stage = "completion";
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
+    stage = "artifacts";
+    result.cleanup_status = "pending";
+    await persist();
   } catch (error) {
-    failure = error;
-    result.status = result.submission_attempted ? "incomplete" : "blocked";
-    result.failure_stage = result.submission_attempted ? "submission" : "browser";
-    result.failure_reason = error instanceof Error ? error.message : String(error);
-    result.submission = result.submission_attempted ? "ambiguous" : result.submission;
+    result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
+    result.failure_stage = stage;
+    result.failure_reason = errorMessage(error);
+    if (stage === "submission" && result.submission !== "acknowledged") result.submission = "ambiguous";
   } finally {
-    try {
-      if (page) await page.close();
-    } catch (error) {
-      const cleanupReason = error instanceof Error ? error.message : String(error);
-      if (!failure) {
-        result.status = "incomplete";
-        result.failure_stage = "cleanup";
-        result.failure_reason = cleanupReason;
-      } else {
-        result.failure_reason = `${result.failure_reason}; cleanup failed: ${cleanupReason}`;
+    if (outputDir) {
+      try {
+        stage = "artifacts";
+        result.cleanup_status = page ? "pending" : "not_needed";
+        await persist();
+      } catch (error) {
+        const artifactReason = errorMessage(error);
+        if (result.failure_stage !== "artifacts") {
+          result.status = "blocked";
+          result.failure_stage = "artifacts";
+          result.failure_reason = artifactReason;
+        } else {
+          result.failure_reason = `${result.failure_reason}; result write failed: ${artifactReason}`;
+        }
       }
     }
 
     try {
-      if (!outputDir) throw new Error("Review output directory was not allocated");
-      await writeResult(outputDir, result);
+      if (page) {
+        await closePage(page);
+        result.cleanup_status = "completed";
+      }
     } catch (error) {
-      console.error(JSON.stringify(structuredFailure({
-        error,
-        failureStage: "artifacts",
-        outputDir,
-      })));
-      result.status = "blocked";
-      result.failure_stage = "artifacts";
-      result.failure_reason = error instanceof Error ? error.message : String(error);
+      result.cleanup_status = "failed";
+      result.cleanup_warning = errorMessage(error);
+    }
+
+    if (outputDir && resultPersisted && (result.cleanup_status === "completed" || result.cleanup_warning)) {
+      try {
+        await persistResult(outputDir, result);
+      } catch (error) {
+        const artifactReason = errorMessage(error);
+        result.cleanup_warning = result.cleanup_warning
+          ? `${result.cleanup_warning}; result update failed: ${artifactReason}`
+          : `result update failed: ${artifactReason}`;
+      }
     }
   }
 
@@ -265,6 +370,7 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
   if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
 
   const results = [];
+  let cleanupError;
   try {
     for (const review of reviews) {
       results.push(await runTransaction(attached.context, {
@@ -272,10 +378,20 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
         outputDir,
       }));
     }
-    return results;
   } finally {
-    await closeContext(attached);
+    try {
+      await closeContext(attached);
+    } catch (error) {
+      cleanupError = error;
+    }
   }
+  if (cleanupError) {
+    const batchError = new Error(`Batch context cleanup failed: ${errorMessage(cleanupError)}`);
+    batchError.cause = cleanupError;
+    batchError.results = results;
+    throw batchError;
+  }
+  return results;
 }
 
 export async function main(argv) {
@@ -285,28 +401,51 @@ export async function main(argv) {
   }
 
   const options = parseArguments(argv);
-  const prompt = await readFile(options.promptFile, "utf8");
-  if (!prompt.trim()) usageError("Prompt file must not be empty");
+  const reviews = options.batchFile
+    ? await readBatchReviews(options.batchFile)
+    : [{
+      effort: options.effort,
+      model: options.model,
+      prompt: await readFile(options.promptFile, "utf8"),
+      promptFile: options.promptFile,
+    }];
+  if (!options.batchFile && !reviews[0].prompt.trim()) usageError("Prompt file must not be empty");
 
   let result;
   let attached;
 
   try {
     attached = await openReviewContext(options);
-    result = await runReviewTransaction(attached.context, {
-      effort: options.effort,
-      model: options.model,
-      outputDir: options.outputDir,
-      prompt,
-    });
+    if (options.batchFile) {
+      result = summarizeBatchResults(await runReviewBatch({
+        attached,
+        outputDir: options.outputDir,
+        reviews,
+      }));
+    } else {
+      result = await runReviewTransaction(attached.context, {
+        effort: options.effort,
+        model: options.model,
+        outputDir: options.outputDir,
+        prompt: reviews[0].prompt,
+      });
+    }
   } catch (error) {
-    result = {
-      ...createResult(options),
-      status: "blocked",
-      failure_stage: "browser",
-      failure_reason: error instanceof Error ? error.message : String(error),
-      output_dir: null,
-    };
+    if (options.batchFile && Array.isArray(error.results)) {
+      result = {
+        ...summarizeBatchResults(error.results),
+        cleanup_status: "failed",
+        cleanup_warning: errorMessage(error.cause || error),
+      };
+    } else {
+      result = {
+        ...createResult(options),
+        status: "blocked",
+        failure_stage: "browser",
+        failure_reason: errorMessage(error),
+        output_dir: null,
+      };
+    }
   } finally {
     try {
       if (attached) await closeContext(attached);
@@ -321,9 +460,8 @@ export async function main(argv) {
           output_dir: null,
         };
       } else {
-        result.status = "incomplete";
-        result.failure_stage = "cleanup";
-        result.failure_reason = `${result.failure_reason || ""}${result.failure_reason ? "; " : ""}cleanup failed: ${cleanupReason}`;
+        result.cleanup_status = "failed";
+        result.cleanup_warning = cleanupReason;
       }
     }
   }

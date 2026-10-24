@@ -23,6 +23,7 @@ def test_review_runner_is_a_real_node_entrypoint() -> None:
     assert "--cdp-endpoint" in content
     assert "--user-data-dir" in content
     assert "--prompt-file" in content
+    assert "--batch-file" in content
     assert "--output-dir" in content
     assert "--expected-sha" not in content
     assert "promptSubmitted" in content
@@ -94,6 +95,28 @@ def test_review_runner_requires_prompt_file_for_normal_submission() -> None:
     assert "Missing required argument: --prompt-file" in result.stderr
 
 
+def test_review_runner_rejects_invalid_batch_manifest_before_browser_open(tmp_path: Path) -> None:
+    manifest = tmp_path / "reviews.json"
+    manifest.write_text("{}", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "node",
+            str(RUNNER),
+            "--user-data-dir",
+            "profile",
+            "--batch-file",
+            str(manifest),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Batch manifest must contain a non-empty reviews array" in result.stderr
+
+
 def test_review_runner_does_not_require_release_audit_arguments() -> None:
     content = RUNNER.read_text(encoding="utf-8")
 
@@ -115,3 +138,4 @@ def test_review_runner_exposes_help_without_connecting_to_a_browser() -> None:
     assert result.returncode == 0
     assert "--cdp-endpoint" in result.stdout
     assert "--user-data-dir" in result.stdout
+    assert "--batch-file" in result.stdout
