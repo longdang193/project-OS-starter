@@ -457,4 +457,3 @@ unless the user explicitly authorizes a new GitHub review. Use
 `skill-verification-before-completion` before changing plan status to
 `completed`; Git commit, push, pull request, merge, and cleanup remain separate
 explicitly authorized actions.
-
