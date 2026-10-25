@@ -161,7 +161,8 @@ export function normalizeGitHubBlobUrl(value) {
 export function extractPromptGitHubBlobUrls(prompt) {
   if (typeof prompt !== "string") return [];
   return [...prompt.matchAll(GITHUB_BLOB_URL_PATTERN)]
-    .map((match) => normalizeUrlCandidate(match[0]))
+    .flatMap((match) => match[0].split(/\]\(\s*(?=https:\/\/github\.com\/)/i))
+    .map((value) => normalizeUrlCandidate(value.trim()))
     .filter((value) => value.includes("/blob/"));
 }
 
@@ -229,8 +230,9 @@ export function validateProjectProfilePath(userDataDir, expectedProjectKey) {
     return normalized === "user data" || normalized === "default" || /^profile \d+$/.test(normalized);
   });
 
-  if (normalProfile || markerIndex < 0 || markerIndex === segments.length - 1) {
-    usageError("--user-data-dir must resolve to a dedicated github-review/<project> profile, not the normal Chrome profile");
+  if (markerIndex < 0 || markerIndex === segments.length - 1) {
+    if (normalProfile) usageError("--user-data-dir must resolve to a dedicated github-review/<project> profile, not the normal Chrome profile");
+    usageError("--user-data-dir must resolve to a dedicated github-review/<project> profile");
   }
   if (expectedProjectKey && basename(profilePath).toLowerCase() !== expectedProjectKey.toLowerCase()) {
     usageError(`--user-data-dir terminal directory must match project key: ${expectedProjectKey}`);
@@ -645,18 +647,26 @@ export function installTerminationCleanup(attached, closeAttachedContext = close
 
   const handlers = new Map();
   let cleanupPromise;
+  let signalCode = null;
+  const closeOnce = () => {
+    cleanupPromise ||= Promise.resolve().then(() => closeAttachedContext(attached));
+    return cleanupPromise;
+  };
   for (const signal of ["SIGINT", "SIGTERM"]) {
     const handler = () => {
-      process.exitCode = signal === "SIGINT" ? 130 : 143;
-      cleanupPromise ||= Promise.resolve(closeAttachedContext(attached)).catch(() => {});
+      signalCode = signal === "SIGINT" ? 130 : 143;
+      closeOnce().catch(() => {});
     };
     handlers.set(signal, handler);
     process.once(signal, handler);
   }
 
-  return () => {
+  const remove = () => {
     for (const [signal, handler] of handlers) process.removeListener(signal, handler);
   };
+  remove.closeOnce = closeOnce;
+  remove.getSignalCode = () => signalCode;
+  return remove;
 }
 
 async function isContextHealthy(context) {
@@ -801,7 +811,7 @@ export async function runReviewTransaction(context, options) {
       }
       result.conversation_url = baseline?.conversationUrl || currentUrl;
       result.conversation_id = baseline?.conversationId || null;
-      if (dispatchState !== "not_dispatched" && baseline) {
+      if (dispatchState !== "not_dispatched" && baseline && result.completion !== "confirmed") {
         try {
           const timeoutMs = dispatchState === "possibly_dispatched" && result.submission !== "acknowledged"
             ? AMBIGUOUS_DISPATCH_TIMEOUT_MS
@@ -820,6 +830,14 @@ export async function runReviewTransaction(context, options) {
           if (completion.response && outputDir) {
             await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
           }
+          if (completion.status === "confirmed" && stage === "submission") {
+            result.submission = "acknowledged";
+            result.dispatch_state = "acknowledged";
+            result.status = "completed";
+            result.failure_scope = null;
+            result.failure_stage = null;
+            result.failure_reason = null;
+          }
         } catch (preservationError) {
           result.failure_reason = appendFailureReason(transactionFailureReason, `evidence preservation failed: ${errorMessage(preservationError)}`);
         }
@@ -828,13 +846,17 @@ export async function runReviewTransaction(context, options) {
     if (page && !result.visible_evidence) {
       result.visible_evidence = await captureVisibleEvidence(page).catch(() => null);
     }
-    result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
-    result.failure_scope = await classifyFailureScope(stage, error, context);
-    result.failure_stage = stage;
-    result.failure_reason ||= transactionFailureReason;
+    if (result.status !== "completed") {
+      result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
+    }
+    if (result.status !== "completed") {
+      result.failure_scope = await classifyFailureScope(stage, error, context);
+      result.failure_stage = stage;
+      result.failure_reason ||= transactionFailureReason;
       if (stage === "submission" && result.submission !== "acknowledged" && dispatchState !== "not_dispatched") {
         result.submission = "ambiguous";
       }
+    }
   } finally {
     if (outputDir) {
       try {
@@ -884,7 +906,7 @@ export async function runReviewTransaction(context, options) {
   };
 }
 
-export async function runReviewBatch({ attached, outputDir, reviews, projectKey, repository, runTransaction = runReviewTransaction }) {
+export async function runReviewBatch({ attached, outputDir, reviews, projectKey, repository, runTransaction = runReviewTransaction, closeContextFn = closeContext }) {
   const results = [];
   let cleanupError;
   let requestedCount = reviews?.length || 0;
@@ -925,7 +947,7 @@ export async function runReviewBatch({ attached, outputDir, reviews, projectKey,
   } finally {
     if (attached) {
       try {
-        await closeContext(attached);
+        await closeContextFn(attached);
       } catch (error) {
         cleanupError = error;
       }
@@ -963,9 +985,10 @@ async function allocateReviewArtifacts(
 ) {
   const allocated = [];
   try {
-    for (const review of reviews) {
+    for (let index = 0; index < reviews.length; index += 1) {
+      const review = reviews[index];
       const { outputDir, runId } = await createDirectory(parentDir);
-      const allocatedReview = { ...review, runId, runOutputDir: outputDir };
+      const allocatedReview = { ...review, reviewIndex: review.reviewIndex ?? index, runId, runOutputDir: outputDir };
       allocated.push(allocatedReview);
       const initial = createResult(allocatedReview);
       initial.response_path = relative(process.cwd(), join(outputDir, "response.md"));
@@ -1047,9 +1070,17 @@ export async function main(argv, dependencies = {}) {
     repository: reviews[0].repository,
   };
 
+  if (options.batchFile) {
+    reviews = validateReviewBatch(reviews, {
+      projectKey: contextOptions.projectKey,
+      repository: contextOptions.repository,
+    });
+  }
+
   let result;
   let attached;
   let removeTerminationCleanup = () => {};
+  let terminationCode = null;
 
   try {
     try {
@@ -1076,6 +1107,7 @@ export async function main(argv, dependencies = {}) {
         reviews,
         projectKey: contextOptions.projectKey,
         repository: contextOptions.repository,
+        closeContextFn: removeTerminationCleanup.closeOnce,
       }));
       try {
         await persistBatchSummary(options.outputDir, result);
@@ -1162,9 +1194,10 @@ export async function main(argv, dependencies = {}) {
       await writeResult(reviews[0].runOutputDir, result).catch(() => {});
     }
   } finally {
+    terminationCode = removeTerminationCleanup.getSignalCode?.() || null;
     removeTerminationCleanup();
     try {
-      if (attached && !options.batchFile) await closeAttachedContext(attached);
+      if (attached && !options.batchFile) await removeTerminationCleanup.closeOnce?.(attached) || await closeAttachedContext(attached);
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
       if (!result) {
@@ -1190,7 +1223,8 @@ export async function main(argv, dependencies = {}) {
   }
 
   console.log(JSON.stringify(result));
-  return result.status === "completed" ? 0 : 1;
+  const exitCode = result.status === "completed" ? 0 : 1;
+  return terminationCode || exitCode;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

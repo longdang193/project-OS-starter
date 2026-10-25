@@ -27,6 +27,7 @@ import {
   createResult,
   createRunOutputDirectory,
   deriveProjectKey,
+  extractPromptGitHubBlobUrls,
   installTerminationCleanup,
   main,
   openContext,
@@ -247,6 +248,17 @@ test("provenance rejects a commit-only blob URL", () => {
   );
 });
 
+test("provenance accepts commit-pinned GitHub URLs in Markdown links", () => {
+  const prompt = `[${REVIEW_URL}](${REVIEW_URL})\n${REVIEW_SHA}`;
+  assert.deepEqual(extractPromptGitHubBlobUrls(prompt), [REVIEW_URL, REVIEW_URL]);
+  assert.doesNotThrow(() => validateReviewProvenance({
+    repository: REVIEW_REPOSITORY,
+    commitSha: REVIEW_SHA,
+    reviewUrls: [REVIEW_URL],
+    prompt,
+  }));
+});
+
 test("direct review batches validate every review against the attached project", () => {
   assert.throws(
     () => validateReviewBatch([
@@ -368,6 +380,16 @@ test("profile validation canonicalizes symlinked project profiles", async (t) =>
       return;
     }
     throw error;
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("profile validation allows reserved ancestor names outside the Chrome profile root", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-reserved-ancestor-"));
+  try {
+    const profile = join(parent, "Default", "github-review", REVIEW_PROJECT_KEY);
+    assert.equal(validateProjectProfilePath(profile, REVIEW_PROJECT_KEY), resolve(profile));
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -518,7 +540,7 @@ test("runner contract uses completed as its successful terminal state", async ()
   );
 
   assert.match(runner, /result\.status = "completed"/);
-  assert.match(runner, /return result\.status === "completed" \? 0 : 1/);
+  assert.match(runner, /const exitCode = result\.status === "completed" \? 0 : 1/);
   assert.doesNotMatch(runner, /result\.status = "verified"/);
 });
 
@@ -1468,6 +1490,10 @@ test("review tab closes when model preparation fails after newPage", async () =>
       }
       throw new Error(`Unexpected role lookup: ${role}`);
     },
+    locator(selector) {
+      assert.equal(selector, "body");
+      return { async innerText() { return "model menu did not open"; } };
+    },
     async close() {
       closed = true;
     },
@@ -1481,6 +1507,8 @@ test("review tab closes when model preparation fails after newPage", async () =>
     (error) => {
       assert.equal(error.failureScope, "review");
       assert.match(error.message, /model menu did not open/);
+      assert.equal(error.visibleEvidence.currentUrl, "https://chatgpt.com/");
+      assert.match(error.visibleEvidence.visibleText, /model menu did not open/);
       return true;
     },
   );
@@ -2020,12 +2048,12 @@ test("ambiguous submission preserves the owned page and visible completion evide
     assert.equal(completionCalls, 1);
     assert.equal(completionTimeout, AMBIGUOUS_DISPATCH_TIMEOUT_MS);
     assert.equal(closeCount, 1);
-    assert.equal(result.status, "incomplete");
-    assert.equal(result.submission, "ambiguous");
+    assert.equal(result.status, "completed");
+    assert.equal(result.submission, "acknowledged");
     assert.equal(result.completion, "confirmed");
     assert.equal(result.assistant_message_id, "assistant-ambiguous");
     assert.equal(await readFile(join(result.output_dir, "response.md"), "utf8"), "preserved response\n");
-    assert.equal(persisted.submission, "ambiguous");
+    assert.equal(persisted.submission, "acknowledged");
     assert.equal(persisted.completion, "confirmed");
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -2122,6 +2150,49 @@ test("direct CDP batch execution requires repository identity", async () => {
   );
 });
 
+test("CLI batch validation rejects cross-repository entries before browser setup", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-batch-validation-"));
+  const firstPrompt = join(parent, "first.md");
+  const secondPrompt = join(parent, "second.md");
+  const manifestFile = join(parent, "reviews.json");
+  const otherRepository = "other-owner/other-repository";
+  const otherUrl = `https://github.com/${otherRepository}/blob/${REVIEW_SHA}/README.md`;
+  let allocationCalls = 0;
+  let openCalls = 0;
+  try {
+    await writeFile(firstPrompt, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
+    await writeFile(secondPrompt, `${otherUrl} ${REVIEW_SHA}\n`, "utf8");
+    await writeFile(manifestFile, JSON.stringify({
+      reviews: [
+        { model: "GPT-6", effort: "High", prompt_file: "first.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "second.md", repository: otherRepository, commit_sha: REVIEW_SHA, review_urls: [otherUrl] },
+      ],
+    }), "utf8");
+
+    await assert.rejects(
+      () => main([
+        "--cdp-endpoint", "http://127.0.0.1:9222",
+        "--batch-file", manifestFile,
+        "--output-dir", join(parent, "output"),
+      ], {
+        createRunOutputDirectory: async () => {
+          allocationCalls += 1;
+          return createRunOutputDirectory(join(parent, "output"));
+        },
+        openReviewContext: async () => {
+          openCalls += 1;
+          throw new Error("browser must not open");
+        },
+      }),
+      /repository does not match the attached project/,
+    );
+    assert.equal(allocationCalls, 0);
+    assert.equal(openCalls, 0);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("pre-submit checkpoint failure is classified as an artifact failure", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-pre-submit-artifact-failure-"));
   let writeCount = 0;
@@ -2213,6 +2284,7 @@ test("post-submit checkpoint failure preserves the owned page and completion evi
 
 test("response artifact failure is classified separately after acknowledged submission", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-artifact-failure-"));
+  let completionCalls = 0;
   try {
     const result = await runReviewTransaction({}, {
       effort: "High",
@@ -2230,11 +2302,14 @@ test("response artifact failure is classified separately after acknowledged subm
             submission: "acknowledged",
           };
         },
-        waitForReviewCompletion: async () => ({
-          currentUrl: "https://chatgpt.com/c/review",
-          response: "response",
-          status: "confirmed",
-        }),
+        waitForReviewCompletion: async () => {
+          completionCalls += 1;
+          return {
+            currentUrl: "https://chatgpt.com/c/review",
+            response: "response",
+            status: "confirmed",
+          };
+        },
         writeResponse: async () => {
           throw new Error("response write failed");
         },
@@ -2244,6 +2319,7 @@ test("response artifact failure is classified separately after acknowledged subm
     assert.equal(result.status, "blocked");
     assert.equal(result.failure_stage, "artifacts");
     assert.equal(result.submission, "acknowledged");
+    assert.equal(completionCalls, 1);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -2470,11 +2546,12 @@ test("owned context cleanup failure makes the CLI invocation nonzero", async () 
   }
 });
 
-test("termination cleanup is installed and can be removed without duplicating ownership", () => {
+test("termination cleanup is installed, closes once, and preserves signal status", async () => {
   const originalOnce = process.once;
   const originalRemoveListener = process.removeListener;
   const registered = [];
   const removed = [];
+  let closeCalls = 0;
   process.once = (signal, handler) => {
     registered.push({ signal, handler });
     return process;
@@ -2484,8 +2561,12 @@ test("termination cleanup is installed and can be removed without duplicating ow
     return process;
   };
   try {
-    const remove = installTerminationCleanup({ context: {} }, async () => {});
+    const remove = installTerminationCleanup({ context: {} }, async () => { closeCalls += 1; });
     assert.deepEqual(registered.map(({ signal }) => signal), ["SIGINT", "SIGTERM"]);
+    registered[0].handler();
+    await remove.closeOnce();
+    assert.equal(closeCalls, 1);
+    assert.equal(remove.getSignalCode(), 130);
     remove();
     assert.equal(removed.length, 2);
   } finally {
@@ -2706,6 +2787,7 @@ test("partial batch allocation finalizes created runs without opening a browser"
     assert.equal(result.reviews.length, 2);
     assert.equal(result.reviews[0].status, "blocked");
     assert.equal(result.reviews[0].dispatch_state, "not_dispatched");
+    assert.ok(result.reviews[0].output_dir);
     assert.equal(result.reviews[1].status, "blocked");
     assert.equal(result.reviews[1].output_dir, null);
   } finally {

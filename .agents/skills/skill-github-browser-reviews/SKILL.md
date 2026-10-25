@@ -251,10 +251,13 @@ the runner, validates revision-specific review evidence and may classify the
 overall workflow as `verified`. The runner never retries or silently recovers a
 failed submission.
 
-For a multi-model review, keep the same transaction boundary but call the
-CLI module's `openReviewContext(options)` once, then call
-`runReviewBatch({ attached, reviews, outputDir })` from the Node controller. The
-standalone CLI also accepts a manifest:
+For a multi-model review, validate the complete review list against one
+repository-derived project key before opening the browser. Then keep the same
+transaction boundary: call the CLI module's `openReviewContext(options)` once,
+and call `runReviewBatch({ attached, reviews, outputDir, projectKey,
+repository })` from the Node controller. CDP callers must provide the validated
+`projectKey` and `repository`; the attached browser context cannot establish
+repository identity safely. The standalone CLI also accepts a manifest:
 
 ```json
 {
@@ -298,10 +301,12 @@ The runner validates every entry before opening the browser, reuses one
  resubmitted or silently switched to another model. Do not add a keep-open flag
  or a second browser lifecycle owner. A newly created tab that does not reach the
 composer readiness state is page-local and review-scoped; failure to create a
-page or loss of the shared browser context remains shared-context scoped. If a
-send acknowledgement is ambiguous, preserve the owned page and any visible
-conversation/completion evidence before cleanup, mark `submission` as
-`ambiguous`, and never send the prompt again. Batch summaries include requested,
+ page or loss of the shared browser context remains shared-context scoped. If a
+ send acknowledgement is ambiguous, preserve the owned page and any visible
+ conversation/completion evidence before cleanup. If that evidence confirms a
+ new stable response, promote the transaction to the normal acknowledged,
+ completed state; otherwise mark `submission` as `ambiguous`. Never send the
+ prompt again. Batch summaries include requested,
 transaction-started, submission-attempted, acknowledged, completed, failed, and
 skipped entries. `attempted_count` means a review transaction allocated its run
 and started; it does not count a partially allocated review that never reached

@@ -459,7 +459,10 @@ export async function runReviewPromptInNewTab(context, options) {
   try {
     return { page, ...(await runReviewPrompt(page, options)) };
   } catch (error) {
-    if (error && typeof error === "object") error.reviewPage = page;
+    if (error && typeof error === "object") {
+      error.reviewPage = page;
+      if (!error.visibleEvidence) error.visibleEvidence = await captureVisibleEvidence(page).catch(() => null);
+    }
     if (!error?.reviewBaseline) await page.close().catch(() => {});
     throw withFailureScope(error, "review");
   }
