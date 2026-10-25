@@ -5860,6 +5860,13 @@ def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
         raise AssertionError(command)
 
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            runtime.TargetResolutionBlocked("no reusable target", {"status": "blocked"})
+        ),
+    )
     monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane read failed")))
 
     with pytest.raises(runtime.WorkspaceProvisioningError) as raised:
