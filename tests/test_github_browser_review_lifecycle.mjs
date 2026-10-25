@@ -1131,6 +1131,88 @@ test("completion polling avoids full assistant text reads while generating", asy
   assert.equal(innerTextReads, 3);
 });
 
+test("completion accepts a stable markdown fallback response without message metadata", async () => {
+  const assistantTurn = {
+    async getAttribute() {
+      return null;
+    },
+    async innerText() {
+      return "Finding: exact revision confirmed.";
+    },
+  };
+  const assistantTurns = {
+    async count() {
+      return 1;
+    },
+    nth() {
+      return assistantTurn;
+    },
+  };
+  const interruption = {
+    first() {
+      return this;
+    },
+    async count() {
+      return 0;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const stopButton = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const responseAction = {
+    last() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const composer = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const page = {
+    locator(selector) {
+      if (selector.includes("data-message-author-role")) {
+        return { async count() { return 0; } };
+      }
+      if (selector.includes("MarkdownRoot-")) return assistantTurns;
+      if (selector.includes("[role=\"alert\"]") || selector.includes("data-testid")) return interruption;
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options) {
+      if (role === "button" && options.name.source.includes("Stop generating")) return stopButton;
+      if (role === "button" && options.name.source.includes("Regenerate response")) return responseAction;
+      if (role === "textbox") return composer;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() {
+      return "https://chatgpt.com/c/probe";
+    },
+    async waitForTimeout() {},
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: { assistantTurnCount: 0 },
+    timeoutMs: 100,
+  });
+
+  assert.equal(result.status, "confirmed");
+  assert.equal(result.response, "Finding: exact revision confirmed.");
+});
+
 test("completion timeout preserves visible partial assistant text", async () => {
   const assistantTurn = {
     async getAttribute(attribute) {
