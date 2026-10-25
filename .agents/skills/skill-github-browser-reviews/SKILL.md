@@ -208,6 +208,13 @@ checked by direct library callers, not only by CLI parsing. Profile validation,
 lease naming, and persistent-browser launch use the same physical filesystem
 identity; existing symlink/junction aliases and aliases through the nearest
 existing parent do not create a second lease identity.
+The runner records the canonical repository and project key in
+`.codex-review-profile.json` inside a newly created or empty dedicated profile.
+An existing profile without that marker is treated as ambiguous and blocks with
+operator-directed migration instructions; the runner never copies credentials,
+renames profiles, or silently binds a legacy directory. A marker for another
+repository also blocks, which prevents collisions such as `foo-bar/baz` and
+`foo/bar-baz` from sharing one profile.
 
 The runner performs one non-submitting visible authentication preflight for the
 owned context. An explicit login wall blocks the batch before fresh review tabs
@@ -295,8 +302,11 @@ page or loss of the shared browser context remains shared-context scoped. If a
 send acknowledgement is ambiguous, preserve the owned page and any visible
 conversation/completion evidence before cleanup, mark `submission` as
 `ambiguous`, and never send the prompt again. Batch summaries include requested,
-attempted, completed, failed, and skipped entries; each result retains sanitized
-  prompt hash, repository, full commit SHA, and pinned review URL provenance.
+transaction-started, submission-attempted, acknowledged, completed, failed, and
+skipped entries. `attempted_count` means a review transaction allocated its run
+and started; it does not count a partially allocated review that never reached
+dispatch. Each result retains sanitized prompt hash, repository, full commit
+SHA, and pinned review URL provenance.
   A failure writing the aggregate `batch-result.json` is recorded as an
   artifact-stage incomplete result without rewriting already-settled per-review
   artifacts.
@@ -312,6 +322,14 @@ Model-menu interaction uses a five-second UI action/transition timeout. Initial
 model-menu opening remains ten seconds, completion observation remains bounded
 by its separate long timeout, and polling backoff values are not changed to
 compensate for slow clicks.
+
+An ambiguous dispatch starts with the short acknowledgement/evidence window.
+Once generation, a new assistant turn, or equivalent response controls are
+visible, completion observation promotes to the normal long deadline without
+resubmitting. A review is not durably marked `completed` until its owned page
+cleanup and final result persistence succeed; if final persistence fails, the
+last durable checkpoint remains non-terminal and the returned result is
+`incomplete`.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 exceptional attach mode and `--context-index` selects its browser context. The

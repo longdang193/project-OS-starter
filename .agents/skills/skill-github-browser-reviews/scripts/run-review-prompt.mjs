@@ -11,7 +11,7 @@ const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
 export const INTERRUPTION_UI_SELECTOR = '[data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
 const GENERIC_ALERT_SELECTOR = '[role="alert"]:visible';
-const COMPLETION_TIMEOUT_MS = 900000;
+export const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;
 
@@ -335,10 +335,14 @@ async function prepareReviewPrompt(page, { model, effort }) {
 export async function waitForReviewCompletion(page, {
   baseline,
   timeoutMs = COMPLETION_TIMEOUT_MS,
+  initialTimeoutMs = null,
+  completionTimeoutMs = timeoutMs,
 } = {}) {
   if (!baseline) throw new Error("baseline is required for completion observation");
 
-  const deadline = Date.now() + timeoutMs;
+  const initialDeadline = Date.now() + (initialTimeoutMs ?? timeoutMs);
+  let deadline = initialDeadline;
+  let ambiguityActive = initialTimeoutMs !== null && initialTimeoutMs !== undefined;
   let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
   let previousText = "";
   let previousMessageId = null;
@@ -380,6 +384,14 @@ export async function waitForReviewCompletion(page, {
     }
     if (!expectedConversationId && snapshot.conversationId) expectedConversationId = snapshot.conversationId;
     generationObserved ||= snapshot.generating;
+    const responseEvidenceObserved = snapshot.generating
+      || snapshot.responseActionsReady
+      || snapshot.assistantTurnCount > baseline.assistantTurnCount
+      || Boolean(snapshot.assistantMessageId && snapshot.assistantMessageId !== baseline.assistantMessageId);
+    if (ambiguityActive && responseEvidenceObserved) {
+      deadline = Date.now() + completionTimeoutMs;
+      ambiguityActive = false;
+    }
     const sameMessage = !snapshot.assistantMessageId
       || !previousMessageId
       || snapshot.assistantMessageId === previousMessageId;
