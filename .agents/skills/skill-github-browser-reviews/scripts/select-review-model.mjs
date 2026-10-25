@@ -167,11 +167,11 @@ export async function setEffort(menu, effort) {
   }
 
   const delta = EFFORT_ORDER.indexOf(effort) - EFFORT_ORDER.indexOf(currentEffort);
-  await control.focus();
+  await control.focus({ timeout: UI_ACTION_TIMEOUT_MS });
 
   const key = delta < 0 ? "ArrowLeft" : "ArrowRight";
   for (let index = 0; index < Math.abs(delta); index += 1) {
-    await control.press(key);
+    await control.press(key, { timeout: UI_ACTION_TIMEOUT_MS });
   }
 }
 

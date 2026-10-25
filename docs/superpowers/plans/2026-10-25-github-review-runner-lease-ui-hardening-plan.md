@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: active
+status: superseded
 template_id: implementation-plan
 contract_version: "1"
 name: github-review-runner-lease-ui-hardening
@@ -83,7 +83,7 @@ batch stopping. Existing Python contract tests and adapter checks remain green.
 | Task 3 | `completed` | current | `codex` | none | bounded action and readiness tests | bounded UI actions, composer readiness, and submission cases pass |
 | Task 4 | `completed` | current | `codex` | Task 3 | completion and interruption tests | completion without response-action buttons and scoped alert handling pass |
 | Task 5 | `completed` | current | `codex` | Tasks 2–4 | model-menu and batch ownership tests | one bounded recovery owner and transition-aware close cases pass; canonical skill text already aligned |
-| Task 6 | `active` | current | `codex` | Tasks 1–5 | full local suite, adapter check, live probe | local checks pass; final probe was incomplete because generation was ephemeral; finality now accepts observed generation or terminal response actions |
+| Task 6 | `superseded` | current | `codex` | Tasks 1–5 | full local suite, adapter check, live probe | Transferred to `2026-10-25-github-review-runner-validated-findings-plan.md`; no live probe is authorized by the successor plan |
 
 ## Task Breakdown
 

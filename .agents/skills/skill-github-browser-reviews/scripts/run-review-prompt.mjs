@@ -24,7 +24,14 @@ export class ReviewPromptError extends Error {
 function withFailureScope(error, failureScope) {
   if (error?.failureScope) return error;
   const message = error instanceof Error ? error.message : String(error);
-  return new ReviewPromptError(message, failureScope, error);
+  const sharedContext = /(?:browser|context|target|page).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target|page)/i.test(message);
+  const wrapped = new ReviewPromptError(message, sharedContext ? "shared_context" : failureScope, error);
+  if (error && typeof error === "object") {
+    wrapped.reviewPage = error.reviewPage;
+    wrapped.reviewBaseline = error.reviewBaseline;
+    wrapped.submissionAttempted = error.submissionAttempted === true;
+  }
+  return wrapped;
 }
 
 function normalizeComposerText(value) {
@@ -195,15 +202,22 @@ export async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}
 
   const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
   if (beforeSubmit) await beforeSubmit();
-  if (await sendButton.isVisible()) {
-    await sendButton.click({ timeout: UI_ACTION_TIMEOUT_MS });
-  } else {
-    await composer.press("Enter", { timeout: UI_ACTION_TIMEOUT_MS });
+  try {
+    if (await sendButton.isVisible()) {
+      await sendButton.click({ timeout: UI_ACTION_TIMEOUT_MS });
+    } else {
+      await composer.press("Enter", { timeout: UI_ACTION_TIMEOUT_MS });
+    }
+  } catch (error) {
+    error.submissionAttempted = true;
+    throw error;
   }
 
   await page.waitForTimeout(250);
   if (await isPromptVisibleInComposer(composer, prompt)) {
-    throw new Error("Prompt submission was not visibly acknowledged");
+    const error = new Error("Prompt submission was not visibly acknowledged");
+    error.submissionAttempted = true;
+    throw error;
   }
 
   return { submission: "acknowledged" };
@@ -291,7 +305,14 @@ export async function runReviewPrompt(page, { beforeSubmit, model, effort, promp
     conversationId: extractConversationIdentity(page.url()),
     conversationUrl: page.url(),
   };
-  const submission = await submitPrompt(page, composer, prompt, { beforeSubmit });
+  let submission;
+  try {
+    submission = await submitPrompt(page, composer, prompt, { beforeSubmit });
+  } catch (error) {
+    error.reviewBaseline = baseline;
+    error.submissionAttempted = error.submissionAttempted === true;
+    throw error;
+  }
 
   return { ...baseline, ...submission, model, effort, promptSubmitted: true };
 }
@@ -301,7 +322,8 @@ export async function runReviewPromptInNewTab(context, options) {
   try {
     return { page, ...(await runReviewPrompt(page, options)) };
   } catch (error) {
-    await page.close().catch(() => {});
+    if (error && typeof error === "object") error.reviewPage = page;
+    if (!error?.reviewBaseline) await page.close().catch(() => {});
     throw withFailureScope(error, "review");
   }
 }

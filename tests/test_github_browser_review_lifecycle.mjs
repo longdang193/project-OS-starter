@@ -203,8 +203,26 @@ test("batch manifest resolves prompt files and validates review entries", async 
     const reviews = await readBatchReviews(manifestPath);
 
     assert.deepEqual(reviews, [
-      { model: "GPT-5.6-Sol", effort: "High", promptFile: join(parent, "sol.md"), prompt: "first review\n" },
-      { model: "GPT-6", effort: "High", promptFile: join(parent, "gpt6.md"), prompt: "second review\n" },
+      {
+        model: "GPT-5.6-Sol",
+        effort: "High",
+        promptFile: join(parent, "sol.md"),
+        prompt: "first review\n",
+        repository: null,
+        commitSha: null,
+        reviewUrls: [],
+        reviewIndex: 0,
+      },
+      {
+        model: "GPT-6",
+        effort: "High",
+        promptFile: join(parent, "gpt6.md"),
+        prompt: "second review\n",
+        repository: null,
+        commitSha: null,
+        reviewUrls: [],
+        reviewIndex: 1,
+      },
     ]);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -221,6 +239,9 @@ test("batch summary is completed only when every review completes", () => {
   assert.equal(summary.review_count, 2);
   assert.equal(summary.completed_count, 1);
   assert.equal(summary.failed_count, 1);
+    assert.equal(summary.requested_count, 2);
+    assert.equal(summary.attempted_count, 2);
+    assert.equal(summary.skipped_count, 0);
 });
 
 test("runner contract uses completed as its successful terminal state", async () => {
@@ -660,6 +681,34 @@ test("effort selection uses the visible Power control when its accessible name i
   await setEffort(menu, "High");
   assert.equal(currentEffort, "High");
   assert.deepEqual(pressedKeys, ["ArrowRight"]);
+});
+
+test("effort focus and keyboard actions use the bounded UI timeout", async () => {
+  const focusOptions = [];
+  const pressOptions = [];
+  let currentEffort = "Medium";
+  const control = {
+    async isVisible() { return true; },
+    async focus(options) { focusOptions.push(options); },
+    async press(key, options) {
+      assert.equal(key, "ArrowRight");
+      pressOptions.push(options);
+      currentEffort = "High";
+    },
+  };
+  const menu = {
+    locator(selector) {
+      if (selector === '[role="status"]') return { first: () => ({ async isVisible() { return true; }, async innerText() { return `${currentEffort}, 2 of 3.`; } }) };
+      if (selector === '[role="menuitem"][aria-label="Power"]:visible') return { first: () => control };
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole() { return { first: () => ({ async isVisible() { return false; } }) }; },
+  };
+
+  await setEffort(menu, "High");
+
+  assert.deepEqual(focusOptions, [{ timeout: 5000 }]);
+  assert.deepEqual(pressOptions, [{ timeout: 5000 }]);
 });
 test("effort selection falls back to the visible slider when named controls are not exposed", async () => {
   let currentEffort = "Medium";
@@ -1315,7 +1364,37 @@ test("result records the requested and observed lifecycle state", () => {
     failure_scope: null,
     failure_stage: null,
     failure_reason: null,
+    review_index: null,
+    request_provenance: {
+      prompt_file: null,
+      prompt_sha256: null,
+      repository: null,
+      commit_sha: null,
+      review_urls: [],
+    },
   });
+});
+
+test("result records sanitized immutable request provenance", () => {
+  const result = createResult({
+    model: "GPT-6",
+    effort: "High",
+    prompt: "review prompt",
+    promptFile: "review.md",
+    repository: "longdang193/project-OS-starter",
+    commitSha: "c163271b437046c61daab974a190dc9bc4764d57",
+    reviewUrls: ["https://github.com/longdang193/project-OS-starter/blob/c163271b437046c61daab974a190dc9bc4764d57/README.md"],
+    reviewIndex: 2,
+  });
+
+  assert.equal(result.review_index, 2);
+  assert.equal(result.request_provenance.prompt_file, "review.md");
+  assert.equal(result.request_provenance.prompt_sha256.length, 64);
+  assert.equal(result.request_provenance.repository, "longdang193/project-OS-starter");
+  assert.equal(result.request_provenance.commit_sha, "c163271b437046c61daab974a190dc9bc4764d57");
+  assert.deepEqual(result.request_provenance.review_urls, [
+    "https://github.com/longdang193/project-OS-starter/blob/c163271b437046c61daab974a190dc9bc4764d57/README.md",
+  ]);
 });
 
 test("completion observer failure preserves acknowledged submission and records completion stage", async () => {
@@ -1401,6 +1480,122 @@ test("unacknowledged submission remains ambiguous at the submission stage", asyn
     assert.equal(result.status, "incomplete");
     assert.equal(result.failure_stage, "submission");
     assert.equal(result.submission, "ambiguous");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("ambiguous submission preserves the owned page and visible completion evidence", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-ambiguous-evidence-"));
+  let closeCount = 0;
+  let completionCalls = 0;
+  try {
+    const page = {
+      url() {
+        return "https://chatgpt.com/c/ambiguous";
+      },
+      async close() {
+        closeCount += 1;
+      },
+    };
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          const error = new Error("prompt acknowledgement failed");
+          error.reviewPage = page;
+          error.reviewBaseline = {
+            assistantTurnCount: 0,
+            conversationId: "ambiguous",
+            conversationUrl: page.url(),
+          };
+          error.submissionAttempted = true;
+          throw error;
+        },
+        waitForReviewCompletion: async () => {
+          completionCalls += 1;
+          return {
+            assistantMessageId: "assistant-ambiguous",
+            assistantTurnIndex: 1,
+            conversationId: "ambiguous",
+            currentUrl: page.url(),
+            response: "preserved response",
+            status: "confirmed",
+          };
+        },
+      },
+    });
+
+    const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
+    assert.equal(completionCalls, 1);
+    assert.equal(closeCount, 1);
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.submission, "ambiguous");
+    assert.equal(result.completion, "confirmed");
+    assert.equal(result.assistant_message_id, "assistant-ambiguous");
+    assert.equal(await readFile(join(result.output_dir, "response.md"), "utf8"), "preserved response\n");
+    assert.equal(persisted.submission, "ambiguous");
+    assert.equal(persisted.completion, "confirmed");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("browser context loss remains a shared-context failure at submission time", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-context-loss-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async () => {
+          throw new Error("Target page, context or browser has been closed");
+        },
+      },
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.failure_scope, "shared_context");
+    assert.equal(result.failure_stage, "selection");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("browser context loss remains a shared-context failure at completion time", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-completion-context-loss-"));
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: { async close() {} },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => {
+          throw new Error("Browser context has been disconnected");
+        },
+      },
+    });
+
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.failure_scope, "shared_context");
+    assert.equal(result.failure_stage, "completion");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -1688,6 +1883,44 @@ test("owned context cleanup failure makes the CLI invocation nonzero", async () 
   }
 });
 
+test("batch context-open failure accounts for every requested review as skipped", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-batch-open-failure-"));
+  const promptFile = join(parent, "review.md");
+  const manifestFile = join(parent, "reviews.json");
+  const logged = [];
+  const originalLog = console.log;
+  try {
+    await writeFile(promptFile, "review\n", "utf8");
+    await writeFile(manifestFile, JSON.stringify({
+      reviews: [
+        { model: "GPT-6", effort: "High", prompt_file: "review.md" },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "review.md" },
+      ],
+    }), "utf8");
+    console.log = (value) => logged.push(value);
+
+    const exitCode = await main([
+      "--user-data-dir", "profile",
+      "--batch-file", manifestFile,
+    ], {
+      openReviewContext: async () => {
+        throw new Error("context unavailable");
+      },
+    });
+
+    const result = JSON.parse(logged[0]);
+    assert.equal(exitCode, 1);
+    assert.equal(result.status, "blocked");
+    assert.equal(result.requested_count, 2);
+    assert.equal(result.attempted_count, 0);
+    assert.equal(result.skipped_count, 2);
+    assert.deepEqual(result.reviews.map((review) => review.status), ["skipped", "skipped"]);
+  } finally {
+    console.log = originalLog;
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("each output allocation creates a distinct run directory", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-runs-"));
   try {
@@ -1777,7 +2010,12 @@ test("review batch stops after a shared-context failure", async () => {
   });
 
   assert.deepEqual(attempted, ["first"]);
-  assert.equal(results.length, 1);
+  assert.equal(results.length, 2);
+  assert.equal(results[1].status, "skipped");
+  assert.equal(results[1].model_requested, "GPT-6");
+  assert.equal(results[1].effort_requested, "High");
+  assert.equal(results[1].review_index, 1);
+  assert.match(results[1].failure_reason, /Skipped after review 1/);
   assert.equal(closeCount, 1);
 });
 
@@ -1830,7 +2068,8 @@ test("batch stops after an unknown failure scope", async () => {
   });
 
   assert.deepEqual(attempted, ["first"]);
-  assert.equal(results.length, 1);
+  assert.equal(results.length, 2);
+  assert.equal(results[1].status, "skipped");
 });
 
 test("profile lease prevents overlapping persistent-profile launches", async () => {
@@ -1860,7 +2099,7 @@ test("profile lease fails closed for stale ownership that cannot be reclaimed at
 
     await assert.rejects(
       acquireProfileLease(profile, { isProcessAlive: async () => false }),
-      /profile is already in use|ambiguous profile lease/,
+      /profile is already in use|Stale profile lease|stale profile lease|ambiguous profile lease/,
     );
     assert.match(await readFile(lockPath, "utf8"), /stale-token/);
   } finally {
@@ -1975,7 +2214,8 @@ test("batch stops after uncertain page cleanup", async () => {
   });
 
   assert.deepEqual(attempted, ["first"]);
-  assert.equal(results.length, 1);
+  assert.equal(results.length, 2);
+  assert.equal(results[1].status, "skipped");
 });
 
 test("batch continues after a review-scoped fresh-tab readiness failure", async () => {
