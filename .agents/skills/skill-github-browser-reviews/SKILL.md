@@ -45,12 +45,13 @@ that the review inspected local state.
    exact file URL. The review request must include the file path or GitHub file URL.
    Pin URLs to a commit when reproducibility matters.
 4. **Browser invariant:** Prefer the Node/Playwright automation runner as the
-   primary execution path. It must own the authenticated browser context and
-   invoke `@GitHub` through the visible UI. Use CDP attachment only when a
-   TCP CDP endpoint is explicitly available. A pipe-backed Playwright MCP
-   browser has no TCP CDP endpoint; do not attempt to attach the standalone
-   CLI to it. Use ChromeDev only for session attachment or low-level
-   diagnostics when the primary runner cannot operate.
+   primary execution path. In profile mode it must own the authenticated
+   browser context; in CDP mode it may receive a caller-owned authenticated
+   context. In either mode it invokes `@GitHub` through the visible UI. Use
+   CDP attachment only when a TCP CDP endpoint is explicitly available. A
+   pipe-backed Playwright MCP browser has no TCP CDP endpoint; do not attempt
+   to attach the standalone CLI to it. Use ChromeDev only for session
+   attachment or low-level diagnostics when the primary runner cannot operate.
 5. **Model invariant:** Let the user select either `GPT-5.6-Sol` or `GPT-6`.
 6. **Reasoning invariant:** Let the user select `Instant`, `Medium`, or `High`
    and preserve that choice in the review request.
@@ -266,7 +267,7 @@ either `.mjs` helper to that VM as a raw file.
 ### 3. Open the review
 
 Run the Node/Playwright automation path first to open or control an authenticated
-normal Chrome/Edge ChatGPT Web tab and invoke `@GitHub` through the visible UI.
+ChatGPT Web tab and invoke `@GitHub` through the visible UI.
 If the owned-profile runner cannot create or use the required session, report
 `incomplete` or `blocked`; use ChromeDev only for low-level diagnostics. Keep
 the browser request compact and provide only the exact revision, read-only
