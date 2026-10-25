@@ -1,10 +1,13 @@
-import { selectReviewModel } from "./select-review-model.mjs";
+import { MENU_TRANSITION_TIMEOUT_MS, selectReviewModel } from "./select-review-model.mjs";
 
 const CHATGPT_URL = "https://chatgpt.com/";
+export const UI_ACTION_TIMEOUT_MS = 5000;
+export const COMPOSER_READINESS_TIMEOUT_MS = 10000;
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
 const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
-export const INTERRUPTION_UI_SELECTOR = '[role="alert"]:visible, [data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
+export const INTERRUPTION_UI_SELECTOR = '[data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
+const GENERIC_ALERT_SELECTOR = '[role="alert"]:visible';
 const COMPLETION_TIMEOUT_MS = 900000;
 const COMPLETION_INITIAL_BACKOFF_MS = 250;
 const COMPLETION_MAX_BACKOFF_MS = 1000;
@@ -35,13 +38,16 @@ function assertPrompt(prompt) {
 
 async function openChatGPT(page) {
   if (!page.url().startsWith("https://chatgpt.com/")) {
-    await page.goto(CHATGPT_URL);
+    await page.goto(CHATGPT_URL, { timeout: COMPOSER_READINESS_TIMEOUT_MS });
   }
 
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
-  if (!(await composer.isVisible())) {
+  try {
+    await composer.waitFor({ state: "visible", timeout: COMPOSER_READINESS_TIMEOUT_MS });
+  } catch {
     throw new Error("Authenticated ChatGPT composer was not found");
   }
+  if (!(await composer.isVisible())) throw new Error("Authenticated ChatGPT composer was not found");
   return composer;
 }
 
@@ -61,7 +67,7 @@ export async function openReviewTab(context) {
     return page;
   } catch (error) {
     await page.close().catch(() => {});
-    throw withFailureScope(error, "shared_context");
+    throw withFailureScope(error, "review");
   }
 }
 
@@ -69,10 +75,8 @@ async function closeModelMenu(page) {
   const menu = page.getByRole("menu", { name: "Select ChatGPT model" }).first();
   if (!(await menu.isVisible())) return;
 
-  await page.keyboard.press("Escape");
-  if (await menu.isVisible()) {
-    throw new Error("ChatGPT model menu did not close");
-  }
+  await page.keyboard.press("Escape", { timeout: MENU_TRANSITION_TIMEOUT_MS });
+  await menu.waitFor({ state: "hidden", timeout: MENU_TRANSITION_TIMEOUT_MS });
 }
 
 function extractConversationIdentity(url) {
@@ -88,7 +92,11 @@ async function readVisibleAssistantTurns(page) {
 
 export async function readVisibleInterruption(page) {
   const interruption = page.locator(INTERRUPTION_UI_SELECTOR).first();
-  return (await interruption.count()) > 0 && await interruption.isVisible();
+  if ((await interruption.count()) > 0 && await interruption.isVisible()) return true;
+
+  const alert = page.locator(GENERIC_ALERT_SELECTOR).first();
+  if ((await alert.count()) === 0 || !(await alert.isVisible())) return false;
+  return INTERRUPTION_PATTERN.test(normalizeComposerText(await alert.innerText({ timeout: UI_ACTION_TIMEOUT_MS })));
 }
 
 async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
@@ -105,7 +113,7 @@ async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
   const selected = turns.nth(count - 1);
   let assistantMessageId = null;
   for (const attribute of ["data-message-id", "data-turn-id", "data-testid", "id"]) {
-    const value = await selected.getAttribute(attribute);
+    const value = await selected.getAttribute(attribute, { timeout: UI_ACTION_TIMEOUT_MS });
     if (value) {
       assistantMessageId = value;
       break;
@@ -114,7 +122,7 @@ async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
 
   return {
     assistantMessageId,
-    assistantText: includeText ? (await selected.innerText()).trim() : "",
+    assistantText: includeText ? (await selected.innerText({ timeout: UI_ACTION_TIMEOUT_MS })).trim() : "",
     assistantTurnCount: count,
   };
 }
@@ -154,11 +162,13 @@ async function readCompletionSnapshot(page, { includeText } = {}) {
 }
 
 export function evaluateReviewCompletion({
+  assistantMessageId,
   assistantText,
   assistantTurnCount,
   baselineAssistantTurnCount,
   composerReady,
   conversationId,
+  generationObserved,
   generating,
   interrupted,
   responseActionsReady,
@@ -168,14 +178,15 @@ export function evaluateReviewCompletion({
     && composerReady
     && !interrupted
     && Boolean(conversationId)
+    && Boolean(assistantMessageId)
+    && (generationObserved || responseActionsReady)
     && assistantTurnCount > baselineAssistantTurnCount
     && Boolean(assistantText.trim())
-    && responseActionsReady
     && stableSampleCount >= 2;
 }
 
-async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
-  await composer.fill(prompt);
+export async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
+  await composer.fill(prompt, { timeout: UI_ACTION_TIMEOUT_MS });
 
   if (!(await isPromptVisibleInComposer(composer, prompt))) {
     throw new Error("Prompt was not visibly entered");
@@ -184,9 +195,9 @@ async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}) {
   const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
   if (beforeSubmit) await beforeSubmit();
   if (await sendButton.isVisible()) {
-    await sendButton.click();
+    await sendButton.click({ timeout: UI_ACTION_TIMEOUT_MS });
   } else {
-    await composer.press("Enter");
+    await composer.press("Enter", { timeout: UI_ACTION_TIMEOUT_MS });
   }
 
   await page.waitForTimeout(250);
@@ -225,11 +236,13 @@ export async function waitForReviewCompletion(page, {
   let backoffMs = COMPLETION_INITIAL_BACKOFF_MS;
   let previousText = "";
   let previousMessageId = null;
+  let generationObserved = false;
   let stableSampleCount = 0;
   let snapshot;
 
   while (Date.now() <= deadline) {
     snapshot = await readCompletionSnapshot(page);
+    generationObserved ||= snapshot.generating;
     const sameMessage = !snapshot.assistantMessageId
       || !previousMessageId
       || snapshot.assistantMessageId === previousMessageId;
@@ -244,6 +257,7 @@ export async function waitForReviewCompletion(page, {
     if (evaluateReviewCompletion({
       ...snapshot,
       baselineAssistantTurnCount: baseline.assistantTurnCount,
+      generationObserved,
       stableSampleCount,
     })) {
       return {

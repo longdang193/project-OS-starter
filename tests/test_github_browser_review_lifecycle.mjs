@@ -13,6 +13,7 @@ import {
   openReviewTab,
   readVisibleInterruption,
   runReviewPromptInNewTab,
+  submitPrompt,
   waitForReviewCompletion,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
@@ -36,6 +37,7 @@ import {
   MODEL_MENU_INTERACTION_TIMEOUT_MS,
   UI_ACTION_TIMEOUT_MS,
   openModelList,
+  openModelMenu,
   selectReviewModel,
   setEffort,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
@@ -70,6 +72,66 @@ test("model-menu interactions use the bounded five-second timeout", async () => 
   assert.equal(MODEL_MENU_INTERACTION_TIMEOUT_MS, 5000);
   assert.equal(UI_ACTION_TIMEOUT_MS, 5000);
   assert.equal(MENU_TRANSITION_TIMEOUT_MS, 5000);
+  assert.deepEqual(clickOptions, [{ timeout: 5000 }]);
+});
+
+test("initial model-menu click uses the bounded UI action timeout", async () => {
+  const clickOptions = [];
+  const menu = {
+    first() {
+      return {
+        async isVisible() { return false; },
+        async waitFor() {},
+      };
+    },
+  };
+  const control = {
+    first() { return this; },
+    async waitFor() {},
+    async click(options) { clickOptions.push(options); },
+  };
+  const page = {
+    getByRole(role, options) {
+      if (role === "menu") return menu;
+      if (role === "button" && options.name === "Select ChatGPT model") return control;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+  };
+
+  await openModelMenu(page);
+
+  assert.deepEqual(clickOptions, [{ timeout: UI_ACTION_TIMEOUT_MS }]);
+});
+
+test("prompt submission uses the bounded UI action timeout", async () => {
+  const prompt = "review prompt";
+  const fillOptions = [];
+  const clickOptions = [];
+  let submitted = false;
+  const composer = {
+    async fill(_value, options) { fillOptions.push(options); },
+    async inputValue() { return submitted ? "" : prompt; },
+    async innerText() { return ""; },
+  };
+  const sendButton = {
+    first() { return this; },
+    async isVisible() { return true; },
+    async click(options) {
+      clickOptions.push(options);
+      submitted = true;
+    },
+  };
+  const page = {
+    getByRole(role) {
+      if (role === "button") return sendButton;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async waitForTimeout() {},
+  };
+
+  await submitPrompt(page, composer, prompt);
+
+  assert.deepEqual(fillOptions, [{ timeout: 5000 }]);
   assert.deepEqual(clickOptions, [{ timeout: 5000 }]);
 });
 
@@ -222,7 +284,6 @@ test("model selection keeps the simple picker view when model radios are visible
 });
 
 test("model selection opens the model view when visible radios are covered", async () => {
-  let reopened = false;
   const modelOptions = {
     count: async () => 2,
     first() {
@@ -240,21 +301,10 @@ test("model selection opens the model view when visible radios are covered", asy
       return modelOptions;
     },
   };
-  const reopenedMenu = { reopened: true };
-
-  const result = await openModelList(menu, {
-    reopen: async () => {
-      reopened = true;
-      return reopenedMenu;
-    },
-  });
-
-  assert.equal(reopened, true);
-  assert.equal(result, reopenedMenu);
+  await assert.rejects(openModelList(menu), /require one bounded reopen/);
 });
 
 test("model selection keeps the effort view when a covered row is already selected", async () => {
-  let reopened = false;
   const modelOptions = {
     count: async () => 2,
     nth(index) {
@@ -290,19 +340,11 @@ test("model selection keeps the effort view when a covered row is already select
     },
   };
 
-  const result = await openModelList(menu, {
-    model: "GPT-6",
-    reopen: async () => {
-      reopened = true;
-      return { reopened: true };
-    },
-  });
+  const result = await openModelList(menu, { model: "GPT-6" });
 
-  assert.equal(reopened, false);
   assert.equal(result, menu);
 });
 test("model selection reopens when the requested model row is covered", async () => {
-  let reopened = false;
   const modelOptions = {
     count: async () => 2,
     nth(index) {
@@ -326,18 +368,10 @@ test("model selection reopens when the requested model row is covered", async ()
       return modelOptions;
     },
   };
-  const reopenedMenu = { reopened: true };
-
-  const result = await openModelList(menu, {
-    model: "GPT-5.6-Sol",
-    reopen: async () => {
-      reopened = true;
-      return reopenedMenu;
-    },
-  });
-
-  assert.equal(reopened, true);
-  assert.equal(result, reopenedMenu);
+  await assert.rejects(
+    openModelList(menu, { model: "GPT-5.6-Sol" }),
+    /require one bounded reopen/,
+  );
 });
 
 test("model selection reopens when the real requested-row click is intercepted", async () => {
@@ -713,11 +747,13 @@ test("unchanged effort skips control discovery and focus", async () => {
 
 test("completion requires a new stable visible assistant turn and conversation", () => {
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "Finding: src/example.js:12 uses the requested revision.",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
     composerReady: true,
     conversationId: "conversation-1",
+    generationObserved: true,
     generating: false,
     interrupted: false,
     responseActionsReady: true,
@@ -725,11 +761,13 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), true);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: null,
     assistantText: "Finding",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
     composerReady: true,
     conversationId: null,
+    generationObserved: false,
     generating: false,
     interrupted: false,
     responseActionsReady: true,
@@ -737,11 +775,13 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), false);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "Finding",
     assistantTurnCount: 1,
     baselineAssistantTurnCount: 1,
     composerReady: true,
     conversationId: "conversation-1",
+    generationObserved: true,
     generating: false,
     interrupted: false,
     responseActionsReady: true,
@@ -749,16 +789,60 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), false);
 
   assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
     assistantText: "I’ll verify the exact commit before reviewing it.",
     assistantTurnCount: 2,
     baselineAssistantTurnCount: 1,
     composerReady: true,
     conversationId: "conversation-1",
+    generationObserved: false,
     generating: false,
     interrupted: false,
     responseActionsReady: false,
     stableSampleCount: 2,
   }), false);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: null,
+    assistantText: "I’ll review only the pinned revision before reporting findings.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generationObserved: true,
+    generating: false,
+    interrupted: false,
+    responseActionsReady: false,
+    stableSampleCount: 2,
+  }), false);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
+    assistantText: "I’ll verify the exact commit before reviewing it.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generationObserved: false,
+    generating: false,
+    interrupted: false,
+    responseActionsReady: false,
+    stableSampleCount: 2,
+  }), false);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
+    assistantText: "Finding: the pinned revision is confirmed.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generationObserved: false,
+    generating: false,
+    interrupted: false,
+    responseActionsReady: true,
+    stableSampleCount: 2,
+  }), true);
 });
 
 test("assistant fallback excludes rich-text user turns", () => {
@@ -772,7 +856,7 @@ test("interruption detection ignores ordinary assistant text containing try agai
   assert.equal(INTERRUPTION_PATTERN.test("Something went wrong. Please try again."), true);
 });
 
-test("interruption detection reads only dedicated visible error UI", async () => {
+test("interruption detection checks dedicated and scoped generic error UI", async () => {
   let requestedSelector;
   const page = {
     locator(selector) {
@@ -792,7 +876,22 @@ test("interruption detection reads only dedicated visible error UI", async () =>
   };
 
   assert.equal(await readVisibleInterruption(page), false);
-  assert.equal(requestedSelector, INTERRUPTION_UI_SELECTOR);
+  assert.equal(requestedSelector, '[role="alert"]:visible');
+});
+
+test("interruption detection ignores unrelated generic alerts", async () => {
+  const page = {
+    locator(selector) {
+      return {
+        first() { return this; },
+        async count() { return selector === '[role="alert"]:visible' ? 1 : 0; },
+        async isVisible() { return true; },
+        async innerText() { return "Draft saved"; },
+      };
+    },
+  };
+
+  assert.equal(await readVisibleInterruption(page), false);
 });
 
 test("model lookup requires an exact visible label", async () => {
@@ -825,7 +924,7 @@ test("model lookup requires an exact visible label", async () => {
   assert.equal(await option.innerText(), "GPT-6");
 });
 
-test("review tab closes when authenticated composer setup fails", async () => {
+test("review tab scopes composer readiness failure as review and closes", async () => {
   let closed = false;
   const page = {
     url: () => "https://chatgpt.com/",
@@ -846,7 +945,11 @@ test("review tab closes when authenticated composer setup fails", async () => {
 
   await assert.rejects(
     openReviewTab({ newPage: async () => page }),
-    /Authenticated ChatGPT composer was not found/,
+    (error) => {
+      assert.match(error.message, /Authenticated ChatGPT composer was not found/);
+      assert.equal(error.failureScope, "review");
+      return true;
+    },
   );
   assert.equal(closed, true);
 });
@@ -868,7 +971,10 @@ test("review tab marks context setup failures as shared-context failures", async
 
 test("review tab closes when model preparation fails after newPage", async () => {
   let closed = false;
-  const composer = { async isVisible() { return true; } };
+  const composer = {
+    async waitFor() {},
+    async isVisible() { return true; },
+  };
   const page = {
     url: () => "https://chatgpt.com/",
     getByRole(role, options = {}) {
@@ -1001,7 +1107,7 @@ test("completion polling avoids full assistant text reads while generating", asy
   const page = {
     locator(selector) {
       if (selector.includes("data-message-author-role")) return assistantTurns;
-      if (selector.includes("[role=\"alert\"]")) return interruption;
+      if (selector.includes("[role=\"alert\"]") || selector.includes("data-testid")) return interruption;
       throw new Error(`Unexpected locator: ${selector}`);
     },
     getByRole(role, options) {
@@ -1080,7 +1186,7 @@ test("completion timeout preserves visible partial assistant text", async () => 
   const page = {
     locator(selector) {
       if (selector.includes("data-message-author-role")) return assistantTurns;
-      if (selector.includes("[role=\"alert\"]")) return interruption;
+      if (selector.includes("[role=\"alert\"]") || selector.includes("data-testid")) return interruption;
       throw new Error(`Unexpected locator: ${selector}`);
     },
     getByRole(role, options) {
@@ -1322,7 +1428,7 @@ test("cleanup failure preserves completed review and records a cleanup warning",
 
     const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
     assert.equal(result.status, "incomplete");
-    assert.equal(result.failure_scope, "review");
+    assert.equal(result.failure_scope, "shared_context");
     assert.equal(result.cleanup_status, "failed");
     assert.equal(result.cleanup_warning, "page close failed");
     assert.equal(persisted.status, "incomplete");
@@ -1422,6 +1528,30 @@ test("failed context cleanup does not mark the context closed", async () => {
 
   await assert.rejects(() => closeContext(attached), /context close failed/);
   assert.equal(attached.closed, undefined);
+});
+
+test("failed owned context cleanup retains the profile lease", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-context-lease-"));
+  const profile = join(parent, "profile");
+  try {
+    const profileLease = await acquireProfileLease(profile);
+    const attached = {
+      context: {
+        async close() {
+          throw new Error("context close failed");
+        },
+      },
+      ownsContext: true,
+      profileLease,
+    };
+
+    await assert.rejects(() => closeContext(attached), /context close failed/);
+    assert.ok((await readFile(profileLease.lockPath, "utf8")).includes(profileLease.token));
+    await profileLease.handle.close().catch(() => {});
+    await rm(profileLease.lockPath, { force: true });
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("batch main delegates context cleanup to the batch owner", async () => {
@@ -1635,7 +1765,7 @@ test("profile lease prevents overlapping persistent-profile launches", async () 
   }
 });
 
-test("profile lease recovers only a lease whose owner is proven dead", async () => {
+test("profile lease fails closed for stale ownership that cannot be reclaimed atomically", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-stale-profile-"));
   const profile = join(parent, "profile");
   const lockPath = `${resolve(profile)}.codex-review-profile.lock`;
@@ -1646,12 +1776,30 @@ test("profile lease recovers only a lease whose owner is proven dead", async () 
       token: "stale-token",
     })}\n`, "utf8");
 
-    const lease = await acquireProfileLease(profile, {
-      isProcessAlive: async () => false,
-    });
-    const current = JSON.parse(await readFile(lockPath, "utf8"));
-    assert.notEqual(current.token, "stale-token");
-    await releaseProfileLease(lease);
+    await assert.rejects(
+      acquireProfileLease(profile, { isProcessAlive: async () => false }),
+      /profile is already in use|ambiguous profile lease/,
+    );
+    assert.match(await readFile(lockPath, "utf8"), /stale-token/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("profile lease removes a lock created by a failed metadata publication", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-metadata-failure-"));
+  const profile = join(parent, "profile");
+  const lockPath = `${resolve(profile)}.codex-review-profile.lock`;
+  try {
+    await assert.rejects(
+      acquireProfileLease(profile, {
+        writeMetadata: async () => {
+          throw new Error("metadata write failed");
+        },
+      }),
+      /metadata write failed/,
+    );
+    await assert.rejects(readFile(lockPath, "utf8"), { code: "ENOENT" });
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -1721,4 +1869,54 @@ test("batch context cleanup failure retains completed review results", async () 
       return true;
     },
   );
+});
+
+test("batch stops after uncertain page cleanup", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return review.prompt === "first"
+        ? { status: "incomplete", failure_scope: "shared_context", failure_stage: "cleanup" }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first"]);
+  assert.equal(results.length, 1);
+});
+
+test("batch continues after a review-scoped fresh-tab readiness failure", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return review.prompt === "first"
+        ? { status: "blocked", failure_scope: "review", failure_stage: "page_readiness" }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(results.length, 2);
 });
