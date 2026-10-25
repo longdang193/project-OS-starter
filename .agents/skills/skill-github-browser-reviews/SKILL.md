@@ -218,13 +218,17 @@ context. While the response is visibly generating, completion observation polls
 cheap visible state and defers full assistant-text extraction until generation
 stops and stability can be checked.
 
-Completion evidence is bound to one conversation identity. If the baseline
-conversation is known, the assistant turn must remain in that conversation; if
-it is not known, the first post-dispatch conversation identity is bound and any
-later switch returns `incomplete`. An ambiguous send acknowledgement uses a
-short bounded observation window, preserves `possibly_dispatched`, and never
-resubmits; confirmed or visibly active generations retain the normal completion
-window.
+Completion evidence stays bound to the same review page and requires a new
+stable assistant turn. Conversation identity is a continuity signal rather
+than an immutable SPA invariant: when a known baseline conversation changes
+once after an acknowledged submission, the runner accepts that same-page
+transition while it establishes the new conversation's response evidence. A
+second transition, missing new turn, interruption, or unstable response
+returns `incomplete`. If the baseline conversation is unknown, the first
+post-dispatch conversation identity is bound. An ambiguous send
+acknowledgement uses a short bounded observation window, preserves
+`possibly_dispatched`, and never resubmits; confirmed or visibly active
+generations retain the normal completion window.
 
 Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
 owned-context cleanup preserves the review artifacts but makes the invocation

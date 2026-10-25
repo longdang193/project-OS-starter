@@ -1141,6 +1141,91 @@ test("completion rejects a response from a different conversation", () => {
   }), false);
 });
 
+test("completion accepts one same-tab conversation transition after submission", async () => {
+  let stopChecks = 0;
+  const assistantTurn = {
+    async getAttribute(attribute) {
+      return attribute === "data-message-id" ? "assistant-2" : null;
+    },
+    async innerText() {
+      return "Finding: the response belongs to the submitted review.";
+    },
+  };
+  const assistantTurns = {
+    async count() {
+      return 1;
+    },
+    nth() {
+      return assistantTurn;
+    },
+  };
+  const interruption = {
+    first() {
+      return this;
+    },
+    async count() {
+      return 0;
+    },
+    async isVisible() {
+      return false;
+    },
+  };
+  const stopButton = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      stopChecks += 1;
+      return stopChecks === 1;
+    },
+  };
+  const responseAction = {
+    last() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const composer = {
+    first() {
+      return this;
+    },
+    async isVisible() {
+      return true;
+    },
+  };
+  const page = {
+    locator(selector) {
+      if (selector.includes("data-message-author-role")) return assistantTurns;
+      if (selector.includes("[role=\"alert\"]") || selector.includes("data-testid")) return interruption;
+      throw new Error(`Unexpected locator: ${selector}`);
+    },
+    getByRole(role, options) {
+      if (role === "button" && options.name.source.includes("Stop generating")) return stopButton;
+      if (role === "button" && options.name.source.includes("Regenerate response")) return responseAction;
+      if (role === "textbox") return composer;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() {
+      return "https://chatgpt.com/c/conversation-2";
+    },
+    async waitForTimeout() {},
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: {
+      assistantTurnCount: 3,
+      assistantMessageId: "assistant-1",
+      conversationId: "conversation-1",
+    },
+    timeoutMs: 100,
+  });
+
+  assert.equal(result.status, "confirmed");
+  assert.equal(result.conversationId, "conversation-2");
+});
+
 test("assistant fallback excludes rich-text user turns", () => {
   assert.match(ASSISTANT_TURN_SELECTOR, /data-message-author-role="assistant"/);
   assert.match(ASSISTANT_TURN_SELECTOR, /:not\(/);

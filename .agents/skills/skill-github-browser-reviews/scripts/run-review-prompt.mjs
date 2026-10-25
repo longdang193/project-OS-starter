@@ -345,7 +345,9 @@ export async function waitForReviewCompletion(page, {
   let generationObserved = false;
   let stableSampleCount = 0;
   let snapshot;
+  let baselineAssistantTurnCount = baseline.assistantTurnCount;
   let expectedConversationId = baseline.conversationId || null;
+  let conversationIdentityTransitioned = false;
 
   while (Date.now() <= deadline) {
     if (await readVisibleInterruption(page)) {
@@ -360,12 +362,21 @@ export async function waitForReviewCompletion(page, {
 
     snapshot = await readCompletionSnapshot(page);
     if (expectedConversationId && snapshot.conversationId && snapshot.conversationId !== expectedConversationId) {
-      return {
-        ...snapshot,
-        response: snapshot.assistantText,
-        status: "incomplete",
-        failureReason: "conversation identity changed during completion observation",
-      };
+      if (conversationIdentityTransitioned) {
+        return {
+          ...snapshot,
+          response: snapshot.assistantText,
+          status: "incomplete",
+          failureReason: "conversation identity changed repeatedly during completion observation",
+        };
+      }
+      conversationIdentityTransitioned = true;
+      expectedConversationId = snapshot.conversationId;
+      const newAssistantTurn = snapshot.assistantMessageId
+        && snapshot.assistantMessageId !== baseline.assistantMessageId;
+      baselineAssistantTurnCount = snapshot.generating || newAssistantTurn
+        ? Math.max(0, snapshot.assistantTurnCount - 1)
+        : snapshot.assistantTurnCount;
     }
     if (!expectedConversationId && snapshot.conversationId) expectedConversationId = snapshot.conversationId;
     generationObserved ||= snapshot.generating;
@@ -382,7 +393,7 @@ export async function waitForReviewCompletion(page, {
 
     if (evaluateReviewCompletion({
       ...snapshot,
-      baselineAssistantTurnCount: baseline.assistantTurnCount,
+      baselineAssistantTurnCount,
       expectedConversationId,
       generationObserved,
       stableSampleCount,
@@ -411,9 +422,10 @@ export async function waitForReviewCompletion(page, {
 export async function runReviewPrompt(page, { beforeSubmit, model, effort, prompt }) {
   assertPrompt(prompt);
   const { composer } = await prepareReviewPrompt(page, { model, effort });
-  const baselineTurns = await readVisibleAssistantTurns(page);
+  const baselineAssistant = await readVisibleAssistantMessage(page, { includeText: false });
   const baseline = {
-    assistantTurnCount: await baselineTurns.count(),
+    assistantMessageId: baselineAssistant.assistantMessageId,
+    assistantTurnCount: baselineAssistant.assistantTurnCount,
     conversationId: extractConversationIdentity(page.url()),
     conversationUrl: page.url(),
   };
