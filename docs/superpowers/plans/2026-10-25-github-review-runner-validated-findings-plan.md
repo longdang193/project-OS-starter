@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: github-review-runner-validated-findings
@@ -16,6 +16,18 @@ targets:
   - tests/test_github_browser_review_lifecycle.mjs
   - tests/test_github_browser_review_runner.py
   - tests/test_github_browser_reviews.py
+  - generated_agents/claude/skills/skill-github-browser-reviews/SKILL.md
+  - generated_agents/claude/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs
+  - generated_agents/claude/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs
+  - generated_agents/claude/skills/skill-github-browser-reviews/scripts/select-review-model.mjs
+  - generated_agents/codex/skills/skill-github-browser-reviews/SKILL.md
+  - generated_agents/codex/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs
+  - generated_agents/codex/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs
+  - generated_agents/codex/skills/skill-github-browser-reviews/scripts/select-review-model.mjs
+  - generated_agents/antigravity/skills/skill-github-browser-reviews/SKILL.md
+  - generated_agents/antigravity/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs
+  - generated_agents/antigravity/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs
+  - generated_agents/antigravity/skills/skill-github-browser-reviews/scripts/select-review-model.mjs
 ---
 
 # GitHub Review Runner Validated Findings Plan
@@ -60,12 +72,11 @@ only a defensible assistant-turn boundary or fails incomplete. Browser-context
 loss is not misreported as a recoverable review-local error. No new browser,
 keep-open, automatic retry, hidden-state, or model-substitution path is added.
 
-### Account readiness and documentation match executable behavior
+### Documentation matches executable behavior
 
-The authenticated-profile contract distinguishes composer readiness from visible
-account identity. Strict unattended operation can require an expected visible
-account marker without inspecting credentials or cookies. Tests and canonical
-skill documentation describe the final recovery, evidence, and stop behavior.
+Tests and canonical skill documentation describe the final recovery, evidence,
+and stop behavior without adding an unproven account-identity or integration
+marker requirement.
 
 ## Validated Findings Consolidation
 
@@ -78,7 +89,6 @@ truth.
 | --- | --- | --- | --- |
 | P1 | Post-send acknowledgement failure closes the only page before the caller can preserve evidence. | `run-review-prompt.mjs:189-209,299-307`; `run-review-prompt-cli.mjs:368-423` | GPT-6; source-confirmed |
 | P1 | Existing profile leases are rejected without stale-owner recovery, despite the documented recovery expectation. | `run-review-prompt-cli.mjs:191-202,219-231`; `SKILL.md:221-225` | GPT-5.6-Sol and GPT-6; source-confirmed |
-| P1 | Visible composer readiness does not establish the expected signed-in account or GitHub integration. | `run-review-prompt.mjs:39-51`; `run-review-prompt-cli.mjs:266-269` | GPT-5.6-Sol; source-confirmed safety gap |
 | P2 | Page cleanup uncertainty is hidden or promoted directly to shared-context failure, creating unsafe continuation or unnecessary batch aborts. | `run-review-prompt.mjs:58-72,299-307`; `run-review-prompt-cli.mjs:329-339,441-448,475-482` | GPT-5.6-Sol and GPT-6; source-confirmed |
 | P2 | Shared-context stop leaves unattempted manifest entries absent from the batch summary. | `run-review-prompt-cli.mjs:176-185,475-482` | GPT-5.6-Sol and GPT-6; source-confirmed |
 | P2 | Markdown fallback may accept incomplete or weakly associated assistant content. | `run-review-prompt.mjs:6-7,87-129` | GPT-6; source-confirmed risk |
@@ -97,30 +107,56 @@ it. It also does not authorize another live review submission.
 - Required skills: `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`, `skill-verification-before-completion`
 - Isolation: `current workspace`
 - Commit policy: `no commits during execution`; the lead creates an authorized checkpoint only after task proof is accepted
-- Preauthorized local actions: modify only the listed runner, selector, tests, and canonical skill documentation; run declared local checks; preserve existing untracked review/profile/runtime artifacts
+- Preauthorized local actions: modify only the listed canonical runner, selector, tests, skill documentation, and generated adapter surfaces; run declared local checks; preserve existing untracked review/profile/runtime artifacts
 - User-approval actions: push, merge, publication, authentication/profile changes, destructive stale-lock recovery, live browser submissions, reruns, discard, and cleanup outside task-owned outputs
 - Parallel ownership: `none; all tasks share the runner lifecycle and result contract`
-- Sequential fallback: complete Tasks 1–4 in order, then run Task 5 as the single final verification gate
+- Sequential fallback: complete Task 0, then Tasks 1–3 in order, then run Task 4 as the single final verification gate
 
 ## Coordination State
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `main`
-- Base commit: `c163271b437046c61daab974a190dc9bc4764d57`
-- Expected workspace: `main` with preserved untracked `.playwright-mcp/`, `.review-profile/`, `.runtime/`, and `node_modules/`; no tracked implementation changes at plan creation
-- Next action: reconcile this proposed plan with the existing active `2026-10-25-github-review-runner-lease-ui-hardening-plan.md`, then activate exactly one ledger before implementation
-- Blockers: `overlapping active runner-hardening plan must be reconciled before either plan becomes active`
+- Branch: `codex/github-review-plan`
+- Base commit: `e3ea9da18dac5594f18b080bf17730f71507f397`
+- Execution base commit: `e3ea9da18dac5594f18b080bf17730f71507f397`
+- Reviewed source commit: `c163271b437046c61daab974a190dc9bc4764d57`
+- Expected workspace: current branch with preserved untracked `.playwright-mcp/`, `.review-profile/`, `.runtime/`, and `node_modules/`; no tracked implementation changes at activation
+- Next action: hand off the verified branch to the explicitly authorized Git finishing workflow
+- Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `unresolved` | none | transaction and cleanup lifecycle tests | pending |
-| Task 2 | `pending` | current | `unresolved` | Task 1 | lease, batch-accounting, and provenance tests | pending |
-| Task 3 | `pending` | current | `unresolved` | Task 1 | completion, failure-scope, and timeout tests | pending |
-| Task 4 | `pending` | current | `unresolved` | Tasks 1–3 | authenticated readiness contract and documentation tests | pending |
-| Task 5 | `pending` | current | `unresolved` | Tasks 1–4 | final repository and test verification | pending |
+| Task 0 | `completed` | current | `codex` | none | predecessor ledger reconciled and ownership transferred | predecessor marked `superseded`; successor is sole active ledger |
+| Task 1 | `completed` | current | `codex` | Task 0 | transaction and cleanup lifecycle tests | 68 lifecycle tests passed; ambiguous evidence and cleanup ownership verified |
+| Task 2 | `completed` | current | `codex` | Task 1 | lease, batch-accounting, and provenance tests | lease, skipped-accounting, provenance, and Python contract tests passed |
+| Task 3 | `completed` | current | `codex` | Task 1 | completion, failure-scope, context-loss, and timeout tests | bounded effort, fallback, and submission/completion context-loss tests passed |
+| Task 4 | `completed` | current | `codex` | Tasks 1–3 | final repository and test verification | 68 Node tests, 46 Python tests, syntax, repository, adapter, planning, and diff checks passed |
 
 ## Task Breakdown
+
+### Task 0: Reconcile the predecessor coordination ledger
+
+**Purpose:**
+- Ensure exactly one active ledger owns the shared runner files before implementation begins.
+
+**Template Profile:**
+- Controller-selected: `none (lead controller)`
+- Selection basis: lead-owned coordination reconciliation in the current workspace.
+
+**Authority:**
+- Preauthorized local actions: update the two Git-tracked plan ledgers only.
+- Stop for: unresolved ownership, unexpected tracked changes, or a base/branch mismatch.
+
+**Files And Symbols:**
+- Modify: `docs/superpowers/plans/2026-10-25-github-review-runner-lease-ui-hardening-plan.md:status and Task 6 ledger`
+- Verify: `docs/superpowers/plans/2026-10-25-github-review-runner-validated-findings-plan.md:Coordination State`
+
+**Steps:**
+- [x] Step 1: Mark the predecessor plan `superseded` and transfer its unfinished Task 6 ownership to this plan.
+- [x] Step 2: Activate this plan as the sole authoritative ledger.
+
+**Exit Criteria:**
+- The predecessor is no longer active, this plan is active, and no two ledgers own the same runner files.
 
 ### Task 1: Preserve post-send evidence and make cleanup uncertainty explicit
 
@@ -158,15 +194,15 @@ it. It also does not authorize another live review submission.
 - Stop for: any automatic retry, second browser lifecycle owner, changed model-selection semantics, or unresolved ownership after a send attempt.
 
 **Steps:**
-- [ ] Step 1: Add failing tests for post-click acknowledgement failure, response persistence before page close, and page-close failure after a terminal response.
-- [ ] Step 2: Transfer ownership of a page after the send attempt to the transaction owner, or attach the page/evidence handle to the thrown error so the transaction can capture visible URL, response, and completion state before cleanup.
-- [ ] Step 3: Persist `submission: ambiguous` and all available visible evidence without issuing a second send.
-- [ ] Step 4: Record cleanup uncertainty separately from the original review failure. Stop the batch when tab ownership cannot be proven safe; do not claim shared-context loss unless context health is actually unavailable.
-- [ ] Step 5: Add regressions proving the next review is never started while an uncertain prior tab may still be generating.
+- [x] Step 1: Add failing tests for post-click acknowledgement failure, response persistence before page close, and page-close failure after a terminal response.
+- [x] Step 2: Transfer ownership of a page after the send attempt to the transaction owner, or attach the page/evidence handle to the thrown error so the transaction can capture visible URL, response, and completion state before cleanup.
+- [x] Step 3: Persist `submission: ambiguous` and all available visible evidence without issuing a second send.
+- [x] Step 4: Record cleanup uncertainty separately from the original review failure. Stop the batch when tab ownership cannot be proven safe; do not claim shared-context loss unless context health is actually unavailable.
+- [x] Step 5: Add regressions proving the next review is never started while an uncertain prior tab may still be generating.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "submission|cleanup|batch"`
-- Expected: ambiguous sends preserve artifacts, no prompt is resubmitted, and uncertain cleanup stops safely with explicit evidence.
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "submission|cleanup|batch"`
+- Expected: ambiguous sends preserve artifacts, no prompt is resubmitted, and uncertain cleanup stops safely with explicit evidence — passed.
 
 **Exit Criteria:**
 - Every send-attempt path has one owner, one terminal artifact settlement, and one cleanup decision; no response is silently discarded or duplicated.
@@ -208,16 +244,16 @@ it. It also does not authorize another live review submission.
 - Stop for: unsafe lock deletion, PID-only reclamation, silent result-shape incompatibility, or any external profile/authentication mutation.
 
 **Steps:**
-- [ ] Step 1: Add tests for live, malformed, dead, replacement-owner, and metadata-publication-failure locks.
-- [ ] Step 2: Preserve exclusive creation and token-checked release. On an existing lock, parse and validate ownership; reclaim only through a proven atomic compare-and-reclaim path with PID-reuse protection. Otherwise retain the lock and return an operator-actionable blocked state.
-- [ ] Step 3: Add manifest-indexed results with `requested_count`, `attempted_count`, `completed_count`, `failed_count`, and `skipped_count`; record every unattempted review with its model, effort, index, and stop reason.
-- [ ] Step 4: Persist sanitized request provenance per run: prompt source/hash plus structured repository, full commit SHA, and reviewed file URLs supplied by the controller. Do not parse or trust free-form model/effort text inside prompts.
-- [ ] Step 5: Update the skill contract and Python schema tests for the final result fields and operator recovery procedure.
+- [x] Step 1: Add tests for live, malformed, dead, replacement-owner, and metadata-publication-failure locks.
+- [x] Step 2: Preserve exclusive creation and token-checked release. On an existing lock, parse and validate ownership; retain stale ownership for operator-confirmed recovery rather than deleting by PID/timestamp heuristic.
+- [x] Step 3: Add manifest-indexed results with `requested_count`, `attempted_count`, `completed_count`, `failed_count`, and `skipped_count`; record every unattempted review with its model, effort, index, and stop reason.
+- [x] Step 4: Persist sanitized request provenance per run: prompt source/hash plus structured repository, full commit SHA, and reviewed file URLs supplied by the controller. Do not parse or trust free-form model/effort text inside prompts.
+- [x] Step 5: Update the skill contract and Python schema tests for the final result fields and operator recovery procedure.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "profile lease|batch|result"`
-- [ ] `py -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
-- Expected: no active/replacement/malformed lock is clobbered; dead-owner handling is either race-safe or explicitly blocked; all requested reviews remain accounted for.
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "profile lease|batch|result"`
+- [x] `py -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- Expected: no active/replacement/malformed lock is clobbered; dead-owner handling is explicitly blocked; all requested reviews remain accounted for — passed.
 
 **Exit Criteria:**
 - A failed batch is fully reconcilable from its structured artifacts, and profile recovery cannot remove another owner or rely on an unsafe PID/timestamp heuristic.
@@ -246,84 +282,34 @@ it. It also does not authorize another live review submission.
 
 **Files And Symbols:**
 - Inspect: `.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs:setEffort`
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:readVisibleAssistantTurns,readVisibleAssistantMessage,waitForReviewCompletion`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:readVisibleAssistantTurns,readVisibleAssistantMessage,waitForReviewCompletion,runReviewPromptInNewTab`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs:setEffort`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:assistant fallback and completion evidence`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:classifyFailureScope`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:classifyFailureScope,runReviewTransaction`
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
 
 **Dependencies:**
 - Task 1 cleanup and terminal-state contract.
 
 **Authority:**
-- Preauthorized local actions: add focused UI/completion/failure-scope tests and modify only the declared selector, observer, and classifier symbols.
+- Preauthorized local actions: add focused UI/completion/failure-scope/context-loss tests and modify only the declared selector, observer, classifier, and typed context-loss symbols.
 - Stop for: hidden DOM/network-state inspection, automatic retries, changed polling backoff, or accepting response text without defensible turn association.
 
 **Steps:**
-- [ ] Step 1: Add explicit `UI_ACTION_TIMEOUT_MS` to effort focus and keyboard operations.
-- [ ] Step 2: Add multi-container and mixed user/assistant fallback fixtures. Accept fallback content only when it maps to a visible assistant boundary; otherwise return incomplete with the reason.
-- [ ] Step 3: Preserve explicit shared-context failures through submission and completion. Distinguish page-local review errors from browser disconnects or closed contexts.
-- [ ] Step 4: Keep the existing fast-response completion path and interruption checks; do not require response-action buttons when other finality evidence is sufficient.
+- [x] Step 1: Add explicit `UI_ACTION_TIMEOUT_MS` to effort focus and keyboard operations.
+- [x] Step 2: Add multi-container and mixed user/assistant fallback fixtures. Accept fallback content only when it maps to a visible assistant boundary; otherwise return incomplete with the reason.
+- [x] Step 3: Preserve explicit shared-context failures through submission and completion. Distinguish page-local review errors from browser disconnects or closed contexts.
+- [x] Step 4: Keep the existing fast-response completion path and interruption checks; do not require response-action buttons when other finality evidence is sufficient.
+- [x] Step 5: Add submission-time and completion-time context-disconnect regressions proving typed browser-context loss is not wrapped as a review-local failure.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "effort|completion|interruption|context|fallback"`
-- Expected: bounded UI actions fail within the documented budget, incomplete fallback evidence fails closed, and context loss stops the shared batch.
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "effort|completion|interruption|context|fallback"`
+- Expected: bounded UI actions fail within the documented budget, incomplete fallback evidence fails closed, and context loss stops the shared batch — passed.
 
 **Exit Criteria:**
 - Completion and failure classification remain observable, bounded, and conservative without adding a second browser or retry state machine.
 
-### Task 4: Add explicit authenticated-profile readiness and align documentation
-
-**Purpose:**
-- Prevent a project-specific persistent profile logged into the wrong account from being treated as fully verified while preserving privacy and compatibility.
-
-**Task Function:**
-- Add a visible, controller-supplied account-identity preflight and document its limits.
-
-**Template Profile:**
-- Controller-selected: `none (lead controller)`
-- Selection basis: bounded UI contract and documentation change with privacy constraints.
-
-**Validator Profile:**
-- Controller-selected: `none`
-- Selection basis: mocked visible-page tests and contract validation.
-
-**Specification Coverage:**
-- Authenticated ChatGPT composer, expected account/profile identity, dedicated project profile, and fail-closed readiness.
-
-**Required Skills:**
-- `skill-code-standards`, `skill-test-driven-development`, `skill-backend-verification`
-
-**Files And Symbols:**
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:openChatGPT`
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:openReviewContext,parseArguments`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:visible session preflight`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:CLI/manifest readiness option`
-- Modify: `.agents/skills/skill-github-browser-reviews/SKILL.md:authenticated-profile contract`
-- Verify: `tests/test_github_browser_review_lifecycle.mjs`, `tests/test_github_browser_review_runner.py`, `tests/test_skill_github_browser_reviews.py`
-
-**Dependencies:**
-- Tasks 1–3 result and readiness contracts.
-
-**Authority:**
-- Preauthorized local actions: add visible-readiness tests and modify only the declared preflight, CLI schema, and skill documentation.
-- Stop for: reading credentials/cookies, relying on hidden DOM/network state, requiring an unavailable account identifier, or weakening the existing composer readiness failure path.
-
-**Steps:**
-- [ ] Step 1: Define an optional expected visible account marker supplied by the controller or batch manifest; do not infer identity from the profile path alone.
-- [ ] Step 2: Verify the marker once before the first review tab. Record `account_identity: verified|unverified` in structured output.
-- [ ] Step 3: Require the marker for strict unattended `verified` workflows while retaining a compatibility mode that reports unverified rather than falsely claiming identity.
-- [ ] Step 4: Document that composer visibility proves readiness only, not account identity or GitHub connector availability.
-
-**Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs --test-name-pattern "authenticated|account|readiness"`
-- [ ] `py -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
-- Expected: matching visible identity passes, missing/mismatched identity fails closed for strict mode, and no credential or hidden-state inspection occurs.
-
-**Exit Criteria:**
-- The runner can distinguish “composer ready” from “expected account visibly verified,” and the skill documentation matches the executable contract.
-
-### Task 5: Reconcile generated surfaces and run the final proof gate
+### Task 4: Reconcile generated surfaces and run the final proof gate
 
 **Purpose:**
 - Prove the implementation plan’s outcomes against current repository truth without rerunning the live browser review.
@@ -351,20 +337,20 @@ it. It also does not authorize another live review submission.
 - Verify: `docs/superpowers/plans/2026-10-25-github-review-runner-validated-findings-plan.md`
 
 **Dependencies:**
-- Tasks 1–4 completed and the overlapping active plan reconciled.
+- Tasks 1–3 completed and the predecessor plan reconciled.
 
 **Authority:**
-- Preauthorized local actions: run final local checks, synchronize generated agent adapters when required, and update this plan’s ledger/evidence.
+- Preauthorized local actions: run final local checks, synchronize the exact generated adapter targets listed in the plan from canonical sources, and update this plan’s ledger/evidence.
 - Stop for: stale base SHA, unresolved overlapping plan ownership, failed required proof, live browser rerun requests, or unrelated workspace cleanup.
 
 **Steps:**
-- [ ] Step 1: Run the focused Node lifecycle tests and Python contract tests.
-- [ ] Step 2: Run syntax, repository-contract, generated-adapter, and diff checks.
-- [ ] Step 3: Reconcile all task evidence, blockers, skipped checks, and changed result fields in the plan.
-- [ ] Step 4: Apply `skill-verification-before-completion` to fresh command output; do not mark the plan complete from checked boxes alone.
+- [x] Step 1: Run the focused Node lifecycle tests and Python contract tests.
+- [x] Step 2: Run syntax, repository-contract, generated-adapter, planning, and diff checks; stop on generated-surface drift.
+- [x] Step 3: Reconcile all task evidence, blockers, skipped checks, and changed result fields in the plan.
+- [x] Step 4: Apply `skill-verification-before-completion` to fresh command output; do not mark the plan complete from checked boxes alone.
 
 **Verification:**
-- [ ] Final commands in the Verification section pass from the reconciled base.
+- [x] Final commands in the Verification section pass from the reconciled base.
 - Expected: all required proof is fresh, tracked changes are scoped, untracked review artifacts remain untouched, and no live review is resubmitted.
 
 **Exit Criteria:**
@@ -377,7 +363,7 @@ Run after implementation and plan reconciliation:
 - `node --test tests/test_github_browser_review_lifecycle.mjs`
 - `py -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
 - `node --check .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`
-- `node --check .agents/skills/skill-github-browser_reviews/scripts/run-review-prompt.mjs`
+- `node --check .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs`
 - `node --check .agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs`
 - `py -B scripts/validate_repo_contracts.py`
 - `py -B scripts/sync_agent_adapters.py --all-platforms --check`
@@ -397,14 +383,13 @@ The plan is ready for completion verification when:
 4. batch summaries account for requested, attempted, completed, failed, and skipped reviews
 5. result artifacts retain immutable prompt/revision provenance and verified model/effort values
 6. completion fallback and failure scope remain conservative, bounded, and tested
-7. account identity is visibly verified for strict unattended operation without credential inspection
-8. focused tests, contract tests, syntax checks, adapter synchronization, repository validation, and `git diff --check` pass
-9. the overlapping active plan is reconciled and only one coordination ledger is authoritative
-10. `skill-verification-before-completion` returns `verified` from fresh evidence
+7. focused tests, contract tests, syntax checks, adapter synchronization, repository validation, and `git diff --check` pass
+8. the predecessor plan is reconciled and only one coordination ledger is authoritative
+9. `skill-verification-before-completion` returns `verified` from fresh evidence
 
-The plan remains `proposed` until the lead reconciles the overlapping active
-plan and explicitly activates this ledger. No commit, push, live browser rerun,
-or external publication is implied by saving this plan.
+The predecessor plan is superseded and this ledger is active. No live browser
+rerun or external publication is implied by the plan; Git publication remains
+an explicitly authorized finishing action.
 
 ## Stop Conditions
 

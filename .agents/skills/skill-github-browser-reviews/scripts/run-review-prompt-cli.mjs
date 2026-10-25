@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -80,6 +80,8 @@ export function parseArguments(argv) {
 }
 
 export function createResult(options) {
+  const prompt = typeof options.prompt === "string" ? options.prompt : "";
+  const promptHash = prompt ? createHash("sha256").update(prompt, "utf8").digest("hex") : null;
   return {
     status: "running",
     run_id: options.runId || null,
@@ -100,6 +102,14 @@ export function createResult(options) {
     failure_scope: null,
     failure_stage: null,
     failure_reason: null,
+    review_index: options.reviewIndex ?? null,
+    request_provenance: {
+      prompt_file: options.promptFile || null,
+      prompt_sha256: promptHash,
+      repository: options.repository || null,
+      commit_sha: options.commitSha || null,
+      review_urls: Array.isArray(options.reviewUrls) ? [...options.reviewUrls] : [],
+    },
   };
 }
 
@@ -169,17 +179,26 @@ export async function readBatchReviews(batchFile) {
       model: review.model,
       prompt,
       promptFile,
+      repository: review.repository || null,
+      commitSha: review.commit_sha || review.commitSha || null,
+      reviewUrls: Array.isArray(review.review_urls) ? [...review.review_urls] : [],
+      reviewIndex: index,
     };
   }));
 }
 
-export function summarizeBatchResults(results) {
+export function summarizeBatchResults(results, requestedCount = results.length) {
   const completedCount = results.filter((result) => result.status === "completed").length;
+  const skippedCount = results.filter((result) => result.status === "skipped").length;
+  const attemptedCount = results.filter((result) => result.status !== "skipped").length;
   return {
-    status: completedCount === results.length ? "completed" : "incomplete",
-    review_count: results.length,
+    status: completedCount === requestedCount ? "completed" : "incomplete",
+    review_count: requestedCount,
+    requested_count: requestedCount,
+    attempted_count: attemptedCount,
     completed_count: completedCount,
-    failed_count: results.length - completedCount,
+    failed_count: results.filter((result) => result.status !== "completed" && result.status !== "skipped").length,
+    skipped_count: skippedCount,
     reviews: results,
   };
 }
@@ -188,7 +207,10 @@ function profileLeasePath(userDataDir) {
   return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
 }
 
-export async function acquireProfileLease(userDataDir, { writeMetadata = defaultWriteLeaseMetadata } = {}) {
+export async function acquireProfileLease(
+  userDataDir,
+  { writeMetadata = defaultWriteLeaseMetadata, isProcessAlive = defaultIsProcessAlive } = {},
+) {
   const profilePath = resolve(userDataDir);
   const lockPath = profileLeasePath(profilePath);
   await mkdir(dirname(profilePath), { recursive: true });
@@ -198,12 +220,25 @@ export async function acquireProfileLease(userDataDir, { writeMetadata = default
     handle = await open(lockPath, "wx");
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    throw new Error(`Browser profile is already in use or has ambiguous ownership: ${profilePath}`);
+    let metadata;
+    try {
+      metadata = JSON.parse(await readFile(lockPath, "utf8"));
+    } catch (metadataError) {
+      throw new Error(`ambiguous profile lease ownership: ${profilePath}`, { cause: metadataError });
+    }
+    if (!metadata || !Number.isInteger(metadata.pid) || typeof metadata.token !== "string" || metadata.profile !== profilePath) {
+      throw new Error(`ambiguous profile lease ownership: ${profilePath}`);
+    }
+    const ownerAlive = await isProcessAlive(metadata.pid);
+    if (ownerAlive) {
+      throw new Error(`Browser profile is already in use: ${profilePath}`);
+    }
+    throw new Error(`Stale profile lease requires operator-confirmed recovery: ${profilePath}`);
   }
 
   const token = randomUUID();
   try {
-    await writeMetadata(handle, { pid: process.pid, profile: profilePath, token });
+    await writeMetadata(handle, { pid: process.pid, profile: profilePath, token, started_at: new Date().toISOString() });
     return { handle, lockPath, profilePath, token };
   } catch (error) {
     await handle.close().catch(() => {});
@@ -214,6 +249,15 @@ export async function acquireProfileLease(userDataDir, { writeMetadata = default
 
 async function defaultWriteLeaseMetadata(handle, metadata) {
   await handle.writeFile(`${JSON.stringify(metadata)}\n`, "utf8");
+}
+
+async function defaultIsProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
 }
 
 export async function releaseProfileLease(lease) {
@@ -317,6 +361,10 @@ export async function closeContext(attached) {
 }
 
 function classifyFailureScope(stage, error) {
+  if (/(?:browser|context|target|page).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target|page)/i.test(errorMessage(error))) {
+    return "shared_context";
+  }
+  if (error?.failureScope) return error.failureScope;
   if (stage === "selection") return error?.failureScope === "review" ? "review" : "shared_context";
   if (stage === "submission" || stage === "completion") return "review";
   return null;
@@ -415,11 +463,41 @@ export async function runReviewTransaction(context, options) {
       result.failure_reason = completion.failureReason || "Review completion was not confirmed";
     }
   } catch (error) {
+    const transactionFailureReason = errorMessage(error);
+    if (error?.reviewPage) {
+      page = error.reviewPage;
+      const baseline = error.reviewBaseline;
+      let currentUrl = null;
+      try {
+        currentUrl = typeof page.url === "function" ? page.url() : null;
+      } catch {
+        currentUrl = null;
+      }
+      result.conversation_url = baseline?.conversationUrl || currentUrl;
+      result.conversation_id = baseline?.conversationId || null;
+      if (error.submissionAttempted && baseline) {
+        try {
+          const completion = await waitForCompletion(page, { baseline });
+          result.completion = completion.status;
+          result.conversation_url = completion.currentUrl || result.conversation_url;
+          result.conversation_id = completion.conversationId || result.conversation_id;
+          result.assistant_message_id = completion.assistantMessageId || null;
+          result.assistant_turn_index = completion.assistantTurnIndex ?? null;
+          if (completion.response && outputDir) {
+            await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
+          }
+        } catch (preservationError) {
+          result.failure_reason = appendFailureReason(transactionFailureReason, `evidence preservation failed: ${errorMessage(preservationError)}`);
+        }
+      }
+    }
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
     result.failure_scope = classifyFailureScope(stage, error);
     result.failure_stage = stage;
-    result.failure_reason = errorMessage(error);
-    if (stage === "submission" && result.submission !== "acknowledged") result.submission = "ambiguous";
+    result.failure_reason ||= transactionFailureReason;
+      if (stage === "submission" && result.submission !== "acknowledged" && error.submissionAttempted !== false) {
+        result.submission = "ambiguous";
+      }
   } finally {
     if (outputDir) {
       try {
@@ -472,13 +550,27 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
     if (!attached?.context) throw new Error("attached authenticated context is required");
     if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
 
-    for (const review of reviews) {
+    for (let index = 0; index < reviews.length; index += 1) {
+      const review = reviews[index];
       const result = await runTransaction(attached.context, {
         ...review,
+        reviewIndex: review.reviewIndex ?? index,
         outputDir,
       });
       results.push(result);
-      if (result.status !== "completed" && result.failure_scope !== "review") break;
+      if (result.status !== "completed" && result.failure_scope !== "review") {
+        for (let skippedIndex = index + 1; skippedIndex < reviews.length; skippedIndex += 1) {
+          const skippedReview = reviews[skippedIndex];
+          results.push({
+            ...createResult({ ...skippedReview, reviewIndex: skippedReview.reviewIndex ?? skippedIndex }),
+            status: "skipped",
+            failure_scope: "shared_context",
+            failure_stage: "batch",
+            failure_reason: `Skipped after review ${index + 1} stopped the shared batch`,
+          });
+        }
+        break;
+      }
     }
   } finally {
     if (attached) {
@@ -545,6 +637,10 @@ export async function main(argv, dependencies = {}) {
         model: options.model,
         outputDir: options.outputDir,
         prompt: reviews[0].prompt,
+        promptFile: reviews[0].promptFile,
+        repository: reviews[0].repository,
+        commitSha: reviews[0].commitSha,
+        reviewUrls: reviews[0].reviewUrls,
       });
     }
   } catch (error) {
@@ -557,6 +653,22 @@ export async function main(argv, dependencies = {}) {
         cleanup_warning: cleanupReason,
         failure_stage: "cleanup",
         failure_reason: cleanupReason,
+      };
+    } else if (options.batchFile) {
+      const reason = errorMessage(error);
+      const skipped = reviews.map((review, index) => ({
+        ...createResult({ ...review, reviewIndex: review.reviewIndex ?? index }),
+        status: "skipped",
+        failure_scope: "shared_context",
+        failure_stage: "browser",
+        failure_reason: `Skipped because the shared batch context was unavailable: ${reason}`,
+      }));
+      result = {
+        ...summarizeBatchResults(skipped, reviews.length),
+        status: "blocked",
+        failure_scope: "shared_context",
+        failure_stage: "browser",
+        failure_reason: reason,
       };
     } else {
       result = {

@@ -228,15 +228,22 @@ authenticated context for sequential fresh-tab transactions, allocates a
  the shared context cannot be closed. Repeated reviews with the same model use
  the same authenticated context; persistent-profile mode holds an exclusive
  profile lease for the lifetime of the owned context, so overlapping launches
- fail before opening a second browser. A lease is recoverable only when its
- recorded owner is proven dead; malformed, live, or ambiguous ownership stays
- blocked, and release removes only the current lease token. Selection failures
+ fail before opening a second browser. Malformed, live, stale, or ambiguous
+ ownership stays blocked for operator-confirmed recovery; the runner never
+ deletes a stale lock based only on a PID, timestamp, or profile path, and
+ release removes only the current lease token. Selection failures
  carry an explicit scope: the batch continues only for a review-scoped failure
  and stops for shared-context or unknown failures. The failed review is never
  resubmitted or silently switched to another model. Do not add a keep-open flag
  or a second browser lifecycle owner. A newly created tab that does not reach the
 composer readiness state is page-local and review-scoped; failure to create a
-page or loss of the shared browser context remains shared-context scoped.
+page or loss of the shared browser context remains shared-context scoped. If a
+send acknowledgement is ambiguous, preserve the owned page and any visible
+conversation/completion evidence before cleanup, mark `submission` as
+`ambiguous`, and never send the prompt again. Batch summaries include requested,
+attempted, completed, failed, and skipped entries; each result retains sanitized
+prompt hash, repository, full commit SHA, and pinned review URL provenance when
+the controller supplies them.
 
 Model-menu interaction uses a five-second UI action/transition timeout. Initial
 model-menu opening remains ten seconds, completion observation remains bounded
