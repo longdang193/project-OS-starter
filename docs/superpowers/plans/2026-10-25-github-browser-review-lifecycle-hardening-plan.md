@@ -419,13 +419,6 @@ Omitted because this is an inline sequential plan with no delegated or parallel 
 
 ## Verification
 
-## Execution Record
-
-- Tasks 1–6 executed in the current workspace with focused regression coverage for completion promotion, post-submit evidence preservation, durable terminal status, single-review setup failures, shared-context classification, CDP identity, profile binding, setup cleanup diagnostics, batch aggregate persistence, and explicit lifecycle counts.
-- Canonical runner and skill documentation were updated; generated adapter mirrors were refreshed with `py -3 scripts/sync_agent_adapters.py --all-platforms`.
-- Fresh proof currently passes: `node --test tests/test_github_browser_review_lifecycle.mjs`, `py -3 scripts/sync_agent_adapters.py --all-platforms --check`, `py -3 scripts/validate_repo_contracts.py --fast`, `py -3 scripts/validate_planning_lifecycle.py`, and `git diff --check`.
-- Unrelated local artifacts preserved: `.playwright-mcp/`, `.review-profile/`, `.runtime/`, and `node_modules/`.
-
 Use this section for final artifact-level verification only.
 
 - `node --test tests/test_github_browser_review_lifecycle.mjs`
@@ -434,6 +427,13 @@ Use this section for final artifact-level verification only.
 - `py -3 scripts/validate_planning_lifecycle.py`
 - `git diff --check`
 - Expected: focused lifecycle tests, repository contracts, planning lifecycle, generated-adapter drift, and whitespace checks all pass against the implemented candidate.
+
+## Execution Record
+
+- Tasks 1–6 executed in the current workspace with focused regression coverage for completion promotion, post-submit evidence preservation, durable terminal status, single-review setup failures, shared-context classification, CDP identity, profile binding, setup cleanup diagnostics, batch aggregate persistence, and explicit lifecycle counts.
+- Canonical runner and skill documentation were updated; generated adapter mirrors were refreshed with `py -3 scripts/sync_agent_adapters.py --all-platforms`.
+- Fresh proof currently passes: `node --test tests/test_github_browser_review_lifecycle.mjs`, `py -3 scripts/sync_agent_adapters.py --all-platforms --check`, `py -3 scripts/validate_repo_contracts.py --fast`, `py -3 scripts/validate_planning_lifecycle.py`, and `git diff --check`.
+- Unrelated local artifacts preserved: `.playwright-mcp/`, `.review-profile/`, `.runtime/`, and `node_modules/`.
 
 ## Completion Criteria
 
