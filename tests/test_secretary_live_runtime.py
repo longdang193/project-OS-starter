@@ -135,6 +135,39 @@ def test_run_probe_claims_admission_before_workspace_allocation(
     assert result["disposition"] == "BLOCKED_CAPABILITY"
 
 
+def test_run_probe_launcher_timeout_preserves_partial_output_and_requires_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    request_value = request(worktree=tmp_path)
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr(runtime, "_configured_model", lambda _: "gpt-test")
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "herdr.exe")
+    monkeypatch.setattr(runtime, "claim_submission", lambda *args, **kwargs: {"state": "claimed"})
+    monkeypatch.setattr(runtime, "prepare_submission", lambda *args, **kwargs: {"state": "prepared"})
+    monkeypatch.setattr(runtime, "settle_submission", lambda *args, **kwargs: {"state": kwargs.get("state")})
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_herdr_target",
+        lambda *args, **kwargs: (request_value, {}, "workspace-1"),
+    )
+    monkeypatch.setattr(runtime, "_capture_submission_anchor", lambda *args, **kwargs: {})
+    monkeypatch.setattr(runtime, "_close_herdr_workspace", lambda *args, **kwargs: {"state": "closed", "verified": True})
+
+    def timeout(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout"), output="partial stdout", stderr="partial stderr")
+
+    monkeypatch.setattr(runtime.subprocess, "run", timeout)
+
+    result = runtime.run_probe(request_value, output=tmp_path / "probe.json")
+
+    assert result["disposition"] == "BLOCKED_CAPABILITY"
+    assert result["failure_kind"] == "launcher_timeout"
+    assert result["reconciliation_required"] is True
+    assert result["launcher_output"] == {"stdout": "partial stdout", "stderr": "partial stderr"}
+
+
 def test_recover_quarantined_receipt_is_idempotent_when_already_settled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     receipt = _quarantined_receipt(tmp_path)
     payload = json.loads(receipt.read_text(encoding="utf-8"))
@@ -5472,6 +5505,13 @@ def test_prepare_herdr_target_bootstraps_server_workspace_and_rechecks_pane(
         return {"pane": {"cwd": "C:/worktree/"}}
 
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            runtime.TargetResolutionBlocked("no reusable target", {"status": "blocked"})
+        ),
+    )
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(runtime, "_herdr_pane", fake_pane, raising=False)
     monkeypatch.setattr(runtime.time, "sleep", lambda _: None)
@@ -5547,6 +5587,47 @@ def test_prepare_herdr_target_reuses_named_session_with_auto_pane(
     assert preflight["selector_mode"] == "named-session-auto-pane"
     assert preflight["session"] == "default"
     assert preflight["pane"] == "auto"
+    assert preflight["workspace_created"] is False
+    assert workspace_id is None
+    assert commands == [["herdr", "status", "server"]]
+
+
+def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[1:] == ["status", "server"]:
+            return subprocess.CompletedProcess(command, 0, "status: running\n", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: (
+            "default",
+            "w1:p1",
+            {"status": "selected", "mode": "auto", "candidate_count": 1},
+        ),
+    )
+    monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "_create_herdr_workspace", lambda *args, **kwargs: pytest.fail("workspace should not be created"))
+
+    original = request(session="auto", pane="auto")
+    launch_request, preflight, workspace_id = runtime._prepare_herdr_target(
+        original,
+        herdr="herdr",
+        env={},
+    )
+
+    assert launch_request.session == "default"
+    assert launch_request.pane == "w1:p1"
+    assert preflight["selector_mode"] == "reused-verified"
     assert preflight["workspace_created"] is False
     assert workspace_id is None
     assert commands == [["herdr", "status", "server"]]

@@ -59,6 +59,8 @@ class RemotePrEvidence:
     def checks_current(self) -> bool:
         latest, ambiguous = self._latest_checks()
         required = set(self.required_checks)
+        if not required:
+            return not ambiguous.intersection(required)
         return bool(latest) and not ambiguous.intersection(required) and all(
             latest.get(name, {}).get("head_sha") == self.head_sha
             and latest.get(name, {}).get("conclusion") in _SUCCESSFUL_CHECKS

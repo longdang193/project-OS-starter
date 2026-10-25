@@ -24,8 +24,12 @@ TASK_RESULT_STATUSES = frozenset({"in_progress", "completed", "failed", "blocked
 _CAPABILITY_DIGEST_FIELDS = ("requested", "passed_to_worker", "validated_available")
 
 
+class EvidenceLockTimeout(TimeoutError):
+    """Evidence lock could not be acquired before its bounded deadline."""
+
+
 @contextmanager
-def evidence_path_lock(path: Path):
+def evidence_path_lock(path: Path, *, timeout_seconds: float = 5.0):
     lock_path = path.with_name(f".{path.name}.release.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle:
@@ -33,10 +37,20 @@ def evidence_path_lock(path: Path):
         handle.write(b"0")
         handle.flush()
         handle.seek(0)
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        acquired = False
         if os.name == "nt":
             import msvcrt
 
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            while not acquired:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    acquired = True
+                except OSError as exc:
+                    if time.monotonic() >= deadline:
+                        raise EvidenceLockTimeout(f"timed out acquiring evidence lock: {lock_path}") from exc
+                    time.sleep(min(0.01, max(0.001, deadline - time.monotonic())))
             try:
                 yield
             finally:
@@ -45,7 +59,14 @@ def evidence_path_lock(path: Path):
         else:
             import fcntl
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            while not acquired:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                except (BlockingIOError, OSError) as exc:
+                    if time.monotonic() >= deadline:
+                        raise EvidenceLockTimeout(f"timed out acquiring evidence lock: {lock_path}") from exc
+                    time.sleep(min(0.01, max(0.001, deadline - time.monotonic())))
             try:
                 yield
             finally:

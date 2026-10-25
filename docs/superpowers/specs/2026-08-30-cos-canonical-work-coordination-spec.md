@@ -190,14 +190,18 @@ targets:
 - Advisory mode cannot mutate plan, Git, PR, review, release, or durable coordination state.
 - CoS does not create adapter files, registries, timers, hooks, profiles, or persistent state.
 - Generated surfaces derive from canonical `.agents/skills` sources.
-- Acceptance authority is external to CoS.
+- CoS is the acceptance authority for plan-bound task transitions; workers,
+  Herdr, and Secretary may provide evidence but cannot authorize acceptance.
+- Plan-bound acceptance uses the canonical binding validator before an
+  authorized transition; a bound policy with zero required repository checks is
+  distinct from unavailable or unbound check evidence.
 
 ### Edge Cases
 
 - empty or minimal input: no canonical target or no independent coordination benefit uses ordinary execution or returns `BLOCKED` when binding is required.
 - normal and large input: advisory audit stays scoped to declared repository target and exact commit; no unrelated repository scan is implied.
 - duplicate, missing, malformed, or unsupported data: ambiguous identity, missing authority, or unsupported work type returns `BLOCKED`.
-- retry, cancellation, timeout, partial failure, or concurrency: advisory mode reports current-turn evidence; it creates no retry state; plan-bound behavior keeps existing runtime and lane rules.
+- retry, cancellation, timeout, partial failure, or concurrency: advisory mode reports current-turn evidence; it creates no retry state; plan-bound behavior preserves uncertain evidence, requires reconciliation for unknown ownership, and never replays a started attempt automatically.
 - migration or mixed-version state: generated mirrors are regenerated after canonical source change; stale adapter output fails sync check.
 - generated-source consistency: canonical source edits precede adapter sync; unrelated pre-existing generated drift blocks mutating sync.
 - security or accessibility boundary: no new external write authority or credential handling is introduced.

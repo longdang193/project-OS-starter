@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: herdr-cos-workers-secretary-operational-hardening
@@ -16,6 +16,7 @@ targets:
   - scripts/herdr_main_launcher.py
   - scripts/secretary_live_runtime.py
   - tests/test_herdr_parallel_dispatch.py
+  - tests/test_herdr_attempt_contract.py
   - tests/test_herdr_main_launcher.py
   - tests/test_project_os_runtime.py
   - tests/test_acceptance_handoff.py
@@ -60,7 +61,8 @@ released, without replaying a lane that already started. If interruption,
 capacity, or a coordinator failure leaves a lane unstarted, the result and CLI
 exit status identify the incomplete batch instead of reporting success. Parallel
 admission keys concrete pane resources by session and pane; the literal `auto`
-selector remains a request for resolution rather than a shared physical pane.
+selector remains unresolved only during provisional admission, then the resolved
+`(session, pane)` is atomically checked and reserved before side effects begin.
 Receipt correlation requires complete mandatory assignment, task, and attempt
 identity. Runtime Grant mismatch is a verification failure even when the
 underlying process and resource cleanup are settled.
@@ -118,18 +120,19 @@ new coordinator, daemon, registry, browser owner, or retry path.
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
 - Branch: `main`
-- Base commit: `ee0bb2898b582db60ccaf5553fae0ac037f09ca1`
-- Expected workspace: `tracked files clean at the reviewed base; preserve untracked .playwright-mcp, .review-profile, .runtime, node_modules, and review-output artifacts`
-- Next action: `approve this proposed plan, then activate Task 1 from the reviewed base`
+- Base commit: `ee0bb2898b582db60ccaf5553fae0ac037f09ca1` (reviewed source baseline)
+- Plan commit: `050292dc691145ef78b0107fb5bafe5c813cb9f3`
+- Expected workspace: `implementation changes remain within declared targets; preserve untracked .playwright-mcp, .review-profile, .runtime, node_modules, and review-output artifacts`
+- Next action: `run fresh completion verification before any plan-status transition; commit/push remain separately authorized`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `unresolved` | none | focused dispatch and identity tests | pending |
-| Task 2 | `pending` | current | `unresolved` | Task 1 | acceptance, handoff, and reconciliation tests | pending |
-| Task 3 | `pending` | current | `unresolved` | Task 1 | timeout and lock-contention tests | pending |
-| Task 4 | `pending` | current | `unresolved` | Tasks 1–3 | Secretary/Herdr reuse and recovery tests | pending |
-| Task 5 | `pending` | current | `unresolved` | Tasks 1–4 | specification, repository, and final verification checks | pending |
+| Task 1 | `completed` | current | `codex` | none | focused dispatch and identity tests | `135 passed` |
+| Task 2 | `completed` | current | `codex` | Task 1 | acceptance, handoff, and reconciliation tests | `81 passed` |
+| Task 3 | `completed` | current | `codex` | Tasks 1–2 | timeout and lock-contention tests | `89 dispatch passed; launcher timeout and lock contention passed` |
+| Task 4 | `completed` | current | `codex` | Tasks 1–3 | Secretary/Herdr reuse and recovery tests | `516 passed, 2 skipped; verified reuse had zero workspace allocation` |
+| Task 5 | `completed` | current | `codex` | Tasks 1–4 | specification, repository, and final verification checks | `733 passed, 2 skipped; repository/planning validators and diff check passed` |
 
 ## Validated Findings And Decisions
 
@@ -197,13 +200,13 @@ untracked artifacts.
 - Stop for: any need to alter worker ownership, introduce automatic replay, change the attempt contract, or modify files outside Task 1 ownership.
 
 **Steps:**
-- [ ] Step 1: Add one canonical resource-key helper that uses `(session, pane)` for concrete selectors and represents `auto` as unresolved; update duplicate/conflict admission and tests for cross-session and auto-selector cases.
-- [ ] Step 2: Replace one-shot admission submission with a bounded pending-deferred queue. Submit only never-started deferred lanes as admitted futures complete; record `refilled` lanes and leave interrupted/unstarted lanes explicitly deferred. Do not resubmit a lane after `run_lane()` starts.
-- [ ] Step 3: Make `_receipt_correlation_matches()` reject absent mandatory assignment/task/attempt identities; set `failure_kind="grant_mismatch"` when grant evidence is unverified; include grant verification and remaining deferred lanes in the CLI exit classification.
-- [ ] Step 4: Update existing deferred/refill, grant-digest, stale-assignment, timeout, callback, and CLI exit tests; add assertions for exact result fields and event ordering.
+- [x] Step 1: Add one canonical resource-key helper that uses `(session, pane)` for concrete selectors and represents `auto` as unresolved during provisional admission; before any lane side effect, resolve the selector and atomically check/reserve the concrete `(session, pane)` through the existing ownership mechanism. A collision defers or rejects only the never-started lane, and the reservation is released at settlement. Update duplicate/conflict admission and tests for cross-session, auto-selector, post-resolution collision, and reservation-release cases. If existing launcher semantics already provide the atomic check/reservation, cite that mechanism instead of adding a registry.
+- [x] Step 2: Replace one-shot admission submission with a bounded pending-deferred queue. Submit only never-started deferred lanes as admitted futures complete; record `refilled` lanes and leave interrupted/unstarted lanes explicitly deferred. Do not resubmit a lane after `run_lane()` starts.
+- [x] Step 3: Make `_receipt_correlation_matches()` reject absent mandatory assignment/task/attempt identities; set `failure_kind="grant_mismatch"` when grant evidence is unverified; include grant verification and remaining deferred lanes in the CLI exit classification.
+- [x] Step 4: Update existing deferred/refill, grant-digest, stale-assignment, timeout, callback, and CLI exit tests; add assertions for exact result fields and event ordering.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_attempt_contract.py`
+- [x] `py -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_attempt_contract.py`
 - Expected: deferred lanes are either refilled exactly once or reported incomplete, missing identities never correlate, grant mismatch is non-zero, and existing sibling/timeout evidence remains intact.
 
 **Exit Criteria:**
@@ -245,13 +248,13 @@ untracked artifacts.
 - Stop for: any change that grants acceptance authority to Herdr, workers, Secretary, or a new runtime registry.
 
 **Steps:**
-- [ ] Step 1: Extract or reuse one binding-validation path so `evaluate_acceptance()` cannot construct an authorized `PASS` with missing assignment or checkpoint proof required by `validate_acceptance_decision()`.
-- [ ] Step 2: Preserve the existing `BLOCKED` versus `FAIL` distinction and ensure every returned decision is validated before `task_transition.authorized` becomes true.
-- [ ] Step 3: Change `checks_current` so a policy-bound empty `required_checks` set is satisfied when there are no ambiguous required checks; retain head-SHA and successful-conclusion checks for every named required check.
-- [ ] Step 4: Add regression cases for missing assignment/checkpoint fields, accepted handoff rejection, bound zero-check policy, missing policy source, stale required checks, and old-head evidence.
+- [x] Step 1: Extract or reuse one binding-validation path so `evaluate_acceptance()` cannot construct an authorized `PASS` with missing assignment or checkpoint proof required by `validate_acceptance_decision()`.
+- [x] Step 2: Preserve the existing `BLOCKED` versus `FAIL` distinction and ensure every returned decision is validated before `task_transition.authorized` becomes true.
+- [x] Step 3: Change `checks_current` so a policy-bound empty `required_checks` set is satisfied when there are no ambiguous required checks; retain head-SHA and successful-conclusion checks for every named required check.
+- [x] Step 4: Add regression cases for missing assignment/checkpoint fields, accepted handoff rejection, bound zero-check policy, missing policy source, stale required checks, and old-head evidence.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_project_os_runtime.py tests/test_acceptance_handoff.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py`
+- [x] `py -m pytest -q tests/test_project_os_runtime.py tests/test_acceptance_handoff.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py`
 - Expected: no authorized `PASS` fails the canonical validator, zero-check policy passes only with a valid bound policy, and configured checks remain strict.
 
 **Exit Criteria:**
@@ -293,13 +296,13 @@ untracked artifacts.
 - Stop for: any unbounded wait, blind cleanup claim, automatic retry, or deletion of evidence after timeout/lock contention.
 
 **Steps:**
-- [ ] Step 1: Derive the Secretary launcher subprocess timeout from the active attempt/probe deadline, catch `TimeoutExpired`, preserve partial stdout/stderr and submission evidence, and return `reconciliation_required`/unknown ownership before the existing cleanup path.
-- [ ] Step 2: Pass remaining dispatch time into each `git merge-base --is-ancestor` subprocess in `launch_preflight`; convert timeout to a deterministic blocker and prevent later checks from exceeding the deadline.
-- [ ] Step 3: Extend `evidence_path_lock()` with bounded non-blocking acquisition using the same timeout contract on Windows and POSIX. Add an explicit lock-timeout error/result; make release callers preserve the artifact and report deferred release instead of hanging.
-- [ ] Step 4: Test launcher timeout, Git timeout, lock contention, successful release, idempotent publication, cleanup verification, and preservation of partial evidence.
+- [x] Step 1: Derive the Secretary launcher subprocess timeout from the active attempt/probe deadline, catch `TimeoutExpired`, preserve partial stdout/stderr and submission evidence, and return `reconciliation_required`/unknown ownership before the existing cleanup path.
+- [x] Step 2: Pass remaining dispatch time into each `git merge-base --is-ancestor` subprocess in `launch_preflight`; convert timeout to a deterministic blocker and prevent later checks from exceeding the deadline.
+- [x] Step 3: Extend `evidence_path_lock()` with bounded non-blocking acquisition using the same timeout contract on Windows and POSIX. Add an explicit lock-timeout error/result; make release callers preserve the artifact and report deferred release instead of hanging.
+- [x] Step 4: Test launcher timeout, Git timeout, lock contention, successful release, idempotent publication, cleanup verification, and preservation of partial evidence.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_parallel_dispatch.py tests/test_project_os_runtime.py tests/test_acceptance_handoff.py`
+- [x] `py -m pytest -q tests/test_secretary_live_runtime.py tests/test_herdr_parallel_dispatch.py tests/test_project_os_runtime.py tests/test_acceptance_handoff.py`
 - Expected: every forced timeout returns within the declared bound, preserves evidence, reaches cleanup/reconciliation, and never reports confirmed retirement without proof.
 
 **Exit Criteria:**
@@ -342,17 +345,17 @@ untracked artifacts.
 - Stop for: reuse of an unverified/ambiguous pane, global cleanup of user workspaces, or a new long-lived browser/window owner.
 
 **Steps:**
-- [ ] Step 1: Route Secretary auto/auto probe resolution through the existing verified Herdr candidate-selection semantics, preserving named-session behavior and creating a workspace only after compatible reuse is exhausted.
-- [ ] Step 2: Set `workspace_created` and `workspace_id` only for the current invocation's allocation; keep the existing `finally` close path limited to that owned workspace and retain unknown cleanup evidence when close verification fails.
-- [ ] Step 3: Change malformed snapshot handling so malformed records that cannot be tied to the requested workspace are excluded from candidate reuse and trigger a fresh independently verified allocation path rather than poisoning every auto launch. Never reuse an ambiguous record.
-- [ ] Step 4: Add per-candidate discovery caps while retaining the five-second total and one-second allocation reserve; prioritize focused/likely reusable candidates before stale candidates.
-- [ ] Step 5: Make dirty-workspace identity uncertainty local to relevant request/output inputs. When persisted native evidence has a valid binding and only unrelated oversized/unreadable artifacts are uncertain, preserve the safe recovery path; retain hard blocking for uncertainty in the bound workspace inputs.
-- [ ] Step 6: Add mock assertions for zero workspace-create/close calls on verified reuse, one create/close pair on allocation, malformed unrelated snapshot fallback, per-candidate timeout behavior, and fingerprint recovery. Record command-count/elapsed-time evidence for the same probe workload before and after the change.
+- [x] Step 1: Route Secretary auto/auto probe resolution through the existing verified Herdr candidate-selection semantics, preserving named-session behavior and creating a workspace only after compatible reuse is exhausted.
+- [x] Step 2: Set `workspace_created` and `workspace_id` only for the current invocation's allocation; keep the existing `finally` close path limited to that owned workspace and retain unknown cleanup evidence when close verification fails.
+- [x] Step 3: Change malformed snapshot handling so malformed records that cannot be tied to the requested workspace are excluded from candidate reuse and trigger a fresh independently verified allocation path rather than poisoning every auto launch. Never reuse an ambiguous record.
+- [x] Step 4: Add per-candidate discovery caps while retaining the five-second total and one-second allocation reserve; prioritize focused/likely reusable candidates before stale candidates.
+- [x] Step 5: Make dirty-workspace identity uncertainty local to relevant request/output inputs. When persisted native evidence has a valid binding and only unrelated oversized/unreadable artifacts are uncertain, preserve the safe recovery path; retain hard blocking for uncertainty in the bound workspace inputs.
+- [x] Step 6: Add mock assertions for zero workspace-create/close calls on verified reuse, one create/close pair on allocation, malformed unrelated snapshot fallback, per-candidate timeout behavior, and fingerprint recovery. Record command-count/elapsed-time evidence for the same probe workload before and after the change.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_herdr_main_launcher.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
+- [x] `py -m pytest -q tests/test_herdr_main_launcher.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
 - Expected: repeated auto probes reuse a verified target without workspace recreation, allocation remains isolated and owned, malformed snapshots do not cause false global failure, and discovery stays within total and per-candidate bounds.
-- [ ] Operational metric inspection: compare the existing mock probe workload with the changed workload; require zero create/close calls on the verified-reuse case, unchanged cleanup proof, and no increase in launcher command count for the reused case.
+- [x] Operational metric inspection: compare the existing mock probe workload with the changed workload; require zero create/close calls on the verified-reuse case, unchanged cleanup proof, and no increase in launcher command count for the reused case.
 
 **Exit Criteria:**
 - Secretary avoids unnecessary target recreation while all reused and allocated resources retain explicit ownership and cleanup evidence.
@@ -392,20 +395,20 @@ untracked artifacts.
 - Stop for: specification text that would weaken fail-closed ownership, any unrecorded source/test drift, or any need to delete preserved review/runtime artifacts.
 
 **Steps:**
-- [ ] Step 1: Update the dispatch specification to state that never-started capacity-deferred lanes may be bounded-refilled, started attempts are never replayed automatically, and leftover deferred lanes produce explicit incomplete evidence.
-- [ ] Step 2: Update the CoS specification to state that acceptance uses one canonical binding validator and that verified zero-check policies are distinct from unavailable check evidence.
-- [ ] Step 3: Run focused suites from Tasks 1–4, repository contract validation, syntax checks, planning validation, and whitespace validation.
-- [ ] Step 4: Confirm the tracked diff contains only declared targets and preserved untracked review/runtime artifacts remain untouched. Keep plan status `proposed` until a later execution and verification workflow proves completion.
+- [x] Step 1: Update the dispatch specification to state that never-started capacity-deferred lanes may be bounded-refilled, started attempts are never replayed automatically, and leftover deferred lanes produce explicit incomplete evidence.
+- [x] Step 2: Update the CoS specification to state that acceptance uses one canonical binding validator and that verified zero-check policies are distinct from unavailable check evidence.
+- [x] Step 3: Run focused suites from Tasks 1–4, repository contract validation, syntax checks, planning validation, and whitespace validation.
+- [x] Step 4: Confirm the tracked diff contains only declared targets and preserved untracked review/runtime artifacts remain untouched. Keep plan status `proposed` until a later execution and verification workflow proves completion; an unimplemented P1/P2 finding cannot be closed as a generic execution deferral.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_project_os_runtime.py tests/test_acceptance_handoff.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
-- [ ] `py -B scripts/validate_repo_contracts.py`
-- [ ] `py -B scripts/validate_planning_lifecycle.py`
-- [ ] `git diff --check`
+- [x] `py -m pytest -q tests/test_herdr_parallel_dispatch.py tests/test_herdr_attempt_contract.py tests/test_herdr_main_launcher.py tests/test_project_os_runtime.py tests/test_acceptance_handoff.py tests/test_reconciliation.py tests/test_project_os_reconciliation.py tests/test_secretary_live_runtime.py tests/test_secretary_live_pilot.py`
+- [x] `py -B scripts/validate_repo_contracts.py`
+- [x] `py -B scripts/validate_planning_lifecycle.py`
+- [x] `git diff --check`
 - Expected: all focused tests and repository checks pass; no untracked review/runtime artifact is deleted or modified by cleanup.
 
 **Exit Criteria:**
-- Every retained finding has an implemented outcome, focused proof, and owning-spec alignment, or a recorded execution blocker/deferral.
+- Every retained finding has an implemented outcome, focused proof, and owning-spec alignment. A finding may leave this plan only through an explicit user-approved re-scope that removes it from the retained findings; an unimplemented P1/P2 finding remains open and prevents completion.
 
 ## Verification
 
@@ -425,7 +428,7 @@ plan itself is complete. A later execution must also run
 
 The plan is ready for completion verification when:
 
-1. Every retained P1–P3 finding has an implemented correction or an explicit recorded deferral.
+1. Every retained P1–P3 finding has an implemented correction. An explicit user-approved re-scope may remove a finding from the retained set before completion verification; a generic execution deferral does not satisfy this criterion, and an unresolved P1/P2 finding prevents completion.
 2. No started attempt is automatically replayed; never-started deferred work is either bounded-refilled or reported incomplete.
 3. Acceptance, grant, receipt, and reconciliation evidence have one consistent authority and truthful exit states.
 4. All material subprocess, Git, discovery, and evidence-lock waits are deadline-bounded.

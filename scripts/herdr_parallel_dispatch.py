@@ -54,6 +54,7 @@ try:
         canonical_token,
         classify_admission,
         legacy_admission_lists,
+        pane_resource_key,
         resource_sets_conflict,
         validate_admission_results,
     )
@@ -64,6 +65,7 @@ except ModuleNotFoundError:
         canonical_token,
         classify_admission,
         legacy_admission_lists,
+        pane_resource_key,
         resource_sets_conflict,
         validate_admission_results,
     )
@@ -173,7 +175,11 @@ def _is_coordinated_lane(lane: Mapping[str, Any]) -> bool:
     return any(lane.get(name) is not None for name in ("plan_revision", "plan_source", "execution_binding_digest"))
 
 
-def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
+def launch_preflight(
+    lane: PreparedLane,
+    *,
+    timeout_seconds: float | None = None,
+) -> LaunchPreflight:
     """Collect launch-bound checks without duplicating PreparedLane facts."""
     checks: list[LaunchCheck] = []
     binding_digest = lane.get("execution_binding_digest")
@@ -218,12 +224,22 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
                 checks.append(LaunchCheck(name, "NOT_EVALUATED", because="worktree_not_found"))
         return LaunchPreflight(lane, tuple(checks))
 
-    base_check = subprocess.run(
-        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", str(lane["expected_base"]), "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        base_check = subprocess.run(
+            ["git", "-C", str(worktree), "merge-base", "--is-ancestor", str(lane["expected_base"]), "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=max(0.001, float(timeout_seconds)) if timeout_seconds is not None else None,
+        )
+    except subprocess.TimeoutExpired:
+        checks.append(LaunchCheck(
+            "git_base",
+            "BLOCKED",
+            code="git_timeout",
+            detail="git base preflight exceeded the remaining dispatch deadline",
+        ))
+        return LaunchPreflight(lane, tuple(checks))
     checks.append(LaunchCheck(
         "git_base",
         "PASS" if base_check.returncode == 0 else "BLOCKED",
@@ -242,12 +258,22 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
         if not isinstance(revision, str) or not revision.strip():
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_missing", detail=f"missing accepted revision: {dependency}"))
             continue
-        revision_check = subprocess.run(
-            ["git", "-C", str(worktree), "merge-base", "--is-ancestor", revision, "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            revision_check = subprocess.run(
+                ["git", "-C", str(worktree), "merge-base", "--is-ancestor", revision, "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=max(0.001, float(timeout_seconds)) if timeout_seconds is not None else None,
+            )
+        except subprocess.TimeoutExpired:
+            prerequisite_checks.append(LaunchCheck(
+                f"prerequisite:{dependency}",
+                "BLOCKED",
+                code="git_timeout",
+                detail=f"git prerequisite preflight exceeded the remaining dispatch deadline: {dependency}",
+            ))
+            break
         if revision_check.returncode != 0:
             prerequisite_checks.append(LaunchCheck(f"prerequisite:{dependency}", "BLOCKED", code="revision_not_contained", detail=f"accepted revision is not contained in worktree: {dependency}"))
             continue
@@ -277,7 +303,7 @@ def launch_preflight(lane: PreparedLane) -> LaunchPreflight:
 
 def verify_launch_bindings(lane: PreparedLane) -> PreparedLane:
     """Revalidate plan-bound facts immediately before launch."""
-    preflight = launch_preflight(lane)
+    preflight = launch_preflight(lane, timeout_seconds=5.0)
     if preflight.binding_status == "UNVERIFIED" and _is_coordinated_lane(lane):
         raise ValueError("coordinated launch binding evidence is unavailable")
     if preflight.blockers:
@@ -329,7 +355,7 @@ def _prepare_admission(
 
     admitted: list[PreparedLane] = []
     seen_worktrees: dict[str, str] = {}
-    seen_panes: dict[str, str] = {}
+    seen_panes: dict[tuple[str, str], str] = {}
     shared_contracts: tuple[str, ...] | None = None
 
     for raw_lane, lane_id in zip(raw_lanes, lane_ids):
@@ -362,9 +388,9 @@ def _prepare_admission(
             continue
 
         worktree = _canonical_path(lane["worktree"])
-        pane = canonical_token(lane["pane"])
+        pane = pane_resource_key(lane.get("session"), lane.get("pane"))
         conflict_reason: str | None = None
-        if pane in seen_panes:
+        if pane is not None and pane in seen_panes:
             conflict_reason = "pane conflicts with " + seen_panes[pane]
         contracts = tuple(sorted(map(str, lane["fixed_contracts"])))
         if shared_contracts is None:
@@ -393,7 +419,8 @@ def _prepare_admission(
         if result.state == "ADMITTED":
             admitted.append(lane)
             seen_worktrees[worktree] = lane_id
-            seen_panes[pane] = lane_id
+            if pane is not None:
+                seen_panes[pane] = lane_id
 
     return AdmissionBatch(tuple(admitted), validate_admission_results(admission_results))
 
@@ -721,8 +748,18 @@ def _receipt_correlation_matches(lane: Mapping[str, Any], parsed: Mapping[str, A
     ))
     expected_task = _sha256_text(str(lane["task"]))
     attempt_id = registry.get("attempt_id")
+    mandatory = (
+        registry.get("assignment_id"),
+        assignment.get("assignment_id"),
+        registry.get("assignment_task_sha256"),
+        assignment.get("task_sha256"),
+        attempt_id,
+        assignment.get("attempt_id"),
+    )
+    if any(not isinstance(value, str) or not value.strip() for value in mandatory):
+        return False
     return all(
-        value in (None, expected)
+        value == expected
         for value, expected in (
             (registry.get("assignment_id"), expected_assignment),
             (assignment.get("assignment_id"), expected_assignment),
@@ -788,8 +825,22 @@ def run_lane(
                 "capacity": "retired",
                 "failure_kind": "grant_invalid",
             }
+    if time.monotonic() >= dispatch_deadline:
+        return {
+            "lane_id": lane_id,
+            "command": [],
+            "exit_code": None,
+            "records": [_tagged(lane_id, "capacity", {"state": "retired"})],
+            "stderr": "dispatch deadline exceeded before launch preflight",
+            "unresolved": False,
+            "capacity": "retired",
+            "failure_kind": "dispatch_deadline_exceeded",
+        }
     try:
-        preflight = launch_preflight(lane)
+        preflight = launch_preflight(
+            lane,
+            timeout_seconds=max(0.001, dispatch_deadline - time.monotonic()),
+        )
     except (TypeError, ValueError, RuntimeError) as exc:
         return {
             "lane_id": lane_id,
@@ -1021,7 +1072,9 @@ def run_lane(
         "acceptance_pending": acceptance_pending,
         "capture_cleanup": capture_cleanup,
     }
-    if process.returncode:
+    if grant_mismatch:
+        result["failure_kind"] = "grant_mismatch"
+    elif process.returncode:
         result["failure_kind"] = "command_exit"
     elif unresolved_reason == "receipt correlation mismatch":
         result["failure_kind"] = "receipt_correlation_mismatch"
@@ -1082,9 +1135,10 @@ def run_parallel(
         raw_lanes = list(source)
 
     batch = _prepare_admission(raw_lanes, max_concurrency=max_concurrency)
-    lanes_by_id = {str(lane["lane_id"]): lane for lane in batch.prepared}
+    lanes_by_id = {str(lane["lane_id"]): lane for lane in raw_lanes}
     admission = legacy_admission_lists(batch.results, lanes_by_id)
     admission["admitted"] = list(batch.prepared)
+    derived_deferred = list(admission.get("deferred", []))
     for category, supplied in supplied_categories.items():
         admission[category] = list(supplied) + admission.get(category, [])
 
@@ -1101,6 +1155,13 @@ def run_parallel(
         except BaseException as exc:
             callback_errors.append({"event": event, "error": str(exc)})
 
+    interrupted = bool(stop_event is not None and stop_event.is_set())
+    pending_deferred = derived_deferred
+    if interrupted:
+        pending_deferred = list(admission["admitted"]) + pending_deferred
+        admission["deferred"] = list(admission.get("deferred", [])) + list(admission["admitted"])
+        admission["admitted"] = []
+
     for category in ("admitted", "deferred", "blocked", "rejected"):
         for item in admission.get(category, []):
             lane_id = str(item.get("lane_id", "<missing>"))
@@ -1113,19 +1174,23 @@ def run_parallel(
 
     results: dict[str, dict[str, Any]] = {}
     completion_order: list[str] = []
-    interrupted = bool(stop_event is not None and stop_event.is_set())
+    refilled: list[str] = []
     with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
-        futures = {}
+        futures: dict[Any, str] = {}
+        running_lanes: dict[str, Mapping[str, Any]] = {}
         if not interrupted:
             for lane in admission["admitted"]:
                 if stop_event is not None and stop_event.is_set():
                     interrupted = True
                     break
-                futures[pool.submit(run_lane, lane, **run_kwargs)] = str(lane["lane_id"])
+                lane_id = str(lane["lane_id"])
+                futures[pool.submit(run_lane, lane, **run_kwargs)] = lane_id
+                running_lanes[lane_id] = lane
         while futures:
             done, _ = wait(tuple(futures), return_when=FIRST_COMPLETED)
             for future in done:
                 lane_id = futures.pop(future)
+                running_lanes.pop(lane_id, None)
                 try:
                     results[lane_id] = future.result()
                     completion_order.append(lane_id)
@@ -1141,14 +1206,40 @@ def run_parallel(
                     }
                     completion_order.append(lane_id)
                 emit({"tag": "lane_result", **results[lane_id]})
+            while pending_deferred and len(futures) < max_concurrency and not (
+                stop_event is not None and stop_event.is_set()
+            ):
+                candidate = pending_deferred[0]
+                refill_batch = _prepare_admission(
+                    [*running_lanes.values(), candidate],
+                    max_concurrency=max_concurrency,
+                )
+                candidate_id = str(candidate["lane_id"])
+                candidate_result = next(
+                    (item for item in refill_batch.results if item.lane_id == candidate_id),
+                    None,
+                )
+                if candidate_result is None or candidate_result.state != "ADMITTED":
+                    break
+                prepared = next(
+                    item for item in refill_batch.prepared if str(item["lane_id"]) == candidate_id
+                )
+                pending_deferred.pop(0)
+                admission["admitted"].append(prepared)
+                refilled.append(candidate_id)
+                running_lanes[candidate_id] = prepared
+                futures[pool.submit(run_lane, prepared, **run_kwargs)] = candidate_id
+                emit({"tag": "lane_refilled", "lane_id": candidate_id, "lane": prepared.to_dict()})
+    admission["deferred"] = list(supplied_categories.get("deferred", [])) + pending_deferred
     return {
         "admitted": admission["admitted"],
         "deferred": admission.get("deferred", []),
         "blocked": admission.get("blocked", []),
         "rejected": admission["rejected"],
         "interrupted": interrupted,
+        "incomplete": bool(admission["deferred"] or interrupted),
         "callback_errors": callback_errors,
-        "refilled": [],
+        "refilled": refilled,
         "results": [
             results[lane_id]
             for lane_id in completion_order
@@ -1188,7 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
         event_callback=lambda event: print(json.dumps(event, sort_keys=True), flush=True),
     )
     admission_failure = bool(result["rejected"] or result.get("blocked"))
-    runtime_failure = any(
+    runtime_failure = bool(result.get("deferred") or result.get("incomplete")) or any(
         item.get("unresolved") is True or item.get("failure_kind") is not None
         for item in result["results"]
     )

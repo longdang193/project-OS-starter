@@ -197,7 +197,12 @@ def evaluate_acceptance(
     for mapping, fields in (
         (controller, (("identity", "controller identity"), ("plan_identity", "controller plan binding"), ("task_id", "controller task binding"))),
         (task, (("task_id", "task identity"), ("plan_identity", "task plan binding"), ("required_proof", "required proof"), ("evidence", "task evidence reference"))),
-        (git, (("repository_identity", "Git repository binding"), ("plan_identity", "Git plan binding"))),
+        (git, (
+            ("repository_identity", "Git repository binding"),
+            ("plan_identity", "Git plan binding"),
+            ("assignment_id", "assignment binding"),
+            ("checkpoint_sha", "acceptance checkpoint binding"),
+        )),
     ):
         for field, label in fields:
             missing = _missing_text(mapping, field, label)
@@ -317,7 +322,7 @@ def evaluate_acceptance(
             "attempt_id": git.get("attempt_id"),
         },
     }
-    return {
+    result = {
         "decision": decision,
         "reasons": reasons or ["acceptance criteria satisfied"],
         "controller": {
@@ -336,6 +341,34 @@ def evaluate_acceptance(
         "acceptance_proof": acceptance_proof,
         "reconciliation": reconciliation.to_dict(),
     }
+    validation_reasons = validate_acceptance_decision(
+        result,
+        expected_task_id=task.get("task_id"),
+        expected_plan_identity=task.get("plan_identity"),
+        expected_candidate_sha=git.get("lane_head_sha"),
+        expected_acceptance_checkpoint_sha=git.get("checkpoint_sha"),
+        expected_assignment_id=git.get("assignment_id"),
+        expected_attempt_id=accepted_attempt_id,
+    )
+    if decision == "PASS" and validation_reasons:
+        result["decision"] = "BLOCKED"
+        result["reasons"] = list(dict.fromkeys([*reasons, *validation_reasons]))
+        result["task_transition"]["authorized"] = False
+        result["task_transition"]["next_state"] = current_state
+        result["reconciliation"] = reconcile(
+            ReconciliationInput(
+                phase="accept",
+                facts={
+                    "verification_current": verification.get("passed") is True,
+                    "candidate_unchanged": git.get("head_matches") is True,
+                    "acceptance_criteria_evaluable": bool(artifact_conditions),
+                    "cos_pass": False,
+                    "checkpoint_sha": git.get("checkpoint_sha"),
+                    "lane_head_sha": git.get("lane_head_sha"),
+                },
+            )
+        ).to_dict()
+    return result
 
 
 def authorize_evidence_release(
