@@ -67,7 +67,7 @@ export async function openReviewTab(context) {
     return page;
   } catch (error) {
     await page.close().catch(() => {});
-    throw withFailureScope(error, "shared_context");
+    throw withFailureScope(error, "review");
   }
 }
 

@@ -924,7 +924,7 @@ test("model lookup requires an exact visible label", async () => {
   assert.equal(await option.innerText(), "GPT-6");
 });
 
-test("review tab closes when authenticated composer setup fails", async () => {
+test("review tab scopes composer readiness failure as review and closes", async () => {
   let closed = false;
   const page = {
     url: () => "https://chatgpt.com/",
@@ -945,7 +945,11 @@ test("review tab closes when authenticated composer setup fails", async () => {
 
   await assert.rejects(
     openReviewTab({ newPage: async () => page }),
-    /Authenticated ChatGPT composer was not found/,
+    (error) => {
+      assert.match(error.message, /Authenticated ChatGPT composer was not found/);
+      assert.equal(error.failureScope, "review");
+      return true;
+    },
   );
   assert.equal(closed, true);
 });
@@ -1890,4 +1894,29 @@ test("batch stops after uncertain page cleanup", async () => {
 
   assert.deepEqual(attempted, ["first"]);
   assert.equal(results.length, 1);
+});
+
+test("batch continues after a review-scoped fresh-tab readiness failure", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      { model: "GPT-6", effort: "High", prompt: "first" },
+      { model: "GPT-6", effort: "High", prompt: "second" },
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt);
+      return review.prompt === "first"
+        ? { status: "blocked", failure_scope: "review", failure_stage: "page_readiness" }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(results.length, 2);
 });

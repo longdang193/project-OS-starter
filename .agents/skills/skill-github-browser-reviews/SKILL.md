@@ -226,7 +226,9 @@ authenticated context for sequential fresh-tab transactions, allocates a
  carry an explicit scope: the batch continues only for a review-scoped failure
  and stops for shared-context or unknown failures. The failed review is never
  resubmitted or silently switched to another model. Do not add a keep-open flag
- or a second browser lifecycle owner.
+ or a second browser lifecycle owner. A newly created tab that does not reach the
+composer readiness state is page-local and review-scoped; failure to create a
+page or loss of the shared browser context remains shared-context scoped.
 
 Model-menu interaction uses a five-second UI action/transition timeout. Initial
 model-menu opening remains ten seconds, completion observation remains bounded
