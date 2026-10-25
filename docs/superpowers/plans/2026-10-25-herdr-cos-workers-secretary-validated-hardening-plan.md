@@ -51,6 +51,8 @@ Review evidence is preserved read-only at:
 - `review-output/github-review-9a90cba-20261025-rerun/batch-result.json`
 - `review-output/github-review-9a90cba-20261025-rerun/run-Oz5Bht/response.md`
 - `review-output/github-review-9a90cba-20261025-rerun/run-WbH38S/response.md`
+- `review-output/github-review-8cb8a92-20261025-plan-review/run-5PA6Qp/response.md`
+- `review-output/github-review-8cb8a92-20261025-plan-review/run-5PA6Qp/result.json`
 
 Both reviews report `status=completed`, `submission_attempted=true`, verified
 requested model and `High` effort, and the same pinned commit SHA.
@@ -100,6 +102,9 @@ latency and resource evidence without claiming an improvement absent a baseline.
 - Commit policy: `no commits during execution`
 - Preauthorized local actions: `edit declared source, test, and documentation targets; run declared local checks; preserve review/runtime artifacts`
 - User-approval actions: `commit, push, pull request creation or update, merge, deletion of review/runtime artifacts, or edits outside declared targets`
+- Cleanup exception: Task 4 may delete only task-owned `herdr-result-*` directories
+  after its publication, ownership, identity, and settlement gates succeed;
+  review artifacts and unrelated runtime artifacts remain approval-protected.
 - Parallel ownership: `none; all runtime behavior changes converge on scripts/herdr_main_launcher.py`
 - Sequential fallback: `Task 1`, then `Task 2`, then `Task 3`, then `Task 4`, then `Task 5`
 
@@ -110,6 +115,9 @@ latency and resource evidence without claiming an improvement absent a baseline.
 - Branch: `codex/herdr-cos-workers-secretary-plan-review-20261025`
 - Reviewed source commit: `9a90cba3498d1290601bb0702c4c8671b0dfe6a5`
 - Base commit: `8cb8a92fcdbe3ae975ad1ce918a8315f6aca3e81` (the pushed plan and generated-adapter correction commit)
+- Reconciliation: comparison of `9a90cba` to `8cb8a92` found no change to the
+  declared runtime, test, or documentation target set; `8cb8a92` adds the
+  pushed plan and generated GitHub-review adapter corrections only.
 - Expected workspace: `source remains at the pushed plan commit; preserve untracked .playwright-mcp, .pr-body.md, .review-profile, .runtime, node_modules, and review-output artifacts`
 - Next action: `approve this plan, then start Task 1 from the base commit after reconciling implementation changes against the reviewed source commit`
 - Blockers: `none`
@@ -256,7 +264,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 **Steps:**
 - [ ] Step 1: Trace the active Codex dispatch path and record which completion helpers have external tests/callers before deleting or relocating branches.
-- [ ] Step 2: Define the canonical combined effective capability fingerprint in `scripts/project_os_runtime/capabilities.py`, including normalized local capabilities, selected MCP configuration, and fail-closed behavior when stable evidence is unavailable; include it in pane reuse eligibility and diagnostics.
+- [ ] Step 2: Define the canonical combined effective capability fingerprint in `scripts/project_os_runtime/capabilities.py`, including normalized local capabilities, selected MCP configuration, and fail-closed behavior when stable evidence is unavailable; expose the digest in stable reusable-agent evidence, then include it in pane reuse eligibility and diagnostics.
 - [ ] Step 3: Set `reconciliation_required=true`, unknown execution/task/cleanup, and a non-success lifecycle state for submitted-only asynchronous results; keep confirmed completion classification separate.
 - [ ] Step 4: Remove unreachable completion assignments/branches only after preserving helper APIs used by tests or the Secretary observer path; add mismatch, compatible-reuse, and submitted-only regression tests.
 
