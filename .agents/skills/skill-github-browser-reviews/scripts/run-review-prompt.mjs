@@ -3,6 +3,8 @@ import { MENU_TRANSITION_TIMEOUT_MS, selectReviewModel } from "./select-review-m
 const CHATGPT_URL = "https://chatgpt.com/";
 export const UI_ACTION_TIMEOUT_MS = 5000;
 export const COMPOSER_READINESS_TIMEOUT_MS = 10000;
+export const SUBMISSION_ACK_TIMEOUT_MS = 2000;
+export const SUBMISSION_ACK_POLL_MS = 50;
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
 const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
@@ -52,10 +54,38 @@ async function openChatGPT(page) {
   try {
     await composer.waitFor({ state: "visible", timeout: COMPOSER_READINESS_TIMEOUT_MS });
   } catch {
+    try {
+      const loginControl = page.getByRole("button", { name: /^(Log in|Sign up)$/i }).first();
+      if (await loginControl.isVisible()) {
+        throw new ReviewPromptError("ChatGPT authentication is required for the dedicated profile", "shared_context");
+      }
+    } catch (error) {
+      if (error?.failureScope) throw error;
+    }
     throw new Error("Authenticated ChatGPT composer was not found");
   }
   if (!(await composer.isVisible())) throw new Error("Authenticated ChatGPT composer was not found");
   return composer;
+}
+
+export async function preflightAuthenticatedContext(context) {
+  let page;
+  let failure;
+  try {
+    page = await context.newPage();
+    await openChatGPT(page);
+  } catch (error) {
+    failure = withFailureScope(error, "shared_context");
+  }
+
+  try {
+    if (page) await page.close();
+  } catch (error) {
+    failure ||= withFailureScope(error, "shared_context");
+  }
+
+  if (failure) throw failure;
+  return { authenticated: true };
 }
 
 /**
@@ -213,9 +243,18 @@ export async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}
     throw error;
   }
 
-  await page.waitForTimeout(250);
-  if (await isPromptVisibleInComposer(composer, prompt)) {
-    const error = new Error("Prompt submission was not visibly acknowledged");
+  try {
+    const deadline = Date.now() + SUBMISSION_ACK_TIMEOUT_MS;
+    while (await isPromptVisibleInComposer(composer, prompt)) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        const error = new Error("Prompt submission was not visibly acknowledged");
+        error.submissionAttempted = true;
+        throw error;
+      }
+      await page.waitForTimeout(Math.min(SUBMISSION_ACK_POLL_MS, remaining));
+    }
+  } catch (error) {
     error.submissionAttempted = true;
     throw error;
   }
@@ -256,6 +295,16 @@ export async function waitForReviewCompletion(page, {
   let snapshot;
 
   while (Date.now() <= deadline) {
+    if (await readVisibleInterruption(page)) {
+      const interruptedSnapshot = await readCompletionSnapshot(page, { includeText: true });
+      return {
+        ...interruptedSnapshot,
+        response: interruptedSnapshot.assistantText,
+        status: "interrupted",
+        failureReason: "visible response interruption",
+      };
+    }
+
     snapshot = await readCompletionSnapshot(page);
     generationObserved ||= snapshot.generating;
     const sameMessage = !snapshot.assistantMessageId

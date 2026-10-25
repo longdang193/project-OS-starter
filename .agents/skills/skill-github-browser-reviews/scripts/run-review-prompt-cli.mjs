@@ -8,6 +8,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 
 import {
   runReviewPromptInNewTab,
+  preflightAuthenticatedContext,
   waitForReviewCompletion,
 } from "./run-review-prompt.mjs";
 import {
@@ -18,6 +19,17 @@ import {
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
 const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
+const PROJECT_PROFILE_MARKER = "github-review";
+const VALUE_ARGUMENTS = new Set([
+  "--cdp-endpoint",
+  "--context-index",
+  "--effort",
+  "--model",
+  "--output-dir",
+  "--prompt-file",
+  "--batch-file",
+  "--user-data-dir",
+]);
 const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set();
 
@@ -30,6 +42,7 @@ export function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (!argument.startsWith("--")) usageError(`Unexpected argument: ${argument}`);
+    if (!FLAG_ARGUMENTS.has(argument) && !VALUE_ARGUMENTS.has(argument)) usageError(`Unknown argument: ${argument}`);
     if (FLAG_ARGUMENTS.has(argument)) {
       if (argumentsByName.has(argument)) usageError(`Duplicate argument: ${argument}`);
       argumentsByName.set(argument, true);
@@ -54,6 +67,7 @@ export function parseArguments(argv) {
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
+  if (userDataDir) validateProjectProfilePath(userDataDir);
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
   if (batchFile && (model || effort || promptFile)) {
     usageError("Single-review arguments cannot be combined with --batch-file");
@@ -75,8 +89,28 @@ export function parseArguments(argv) {
     batchFile,
     outputDir,
     promptFile,
-    userDataDir,
+    userDataDir: userDataDir ? resolve(userDataDir) : undefined,
   };
+}
+
+export function validateProjectProfilePath(userDataDir) {
+  if (typeof userDataDir !== "string" || !userDataDir.trim()) {
+    usageError("--user-data-dir must point to a dedicated project profile");
+  }
+
+  const profilePath = resolve(userDataDir);
+  const segments = profilePath.split(/[\\/]+/).filter(Boolean);
+  const markerIndex = segments.findIndex((segment) => segment.toLowerCase() === PROJECT_PROFILE_MARKER);
+  const normalProfile = segments.some((segment) => {
+    const normalized = segment.toLowerCase();
+    return normalized === "user data" || normalized === "default" || /^profile \d+$/.test(normalized);
+  });
+
+  if (normalProfile || markerIndex < 0 || markerIndex === segments.length - 1) {
+    usageError("--user-data-dir must resolve to a dedicated github-review/<project> profile, not the normal Chrome profile");
+  }
+
+  return profilePath;
 }
 
 export function createResult(options) {
@@ -320,7 +354,14 @@ async function openContext(chromium, options) {
 
 export async function openReviewContext(options) {
   const chromium = await loadPlaywright();
-  return openContext(chromium, options);
+  const attached = await openContext(chromium, options);
+  try {
+    await preflightAuthenticatedContext(attached.context);
+    return attached;
+  } catch (error) {
+    await closeContext(attached).catch(() => {});
+    throw error;
+  }
 }
 
 export async function closeContext(attached) {
@@ -360,11 +401,30 @@ export async function closeContext(attached) {
   attached.closed = true;
 }
 
+export function installTerminationCleanup(attached, closeAttachedContext = closeContext) {
+  if (!attached) return () => {};
+
+  const handlers = new Map();
+  let cleanupPromise;
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    const handler = () => {
+      process.exitCode = signal === "SIGINT" ? 130 : 143;
+      cleanupPromise ||= Promise.resolve(closeAttachedContext(attached)).catch(() => {});
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+
+  return () => {
+    for (const [signal, handler] of handlers) process.removeListener(signal, handler);
+  };
+}
+
 function classifyFailureScope(stage, error) {
+  if (error?.failureScope) return error.failureScope;
   if (/(?:browser|context|target|page).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target|page)/i.test(errorMessage(error))) {
     return "shared_context";
   }
-  if (error?.failureScope) return error.failureScope;
   if (stage === "selection") return error?.failureScope === "review" ? "review" : "shared_context";
   if (stage === "submission" || stage === "completion") return "review";
   return null;
@@ -533,6 +593,9 @@ export async function runReviewTransaction(context, options) {
         result.cleanup_warning = result.cleanup_warning
           ? `${result.cleanup_warning}; result update failed: ${artifactReason}`
           : `result update failed: ${artifactReason}`;
+        result.status = "incomplete";
+        result.failure_stage = "artifacts";
+        result.failure_reason = appendFailureReason(result.failure_reason, `final result persistence failed: ${artifactReason}`);
       }
     }
   }
@@ -606,6 +669,7 @@ export async function main(argv, dependencies = {}) {
 
   const openContextForReview = dependencies.openReviewContext || openReviewContext;
   const closeAttachedContext = dependencies.closeContext || closeContext;
+  const installCleanup = dependencies.installTerminationCleanup || installTerminationCleanup;
   const runBatch = dependencies.runReviewBatch || runReviewBatch;
   const runTransaction = dependencies.runReviewTransaction || runReviewTransaction;
 
@@ -622,9 +686,11 @@ export async function main(argv, dependencies = {}) {
 
   let result;
   let attached;
+  let removeTerminationCleanup = () => {};
 
   try {
     attached = await openContextForReview(options);
+    removeTerminationCleanup = installCleanup(attached, closeAttachedContext);
     if (options.batchFile) {
       result = summarizeBatchResults(await runBatch({
         attached,
@@ -681,6 +747,7 @@ export async function main(argv, dependencies = {}) {
       };
     }
   } finally {
+    removeTerminationCleanup();
     try {
       if (attached && !options.batchFile) await closeAttachedContext(attached);
     } catch (error) {

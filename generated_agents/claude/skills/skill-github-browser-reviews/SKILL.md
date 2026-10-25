@@ -171,8 +171,11 @@ const { page } = await runReviewPromptInNewTab(context, {
 ```
 
 The runner must either own or receive an already authenticated Playwright
-`context`. The CLI's `--user-data-dir` mode creates the owned context; the
-library helpers and `--cdp-endpoint` mode require the caller to provide one.
+`context`. The CLI's `--user-data-dir` mode creates the owned context; use one
+dedicated project profile such as
+`~/.codex/profiles/github-review/<project>` and never the normal Chrome `User
+Data` directory. The library helpers and `--cdp-endpoint` mode require the
+caller to provide one.
 Use a browser tool's `filename` or `sourcePath` option only when it supports
 file-backed Node execution. If the helper cannot be loaded or the authenticated
 context cannot be created or attached, report `incomplete` or `blocked`; do not
@@ -185,22 +188,29 @@ launches a visible Playwright browser with a dedicated authenticated profile:
 
 ```bash
 node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
-  --user-data-dir <authenticated-playwright-profile> \
+  --user-data-dir ~/.codex/profiles/github-review/<project> \
   --model GPT-6 \
   --effort High \
   --prompt-file <review-prompt.txt> \
   --output-dir <review-output-directory>
 ```
 
- One normal invocation is one bounded review transaction. It selects and visibly
- verifies the requested model and effort, submits at most once, waits for a new
+ One normal invocation is one bounded review transaction. The CLI rejects
+ unknown flags and invalid/default profile paths before browser setup, then
+ performs one non-submitting visible authentication preflight for the owned
+ context. An explicit login wall blocks the batch before fresh review tabs are
+ opened. It selects and visibly verifies the requested model and effort, submits at most once, waits for a new
  stable visible assistant turn, writes `response.md` and a small `result.json`,
  and only then closes the owned browser context. While the response is visibly
  generating, completion observation polls cheap visible state and defers full
  assistant-text extraction until generation stops and stability can be checked.
  Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
  owned-context cleanup preserves the review artifacts but makes the invocation
- nonzero and records the cleanup failure. The controller, not the runner,
+  nonzero and records the cleanup failure. A delayed send acknowledgement is
+  observed for a short bounded window without a second send. A visible terminal
+  interruption returns immediately with partial evidence. If the final result
+  artifact cannot be persisted, the runner reports `incomplete` and returns
+  nonzero even when the response itself completed. The controller, not the runner,
  validates revision-specific review evidence and may classify the overall
  workflow as `verified`. The runner never retries or silently recovers a failed
  submission.
@@ -231,7 +241,8 @@ authenticated context for sequential fresh-tab transactions, allocates a
  fail before opening a second browser. Malformed, live, stale, or ambiguous
  ownership stays blocked for operator-confirmed recovery; the runner never
  deletes a stale lock based only on a PID, timestamp, or profile path, and
- release removes only the current lease token. Selection failures
+  release removes only the current lease token. Normal SIGINT/SIGTERM cleanup
+  makes a best-effort release when ownership remains provable. Selection failures
  carry an explicit scope: the batch continues only for a review-scoped failure
  and stops for shared-context or unknown failures. The failed review is never
  resubmitted or silently switched to another model. Do not add a keep-open flag
@@ -251,7 +262,8 @@ by its separate long timeout, and polling backoff values are not changed to
 compensate for slow clicks.
 
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
-optional attach mode and `--context-index` selects its browser context. The
+exceptional attach mode and `--context-index` selects its browser context. The
+normal personal submission path uses the dedicated project profile instead.
 CLI imports `run-review-prompt.mjs` through Node's ESM loader and submits
 exactly once. It never authenticates
 a profile for the user. A pipe-backed Playwright MCP browser cannot be used

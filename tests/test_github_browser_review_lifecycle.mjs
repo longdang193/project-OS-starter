@@ -11,9 +11,12 @@ import {
   evaluateReviewCompletion,
   isPromptVisibleInComposer,
   openReviewTab,
+  preflightAuthenticatedContext,
   readVisibleInterruption,
   runReviewPromptInNewTab,
   submitPrompt,
+  SUBMISSION_ACK_TIMEOUT_MS,
+  SUBMISSION_ACK_POLL_MS,
   waitForReviewCompletion,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs";
 import {
@@ -22,6 +25,7 @@ import {
   closeContext,
   createResult,
   createRunOutputDirectory,
+  installTerminationCleanup,
   main,
   parseArguments,
   readBatchReviews,
@@ -135,9 +139,41 @@ test("prompt submission uses the bounded UI action timeout", async () => {
   assert.deepEqual(clickOptions, [{ timeout: 5000 }]);
 });
 
+test("prompt acknowledgement polls once without resubmitting", async () => {
+  const prompt = "review prompt";
+  let submitted = false;
+  let waitCalls = 0;
+  const composer = {
+    async fill() {},
+    async inputValue() { return submitted && waitCalls > 0 ? "" : prompt; },
+    async innerText() { return ""; },
+  };
+  const sendButton = {
+    first() { return this; },
+    async isVisible() { return true; },
+    async click() { submitted = true; },
+  };
+  const page = {
+    getByRole(role) {
+      if (role === "button") return sendButton;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async waitForTimeout(delay) {
+      assert.ok(delay <= SUBMISSION_ACK_POLL_MS);
+      assert.ok(delay <= SUBMISSION_ACK_TIMEOUT_MS);
+      waitCalls += 1;
+    },
+  };
+
+  const result = await submitPrompt(page, composer, prompt);
+  assert.equal(result.submission, "acknowledged");
+  assert.equal(submitted, true);
+  assert.equal(waitCalls, 1);
+});
+
 test("normal CLI arguments keep the runner contract small", () => {
   const parsed = parseArguments([
-    "--user-data-dir", "profile",
+    "--user-data-dir", "github-review/project",
     "--model", "GPT-6",
     "--effort", "High",
     "--prompt-file", "prompt.md",
@@ -164,9 +200,43 @@ test("output directory remains optional for controller-allocated review artifact
   assert.equal(parsed.outputDir, "review-output");
 });
 
+test("profile arguments require a dedicated project profile path", () => {
+  assert.throws(
+    () => parseArguments([
+      "--user-data-dir", "profile",
+      "--model", "GPT-6",
+      "--effort", "High",
+      "--prompt-file", "review.md",
+    ]),
+    /dedicated github-review/,
+  );
+  assert.throws(
+    () => parseArguments([
+      "--user-data-dir", "C:/Chrome/User Data",
+      "--model", "GPT-6",
+      "--effort", "High",
+      "--prompt-file", "review.md",
+    ]),
+    /normal Chrome profile/,
+  );
+});
+
+test("unknown CLI arguments fail before browser setup", () => {
+  assert.throws(
+    () => parseArguments([
+      "--user-data-dir", "github-review/project",
+      "--model", "GPT-6",
+      "--effort", "High",
+      "--prompt-file", "review.md",
+      "--outpt-dir", "review-output",
+    ]),
+    /Unknown argument: --outpt-dir/,
+  );
+});
+
 test("batch CLI arguments replace single-review arguments", () => {
   const parsed = parseArguments([
-    "--user-data-dir", "profile",
+    "--user-data-dir", "github-review/project",
     "--batch-file", "reviews.json",
     "--output-dir", "review-output",
   ]);
@@ -179,7 +249,7 @@ test("batch CLI arguments replace single-review arguments", () => {
 test("batch CLI arguments reject mixed single-review options", () => {
   assert.throws(
     () => parseArguments([
-      "--user-data-dir", "profile",
+      "--user-data-dir", "github-review/project",
       "--batch-file", "reviews.json",
       "--model", "GPT-6",
     ]),
@@ -1018,6 +1088,54 @@ test("review tab marks context setup failures as shared-context failures", async
   );
 });
 
+test("authentication preflight closes its probe page and accepts a visible composer", async () => {
+  let closed = false;
+  const composer = {
+    first() { return this; },
+    async waitFor() {},
+    async isVisible() { return true; },
+  };
+  const loginControl = {
+    first() { return this; },
+    async isVisible() { return false; },
+  };
+  const page = {
+    url: () => "https://chatgpt.com/",
+    getByRole(role, options) {
+      if (role === "button") return loginControl;
+      assert.equal(options.name, "Ask ChatGPT");
+      return composer;
+    },
+    async close() { closed = true; },
+  };
+
+  await preflightAuthenticatedContext({ newPage: async () => page });
+  assert.equal(closed, true);
+});
+
+test("authentication preflight blocks a visible login wall", async () => {
+  let closed = false;
+  const loginControl = {
+    first() { return this; },
+    async isVisible() { return true; },
+  };
+  const page = {
+    url: () => "https://chatgpt.com/",
+    getByRole() { return loginControl; },
+    async close() { closed = true; },
+  };
+
+  await assert.rejects(
+    preflightAuthenticatedContext({ newPage: async () => page }),
+    (error) => {
+      assert.equal(error.failureScope, "shared_context");
+      assert.match(error.message, /authentication is required/);
+      return true;
+    },
+  );
+  assert.equal(closed, true);
+});
+
 test("review tab closes when model preparation fails after newPage", async () => {
   let closed = false;
   const composer = {
@@ -1339,6 +1457,47 @@ test("completion timeout preserves visible partial assistant text", async () => 
 
   assert.equal(result.status, "incomplete");
   assert.equal(result.response, "Partial finding before timeout.");
+});
+
+test("completion returns immediately on a visible interruption", async () => {
+  let waitCalls = 0;
+  const emptyTurns = {
+    async count() { return 0; },
+  };
+  const interruption = {
+    first() { return this; },
+    async count() { return 1; },
+    async isVisible() { return true; },
+  };
+  const hidden = {
+    first() { return this; },
+    last() { return this; },
+    async count() { return 0; },
+    async isVisible() { return false; },
+  };
+  const page = {
+    locator(selector) {
+      if (selector === INTERRUPTION_UI_SELECTOR) return interruption;
+      if (selector === ASSISTANT_TURN_SELECTOR) return emptyTurns;
+      return hidden;
+    },
+    getByRole(role, options) {
+      if (role === "button") return hidden;
+      if (role === "textbox") return { first() { return { async isVisible() { return true; } }; } };
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    url() { return "https://chatgpt.com/c/interrupted"; },
+    async waitForTimeout() { waitCalls += 1; },
+  };
+
+  const result = await waitForReviewCompletion(page, {
+    baseline: { assistantTurnCount: 0 },
+    timeoutMs: 900000,
+  });
+
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.failureReason, "visible response interruption");
+  assert.equal(waitCalls, 0);
 });
 
 test("result records the requested and observed lifecycle state", () => {
@@ -1841,7 +2000,7 @@ test("batch main delegates context cleanup to the batch owner", async () => {
     let outerCleanupCalls = 0;
 
     const exitCode = await main([
-      "--user-data-dir", "profile",
+      "--user-data-dir", "github-review/project",
       "--batch-file", join(parent, "reviews.json"),
     ], {
       openReviewContext: async () => ({ context: {}, ownsContext: true }),
@@ -1865,7 +2024,7 @@ test("owned context cleanup failure makes the CLI invocation nonzero", async () 
     await writeFile(promptFile, "review\n", "utf8");
 
     const exitCode = await main([
-      "--user-data-dir", "profile",
+      "--user-data-dir", "github-review/project",
       "--model", "GPT-6",
       "--effort", "High",
       "--prompt-file", promptFile,
@@ -1878,6 +2037,68 @@ test("owned context cleanup failure makes the CLI invocation nonzero", async () 
     });
 
     assert.equal(exitCode, 1);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("termination cleanup is installed and can be removed without duplicating ownership", () => {
+  const originalOnce = process.once;
+  const originalRemoveListener = process.removeListener;
+  const registered = [];
+  const removed = [];
+  process.once = (signal, handler) => {
+    registered.push({ signal, handler });
+    return process;
+  };
+  process.removeListener = (signal, handler) => {
+    removed.push({ signal, handler });
+    return process;
+  };
+  try {
+    const remove = installTerminationCleanup({ context: {} }, async () => {});
+    assert.deepEqual(registered.map(({ signal }) => signal), ["SIGINT", "SIGTERM"]);
+    remove();
+    assert.equal(removed.length, 2);
+  } finally {
+    process.once = originalOnce;
+    process.removeListener = originalRemoveListener;
+  }
+});
+
+test("final result persistence failure makes a completed response incomplete", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-final-persistence-failure-"));
+  let writeCount = 0;
+  try {
+    const result = await runReviewTransaction({}, {
+      effort: "High",
+      model: "GPT-6",
+      outputDir: parent,
+      prompt: "review",
+      dependencies: {
+        runReviewPromptInNewTab: async (_context, options) => {
+          await options.beforeSubmit();
+          return {
+            effort: "High",
+            model: "GPT-6",
+            page: { async close() {} },
+            promptSubmitted: true,
+            submission: "acknowledged",
+          };
+        },
+        waitForReviewCompletion: async () => ({ response: "response", status: "confirmed" }),
+        writeResult: async (outputDir, value) => {
+          writeCount += 1;
+          if (writeCount === 5) throw new Error("final result write failed");
+          await writeResult(outputDir, value);
+        },
+      },
+    });
+
+    assert.equal(writeCount, 5);
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.failure_stage, "artifacts");
+    assert.match(result.failure_reason, /final result persistence failed/);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -1900,7 +2121,7 @@ test("batch context-open failure accounts for every requested review as skipped"
     console.log = (value) => logged.push(value);
 
     const exitCode = await main([
-      "--user-data-dir", "profile",
+      "--user-data-dir", "github-review/project",
       "--batch-file", manifestFile,
     ], {
       openReviewContext: async () => {
