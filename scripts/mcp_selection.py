@@ -3,11 +3,39 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
+import json
 from typing import Any
 
 
 class McpSelectionError(ValueError):
     """Raised when MCP configuration or selection is invalid."""
+
+
+def mcp_server_configuration_digest(*configs: Mapping[str, Any]) -> str:
+    effective_servers: dict[str, Mapping[str, Any]] = {}
+    for config in configs:
+        raw_servers = config.get("mcp_servers", {})
+        if not isinstance(raw_servers, Mapping):
+            raise McpSelectionError("Invalid Codex `[mcp_servers]` configuration.")
+        for name, raw_server in raw_servers.items():
+            if not isinstance(name, str) or not name.strip():
+                raise McpSelectionError("MCP server names must be non-empty strings.")
+            if not isinstance(raw_server, Mapping):
+                raise McpSelectionError(f"Invalid MCP server configuration: {name}")
+            if raw_server.get("enabled") is False:
+                effective_servers.pop(name, None)
+            else:
+                effective_servers[name] = dict(raw_server)
+    payload = {
+        "mcp_servers": {
+            name: effective_servers[name]
+            for name in sorted(effective_servers)
+        }
+    }
+    return hashlib.sha256(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def load_mcp_capabilities(*configs: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:

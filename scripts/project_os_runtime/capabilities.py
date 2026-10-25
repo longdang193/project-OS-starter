@@ -70,6 +70,15 @@ def capability_binding_digest(
                 f"MCP capability evidence field `{field}` must be a sequence of strings"
             )
         normalized_mcp[field] = sorted(set(item.strip() for item in raw_value))
+    configuration_digest = mcp_selection.get("server_configuration_digest")
+    if configuration_digest is not None:
+        if not isinstance(configuration_digest, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", configuration_digest
+        ):
+            raise AttemptContractError(
+                "MCP capability evidence field `server_configuration_digest` must be a lowercase SHA-256 value"
+            )
+        normalized_mcp["server_configuration_digest"] = configuration_digest
     payload = {
         "local_capabilities": effective_local_capabilities(local_capabilities),
         "mcp_selection": normalized_mcp,

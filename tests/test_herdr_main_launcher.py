@@ -6047,8 +6047,72 @@ def test_contextual_agent_name_binds_capability_and_context_markers() -> None:
     digest = "a" * 64
     name = LAUNCHER._contextual_agent_name("high", "task:subject-1", digest)
 
-    assert LAUNCHER._agent_capability_marker(name) == f"cap-{digest[:12]}"
-    assert LAUNCHER._agent_context_marker(name) == LAUNCHER._context_marker("task:subject-1")
+    assert len(name) <= LAUNCHER._HERDR_AGENT_NAME_MAX_LENGTH
+    assert LAUNCHER._agent_binding_marker(name) is not None
+
+
+def test_unique_agent_name_preserves_combined_binding_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        LAUNCHER.uuid,
+        "uuid4",
+        lambda: type("UUID", (), {"hex": "a" * 32})(),
+    )
+
+    name = LAUNCHER._unique_agent_name("normal-main-bnd-1234567890abcdef")
+
+    assert name.endswith("-bnd-1234567890abcdef")
+    assert len(name) <= LAUNCHER._HERDR_AGENT_NAME_MAX_LENGTH
+
+
+def test_deepagents_classification_does_not_preserve_command_exit_over_terminal_result() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivery_failed", "certainty": "not_delivered"},
+        observation={"state": "unknown", "observation_error": "pane command exit"},
+        receipt={"state": "unknown", "detail": "receipt unavailable"},
+        fallback_failure_kind="command_exit",
+        task_result_evidence={
+            "state": "confirmed",
+            "status": "completed",
+            "producer": "dcode-project",
+            "checkpoint": "checkpoint-sha",
+            "verification": {"references": ["tests/test_task.py"]},
+        },
+    )
+
+    assert result["status"] == "completed"
+    assert result["failure_kind"] == "receipt_unavailable"
+    assert result["launcher_exit_code"] == 2
+
+
+def test_deepagents_artifact_settlement_uses_confirmed_task_result_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    evidence = {"state": "confirmed", "status": "completed"}
+    captured: dict[str, object] = {}
+
+    def fake_settle(directory: Path, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"state": "removed"}
+
+    monkeypatch.setattr(LAUNCHER, "settle_result_artifacts", fake_settle)
+
+    result = LAUNCHER._settle_deepagents_artifacts(
+        tmp_path,
+        attempt_id="attempt-1",
+        assignment_id="assignment-1",
+        task_sha256="a" * 64,
+        grant_digest_value="b" * 64,
+        receipt={"state": "confirmed"},
+        task_result_evidence=evidence,
+        lifecycle_settled=True,
+        no_continuation=True,
+    )
+
+    assert result["state"] == "removed"
+    assert captured["task_result"] is evidence
 
 
 def _reusable_codex_pane_responses(

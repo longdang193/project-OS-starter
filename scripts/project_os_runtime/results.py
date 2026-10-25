@@ -431,6 +431,8 @@ def prune_result_artifact_recovery(
             continue
         try:
             payload = json.loads(marker.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                continue
             recorded_at = payload.get("recorded_at")
             if (
                 payload.get("schema") != "herdr-result-artifact-recovery.v1"

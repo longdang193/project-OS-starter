@@ -9,6 +9,7 @@ add_runtime_import_roots()
 from scripts.mcp_selection import (
     McpSelectionError,
     load_mcp_capabilities,
+    mcp_server_configuration_digest,
     normalize_mcp_selection,
 )
 
@@ -37,6 +38,17 @@ def test_load_mcp_capabilities_merges_global_project_and_runtime_sources() -> No
         "project": ("inspect",),
         "runtime": ("probe",),
     }
+
+
+def test_mcp_server_configuration_digest_changes_when_command_changes() -> None:
+    first = mcp_server_configuration_digest(
+        {"mcp_servers": {"context7": {"command": "context7"}}}
+    )
+    second = mcp_server_configuration_digest(
+        {"mcp_servers": {"context7": {"command": "context7-v2"}}}
+    )
+
+    assert first != second
 
 
 def test_no_selection_enables_no_servers() -> None:

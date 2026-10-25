@@ -393,6 +393,22 @@ def test_capability_binding_digest_is_stable_and_includes_mcp_selection() -> Non
     )
 
 
+def test_capability_binding_digest_changes_when_mcp_server_definition_changes() -> None:
+    selection = {
+        "requested": ("context7",),
+        "effective_servers": ("context7",),
+        "effective_tools": (),
+        "server_names": ("context7",),
+        "runtime_only_servers": (),
+        "server_configuration_digest": "a" * 64,
+    }
+
+    assert contract.capability_binding_digest(["node"], selection) != contract.capability_binding_digest(
+        ["node"],
+        {**selection, "server_configuration_digest": "b" * 64},
+    )
+
+
 def test_capability_binding_digest_rejects_unstable_mcp_evidence() -> None:
     with pytest.raises(contract.AttemptContractError, match="MCP capability evidence"):
         contract.capability_binding_digest(["node"], {"requested": ["context7"]})

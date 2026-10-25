@@ -381,7 +381,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 **Steps:**
 - [x] Step 1: Define settled, unresolved, and ambiguous artifact states and the owner of each directory. Publication is durable only after `publish_task_result()` in `scripts/project_os_runtime/results.py` succeeds and the assignment/attempt evidence binds that result to the task; preserve unresolved directories under explicit recovery retention.
 - [x] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate and settlement proof succeed; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. All publication, ownership, and identity gates must complete before deletion. Add bounded age/count cleanup for retained recovery artifacts without touching unrelated temp files.
-- [x] Step 3: Keep `contract` mode unchanged and add a distinct live/trace mode that executes the existing bounded launcher/test-double path and records real latency, subprocess count, pane allocation/reuse, and reconciliation frequency.
+- [x] Step 3: Keep `contract` mode unchanged and add a distinct live/trace mode that records real latency, subprocess count, pane allocation/reuse, and reconciliation frequency only when an observed launcher/test-double runner is supplied; the default CLI path reports unavailable rather than measuring an identical contract subprocess for both architectures.
 - [x] Step 4: Feed only real samples into the existing operational-comparison schema; mark missing metrics unavailable and document that the target owner must set any pass threshold after baseline capture.
 
 **Verification:**
@@ -473,9 +473,26 @@ Fresh verification on 2026-10-26 returned `verified`:
 - Planning lifecycle and template-required-section validation passed.
 - `git diff --check` passed.
 - The GitHub review lifecycle regression suite passed all 100 tests.
-- The live benchmark reports observed wall time and subprocess count; pane
-  allocation/reuse and reconciliation remain `unavailable` unless observed by
-  the runner, so no unsupported optimization claim is made.
+- The default live benchmark reports unavailable measurement fields; observed
+  wall time, subprocess count, pane allocation/reuse, and reconciliation are
+  accepted only from an injected launcher/test-double runner, so no contract
+  subprocess startup cost is presented as architecture evidence.
+
+## Post-PR Review Corrections
+
+The implementation review of PR #179 at immutable head
+`608838743c7d041628e1bd7631f132017ba156f3` found five confirmed defects. The
+corrective patch keeps the same personal-use scope and adds focused regression
+proof for each:
+
+- bounded composite Codex context/capability agent markers preserve the Herdr
+  32-character name invariant, including collision retries;
+- artifact settlement receives the original confirmed task-result evidence
+  instead of the classified lifecycle view;
+- terminal DeepAgents results no longer inherit a generic `command_exit`
+  failure kind when the receipt is unavailable;
+- MCP capability binding includes a digest of effective server definitions;
+- recovery pruning skips valid-JSON non-object markers without aborting.
 
 ## Completion Criteria
 

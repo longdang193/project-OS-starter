@@ -209,9 +209,12 @@ python scripts/benchmark_secretary_architecture.py contract 1
 python scripts/benchmark_secretary_architecture.py live 1
 ```
 
-The live/trace mode reports only observed wall time and subprocess counts. It
-does not infer pane reuse, reconciliation frequency, or an optimization
-threshold when the runner cannot observe those facts. Reusing a compatible
+The default CLI live/trace mode reports measurement fields as unavailable until
+an observed launcher/test-double runner is supplied; it does not benchmark the
+deterministic contract subprocess or label that startup cost as architecture
+evidence. An observed runner may report wall time and subprocess counts, but
+the benchmark still does not infer pane reuse, reconciliation frequency, or an
+optimization threshold when those facts are unavailable. Reusing a compatible
 pane is the intended latency optimization; incompatible capability or identity
 state still allocates a replacement.
 

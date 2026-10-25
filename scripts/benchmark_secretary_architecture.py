@@ -3,9 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import subprocess
 import sys
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping
@@ -249,25 +247,13 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
 
 def _default_live_runner(scenario_id: str, architecture: str) -> dict[str, object]:
     del scenario_id, architecture
-    command = [sys.executable, str(Path(__file__).resolve()), "contract", "1"]
-    started = time.perf_counter()
-    completed = subprocess.run(
-        command,
-        cwd=Path(__file__).resolve().parents[1],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
     return {
         "correct": None,
-        "latency_ms": elapsed_ms,
-        "time_to_first_result_ms": elapsed_ms,
-        "subprocess_count": 1,
+        "latency_ms": None,
+        "time_to_first_result_ms": None,
+        "subprocess_count": None,
         "allocation_reuse": "unavailable",
         "reconciliation_count": None,
-        "measurement_source": "bounded-contract-subprocess",
-        "returncode": completed.returncode,
     }
 
 

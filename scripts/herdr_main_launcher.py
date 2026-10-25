@@ -27,11 +27,17 @@ try:
 except ModuleNotFoundError:
     from scripts.agent_profile_registry import AgentProfile, load_agent_profiles
 try:
-    from mcp_selection import McpSelectionError, load_mcp_capabilities, normalize_mcp_selection
+    from mcp_selection import (
+        McpSelectionError,
+        load_mcp_capabilities,
+        mcp_server_configuration_digest,
+        normalize_mcp_selection,
+    )
 except ModuleNotFoundError:
     from scripts.mcp_selection import (
         McpSelectionError,
         load_mcp_capabilities,
+        mcp_server_configuration_digest,
         normalize_mcp_selection,
     )
 try:
@@ -149,6 +155,10 @@ _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _HERDR_AGENT_NAME_MAX_LENGTH = 32
 _HERDR_CONTEXT_MARKER_PATTERN = re.compile(r"-ctx-[0-9a-f]{12}$")
 _HERDR_CAPABILITY_MARKER_PATTERN = re.compile(r"-cap-[0-9a-f]{12}")
+_HERDR_BINDING_MARKER_PATTERN = re.compile(r"-bnd-[0-9a-f]{16}$")
+_HERDR_AGENT_MARKER_SUFFIX_PATTERN = re.compile(
+    r"-(?:cap-[0-9a-f]{12}-ctx-[0-9a-f]{12}|bnd-[0-9a-f]{16}|ctx-[0-9a-f]{12}|cap-[0-9a-f]{12})$"
+)
 _CODEX_TRANSPORT_ENVELOPE_MARKERS = (
     "act as the model backend for the codex task encoded below.",
     "<codex_context_json>",
@@ -553,6 +563,7 @@ def _codex_mcp_selection(
         **selection,
         "server_names": tuple(capabilities),
         "runtime_only_servers": tuple(sorted(runtime_only_servers)),
+        "server_configuration_digest": mcp_server_configuration_digest(*configs),
     }
 
 
@@ -696,13 +707,24 @@ def _herdr_pane(
             raise TargetCandidateRejected(f"Pane context is required for agent reuse: {pane}")
         expected_marker = _context_marker(context_identity)
         actual_marker = _agent_context_marker(agent_info.get("name"))
-        if expected_marker != actual_marker:
-            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
         if expected_capability_digest is not None:
             expected_capability_marker = _capability_marker(expected_capability_digest)
             actual_capability_marker = _agent_capability_marker(agent_info.get("name"))
-            if actual_capability_marker != expected_capability_marker:
+            expected_binding_marker = _binding_marker(
+                context_identity,
+                expected_capability_digest,
+            )
+            actual_binding_marker = _agent_binding_marker(agent_info.get("name"))
+            if actual_binding_marker is not None:
+                if actual_binding_marker != expected_binding_marker:
+                    raise TargetCandidateRejected(f"Pane capability binding mismatch: {pane}")
+            elif (
+                expected_marker != actual_marker
+                or actual_capability_marker != expected_capability_marker
+            ):
                 raise TargetCandidateRejected(f"Pane capability mismatch: {pane}")
+        elif expected_marker != actual_marker:
+            raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
 
     process_payload = (
         _candidate_json_command(
@@ -2052,10 +2074,18 @@ def _classify_deepagents_outcome(
     else:
         if task_result["state"] == "reported_failed":
             status = "failed"
-            failure_kind = fallback_failure_kind or "task_report_failed"
+            failure_kind = (
+                fallback_failure_kind
+                if fallback_failure_kind and fallback_failure_kind != "command_exit"
+                else "task_report_failed"
+            )
         elif task_result["state"] == "reported_completed":
             status = "completed"
-            failure_kind = fallback_failure_kind or "receipt_unavailable"
+            failure_kind = (
+                fallback_failure_kind
+                if fallback_failure_kind and fallback_failure_kind != "command_exit"
+                else "receipt_unavailable"
+            )
         else:
             failure_kind = fallback_failure_kind or receipt.get("detail") or "receipt_unavailable"
 
@@ -2070,6 +2100,31 @@ def _classify_deepagents_outcome(
         "reconciliation_required": reconciliation_required,
         "launcher_exit_code": launcher_exit_code,
     }
+
+
+def _settle_deepagents_artifacts(
+    directory: Path,
+    *,
+    attempt_id: str,
+    assignment_id: str | None,
+    task_sha256: str | None,
+    grant_digest_value: str | None,
+    receipt: Mapping[str, Any] | None,
+    task_result_evidence: Mapping[str, Any] | None,
+    lifecycle_settled: bool,
+    no_continuation: bool,
+) -> dict[str, Any]:
+    return settle_result_artifacts(
+        directory,
+        attempt_id=attempt_id,
+        assignment_id=assignment_id,
+        task_sha256=task_sha256,
+        grant_digest=grant_digest_value,
+        receipt=receipt,
+        task_result=task_result_evidence,
+        lifecycle_settled=lifecycle_settled,
+        no_continuation=no_continuation,
+    )
 
 
 def _codex_assignment_command(
@@ -2540,13 +2595,17 @@ def _validate_agent_name(agent_name: str) -> None:
 
 def _unique_agent_name(agent_name: str) -> str:
     suffix = uuid.uuid4().hex[:8]
-    marker = _HERDR_CONTEXT_MARKER_PATTERN.search(agent_name)
+    marker = _HERDR_AGENT_MARKER_SUFFIX_PATTERN.search(agent_name)
     if marker:
-        context_suffix = marker.group(0)
+        marker_suffix = marker.group(0)
         base = agent_name[:marker.start()].rstrip("-")
-        base_limit = _HERDR_AGENT_NAME_MAX_LENGTH - len(context_suffix) - len(suffix) - 1
-        return f"{base[:max(0, base_limit)]}-{suffix}{context_suffix}"
-    return f"{agent_name[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix) - 1]}-{suffix}"
+        base_limit = _HERDR_AGENT_NAME_MAX_LENGTH - len(marker_suffix) - len(suffix) - 1
+        candidate = f"{base[:max(0, base_limit)]}-{suffix}{marker_suffix}"
+        _validate_agent_name(candidate)
+        return candidate
+    candidate = f"{agent_name[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix) - 1]}-{suffix}"
+    _validate_agent_name(candidate)
+    return candidate
 
 
 def _stable_context_identity(
@@ -2580,6 +2639,17 @@ def _capability_marker(capability_digest_value: str | None) -> str | None:
     return f"cap-{capability_digest_value[:12]}"
 
 
+def _binding_marker(
+    context_identity: str | None,
+    capability_digest_value: str | None,
+) -> str | None:
+    context_marker = _context_marker(context_identity)
+    capability_marker = _capability_marker(capability_digest_value)
+    if context_marker is None or capability_marker is None:
+        return None
+    return f"bnd-{_sha256_text(f'{capability_marker}|{context_marker}')[:16]}"
+
+
 def _agent_capability_marker(agent_name: str | None) -> str | None:
     if not isinstance(agent_name, str):
         return None
@@ -2594,6 +2664,13 @@ def _agent_context_marker(agent_name: str | None) -> str | None:
     return match.group(0)[1:] if match else None
 
 
+def _agent_binding_marker(agent_name: str | None) -> str | None:
+    if not isinstance(agent_name, str):
+        return None
+    match = _HERDR_BINDING_MARKER_PATTERN.search(agent_name)
+    return match.group(0)[1:] if match else None
+
+
 def _contextual_agent_name(
     profile_name: str,
     context_identity: str | None,
@@ -2603,11 +2680,16 @@ def _contextual_agent_name(
     capability_marker = _capability_marker(capability_digest_value)
     if marker is None and capability_marker is None:
         return _unique_agent_name(f"{profile_name}-main")
-    suffix = "".join(
-        f"-{value}" for value in (capability_marker, marker) if value is not None
+    binding_marker = _binding_marker(context_identity, capability_digest_value)
+    suffix = (
+        f"-{binding_marker}"
+        if binding_marker is not None
+        else "".join(f"-{value}" for value in (capability_marker, marker) if value is not None)
     )
     base = f"{profile_name}-main"
-    return f"{base[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix)]}{suffix}"
+    candidate = f"{base[:max(0, _HERDR_AGENT_NAME_MAX_LENGTH - len(suffix))]}{suffix}"
+    _validate_agent_name(candidate)
+    return candidate
 
 
 def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
@@ -4598,7 +4680,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         not isinstance(assignment.get("retirement"), Mapping)
                         or assignment["retirement"].get("state") == "removed"
                     )
-                    assignment["result_artifacts"] = settle_result_artifacts(
+                    assignment["result_artifacts"] = _settle_deepagents_artifacts(
                         result_artifact_dir,
                         attempt_id=str(assignment.get("attempt_id", attempt_id)),
                         assignment_id=(
@@ -4611,13 +4693,13 @@ def _main_body(args: argparse.Namespace) -> int:
                             if assignment.get("task_sha256", args.task_sha256) is not None
                             else None
                         ),
-                        grant_digest=(
+                        grant_digest_value=(
                             str(assignment.get("grant_digest", args.grant_digest))
                             if assignment.get("grant_digest", args.grant_digest) is not None
                             else None
                         ),
                         receipt=receipt,
-                        task_result=task_result,
+                        task_result_evidence=task_result_evidence,
                         lifecycle_settled=lifecycle_settled and retirement_settled,
                         no_continuation=task_result.get("continuation_eligible") is False,
                     )

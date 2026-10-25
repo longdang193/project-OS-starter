@@ -117,7 +117,7 @@ def test_live_benchmark_reports_runner_measurements_without_inventing_unobserved
     assert all(item.correct is None for item in results)
 
 
-def test_live_cli_mode_records_real_command_measurement() -> None:
+def test_live_cli_mode_does_not_claim_contract_probe_as_architecture_measurement() -> None:
     from pathlib import Path
     import subprocess
     import sys
@@ -134,7 +134,7 @@ def test_live_cli_mode_records_real_command_measurement() -> None:
     rows = __import__("json").loads(result.stdout)
     assert len(rows) == len(SCENARIOS) * 2
     assert all(row["live"] is True for row in rows)
-    assert all(row["measurement_status"] == "measured" for row in rows)
-    assert all(row["subprocess_count"] == 1 for row in rows)
+    assert all(row["measurement_status"] == "unavailable" for row in rows)
+    assert all(row["subprocess_count"] is None for row in rows)
     assert all(row["allocation_reuse"] == "unavailable" for row in rows)
     assert all(row["reconciliation_count"] is None for row in rows)

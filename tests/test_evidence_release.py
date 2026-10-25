@@ -251,6 +251,25 @@ def test_recovery_pruning_is_bounded_to_marked_result_directories(tmp_path: Path
     assert second_result["state"] == "confirmed"
 
 
+def test_recovery_pruning_skips_non_object_markers_without_aborting(tmp_path: Path) -> None:
+    invalid = tmp_path / "herdr-result-invalid-marker"
+    invalid.mkdir()
+    (invalid / ".herdr-recovery.json").write_text("[]", encoding="utf-8")
+
+    valid, _, _ = _result_artifact(tmp_path, directory_name="herdr-result-valid-marker")
+    _settle_result_artifact(valid, None, tmp_path=tmp_path, lifecycle_settled=False)
+
+    result = prune_result_artifact_recovery(
+        temp_root=tmp_path,
+        max_age_seconds=0,
+        max_count=10,
+        now=100.0,
+    )
+
+    assert result["state"] == "completed"
+    assert invalid.exists()
+
+
 def _canonical_consequence(binding: dict[str, str] | None = None) -> dict[str, object]:
     current = _binding() if binding is None else binding
     return {
