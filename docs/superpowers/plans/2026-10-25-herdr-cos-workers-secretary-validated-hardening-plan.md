@@ -8,8 +8,12 @@ distribution_tier: project
 name: herdr-cos-workers-secretary-validated-hardening
 targets:
   - scripts/herdr_main_launcher.py
+  - scripts/project_os_runtime/capabilities.py
+  - scripts/project_os_runtime/results.py
   - scripts/benchmark_secretary_architecture.py
   - tests/test_herdr_main_launcher.py
+  - tests/test_herdr_attempt_contract.py
+  - tests/test_evidence_release.py
   - tests/test_secretary_benchmark.py
   - tests/test_benchmark_operational_comparison.py
   - tests/test_secretary_live_runtime.py
@@ -103,10 +107,11 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `main`
-- Base commit: `9a90cba3498d1290601bb0702c4c8671b0dfe6a5`
-- Expected workspace: `source remains at the reviewed commit; preserve untracked .playwright-mcp, .pr-body.md, .review-profile, .runtime, node_modules, and review-output artifacts`
-- Next action: `approve this plan, then start Task 1 from the pinned base`
+- Branch: `codex/herdr-cos-workers-secretary-plan-review-20261025`
+- Reviewed source commit: `9a90cba3498d1290601bb0702c4c8671b0dfe6a5`
+- Base commit: `8cb8a92fcdbe3ae975ad1ce918a8315f6aca3e81` (the pushed plan and generated-adapter correction commit)
+- Expected workspace: `source remains at the pushed plan commit; preserve untracked .playwright-mcp, .pr-body.md, .review-profile, .runtime, node_modules, and review-output artifacts`
+- Next action: `approve this plan, then start Task 1 from the base commit after reconciling implementation changes against the reviewed source commit`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
@@ -114,7 +119,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 | Task 1 | `pending` | current | `unresolved` | none | focused DeepAgents lifecycle tests | pending |
 | Task 2 | `pending` | current | `unresolved` | Task 1 | focused Codex reuse/submission tests | pending |
 | Task 3 | `pending` | current | `unresolved` | Task 2 | target-resolution and subprocess-count tests | pending |
-| Task 4 | `pending` | current | `unresolved` | Task 1 | artifact-retention and live-measurement tests | pending |
+| Task 4 | `pending` | current | `unresolved` | Task 3 | artifact-retention and live-measurement tests | pending |
 | Task 5 | `pending` | current | `unresolved` | Tasks 1–4 | repository, plan, focused-suite, and diff checks | pending |
 
 ## Validated Findings And Decisions
@@ -187,6 +192,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 **Authority:**
 - Preauthorized local actions: edit the listed DeepAgents classifier/dispatch surfaces and focused tests/docs needed to preserve the existing evidence contract.
 - Stop for: any change that treats missing evidence as acceptance, retries a started attempt, changes receipt ownership, or requires a new coordination store.
+- Rollback/idempotency: classification changes must be observational and idempotent for an already-started attempt; if evidence remains ambiguous, preserve the attempt and return reconciliation-required rather than replaying or deleting it.
 
 **Steps:**
 - [ ] Step 1: Reproduce both cases with focused unit inputs: confirmed structured completed/failed task result plus missing receipt, and nonzero pane command plus available receipt/task-result evidence.
@@ -230,27 +236,33 @@ latency and resource evidence without claiming an improvement absent a baseline.
 - `skill-systematic-debugging`, `skill-test-driven-development`, `skill-backend-verification`, `skill-code-standards`
 
 **Files And Symbols:**
-- Inspect: `scripts/herdr_main_launcher.py:_inspect_auto_candidate`, `_resolve_target_selector`, `_run_with_pane_ownership`, `_codex_completion_snapshot`, `_classify_codex_completion_snapshot`, `_main_body`
-- Modify: reuse eligibility/fingerprint plumbing and the active Codex prompt-submit branch in `scripts/herdr_main_launcher.py`
-- Verify: `tests/test_herdr_main_launcher.py`, `tests/test_secretary_live_runtime.py`, `README.md`, `docs/usage.md`, `docs/configuration.md`
+- Inspect: `scripts/herdr_main_launcher.py:_inspect_auto_candidate`, `_resolve_target_selector`, `_run_with_pane_ownership`, `_codex_completion_snapshot`, `_classify_codex_completion_snapshot`, `_main_body`; `scripts/project_os_runtime/capabilities.py:capability_digest`, `scripts/project_os_runtime/results.py:publish_task_result`
+- Modify: reuse eligibility/fingerprint plumbing and the active Codex prompt-submit branch in `scripts/herdr_main_launcher.py`; extend the canonical capability helpers in `scripts/project_os_runtime/capabilities.py` rather than creating a second authority
+- Verify: `tests/test_herdr_main_launcher.py`, `tests/test_herdr_attempt_contract.py`, `tests/test_secretary_live_runtime.py`, `README.md`, `docs/usage.md`, `docs/configuration.md`
 
 **Dependencies:**
 - Task 1 establishes the evidence-separation pattern and must not be bypassed.
 - Preserve existing `capability_digest()` and MCP-selection normalization rather
-  than introducing a second capability authority.
+  than introducing a second capability authority. The effective reuse binding
+  must be a canonical combined digest over the normalized local capability
+  evidence and the selected MCP capability/configuration evidence; it must not
+  hash local capabilities alone. If either side lacks stable evidence, reuse
+  is ineligible and the diagnostics must report the missing-evidence reason.
 
 **Authority:**
 - Preauthorized local actions: edit the listed Codex reuse/submission helpers and their focused contract tests/docs; remove only demonstrably unreachable dispatch code.
 - Stop for: capability checks that use hidden process state, any reuse without exact identity evidence, or any change that treats submitted as accepted/completed.
+- Rollback/idempotency: if the combined capability fingerprint cannot be derived or does not match, preserve the existing process and allocate a replacement; never mutate a running pane to force compatibility, and never resubmit a submitted-only attempt.
 
 **Steps:**
 - [ ] Step 1: Trace the active Codex dispatch path and record which completion helpers have external tests/callers before deleting or relocating branches.
-- [ ] Step 2: Define a canonical effective capability fingerprint from the already-selected MCP/local capability evidence and include it in pane reuse eligibility and diagnostics.
+- [ ] Step 2: Define the canonical combined effective capability fingerprint in `scripts/project_os_runtime/capabilities.py`, including normalized local capabilities, selected MCP configuration, and fail-closed behavior when stable evidence is unavailable; include it in pane reuse eligibility and diagnostics.
 - [ ] Step 3: Set `reconciliation_required=true`, unknown execution/task/cleanup, and a non-success lifecycle state for submitted-only asynchronous results; keep confirmed completion classification separate.
 - [ ] Step 4: Remove unreachable completion assignments/branches only after preserving helper APIs used by tests or the Secretary observer path; add mismatch, compatible-reuse, and submitted-only regression tests.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_herdr_main_launcher.py -k "codex_completion or codex_prompt_result or pane_safety or reused_codex or mcp_selection" tests/test_secretary_live_runtime.py -k "observe_submitted_codex or runtime_snapshot"`
+- [ ] `py -m pytest -q tests/test_herdr_main_launcher.py -k "codex_completion or codex_prompt_result or pane_safety or reused_codex or mcp_selection"`
+- [ ] `py -m pytest -q tests/test_secretary_live_runtime.py -k "observe_submitted_codex or runtime_snapshot"`
 - Expected: same-capability idle agents reuse; mismatched capability fingerprints do not; submitted-only responses require reconciliation; observer helpers remain testable.
 
 **Exit Criteria:**
@@ -297,6 +309,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 **Authority:**
 - Preauthorized local actions: edit target discovery/allocation/reuse timing and focused tests/docs, reusing existing Herdr commands and lock mechanisms only.
 - Stop for: removal of the final ownership check, unbounded discovery/allocation, automatic split retry after uncertain creation, or a new pane/window registry.
+- Rollback/idempotency: a `created_unverified` allocation is terminal for that allocation attempt and remains in recovery state; do not retry, reuse, or split it automatically. A timed-out lock or allocation leaves no claimed replacement unless ownership and identity proof completed.
 
 **Steps:**
 - [ ] Step 1: Add deterministic tests that force lock contention, slow discovery, successful split, and split-created-but-unverified outcomes.
@@ -342,8 +355,8 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 **Files And Symbols:**
 - Inspect: `scripts/herdr_main_launcher.py:_main_body` result-directory creation and settlement paths; `scripts/benchmark_secretary_architecture.py:run_contract_benchmark`; existing performance evidence helpers in `scripts/herdr_main_launcher.py`
-- Modify: launcher-owned result-artifact retention and the separately named live benchmark mode in `scripts/benchmark_secretary_architecture.py`
-- Verify: `tests/test_herdr_main_launcher.py`, `tests/test_secretary_benchmark.py`, `tests/test_benchmark_operational_comparison.py`
+- Modify: launcher-owned result-artifact retention and the separately named live benchmark mode in `scripts/benchmark_secretary_architecture.py`; use `scripts/project_os_runtime/results.py:publish_task_result` as the canonical publication predicate and ownership boundary
+- Verify: `tests/test_herdr_main_launcher.py`, `tests/test_evidence_release.py`, `tests/test_secretary_benchmark.py`, `tests/test_benchmark_operational_comparison.py`
 
 **Dependencies:**
 - Task 1 defines when settlement is durable enough to remove artifacts.
@@ -356,13 +369,15 @@ latency and resource evidence without claiming an improvement absent a baseline.
 - Stop for: deleting unresolved evidence, claiming an optimization from deterministic rows, inventing a universal latency threshold, or adding persistent benchmark infrastructure.
 
 **Steps:**
-- [ ] Step 1: Define settled, unresolved, and ambiguous artifact states and the owner of each directory; preserve unresolved directories under explicit recovery retention.
-- [ ] Step 2: Remove or archive only settled directories after durable result publication; add bounded age/count cleanup for retained recovery artifacts without touching unrelated temp files.
+- [ ] Step 1: Define settled, unresolved, and ambiguous artifact states and the owner of each directory. Publication is durable only after `publish_task_result()` in `scripts/project_os_runtime/results.py` succeeds and the assignment/attempt evidence binds that result to the task; preserve unresolved directories under explicit recovery retention.
+- [ ] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate and settlement proof succeed; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. All publication, ownership, and identity gates must complete before deletion. Add bounded age/count cleanup for retained recovery artifacts without touching unrelated temp files.
 - [ ] Step 3: Keep `contract` mode unchanged and add a distinct live/trace mode that executes the existing bounded launcher/test-double path and records real latency, subprocess count, pane allocation/reuse, and reconciliation frequency.
 - [ ] Step 4: Feed only real samples into the existing operational-comparison schema; mark missing metrics unavailable and document that the target owner must set any pass threshold after baseline capture.
 
 **Verification:**
-- [ ] `py -m pytest -q tests/test_herdr_main_launcher.py -k "result_file or receipt or cleanup" tests/test_secretary_benchmark.py tests/test_benchmark_operational_comparison.py`
+- [ ] `py -m pytest -q tests/test_herdr_main_launcher.py -k "result_file or receipt or cleanup"`
+- [ ] `py -m pytest -q tests/test_evidence_release.py -k "publish_task_result or result"`
+- [ ] `py -m pytest -q tests/test_secretary_benchmark.py tests/test_benchmark_operational_comparison.py`
 - Expected: settled artifacts are cleaned only after proof, unresolved artifacts remain recoverable, contract mode stays deterministic, and live mode never reports fabricated latency/resource improvements.
 
 **Exit Criteria:**
