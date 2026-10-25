@@ -829,6 +829,20 @@ test("completion requires a new stable visible assistant turn and conversation",
     responseActionsReady: false,
     stableSampleCount: 2,
   }), false);
+
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
+    assistantText: "Finding: the pinned revision is confirmed.",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-1",
+    generationObserved: false,
+    generating: false,
+    interrupted: false,
+    responseActionsReady: true,
+    stableSampleCount: 2,
+  }), true);
 });
 
 test("assistant fallback excludes rich-text user turns", () => {

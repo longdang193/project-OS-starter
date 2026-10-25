@@ -185,7 +185,7 @@ export function evaluateReviewCompletion({
     && !interrupted
     && Boolean(conversationId)
     && Boolean(assistantMessageId)
-    && generationObserved
+    && (generationObserved || responseActionsReady)
     && assistantTurnCount > baselineAssistantTurnCount
     && Boolean(assistantText.trim())
     && stableSampleCount >= 2;
