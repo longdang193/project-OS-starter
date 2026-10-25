@@ -1,7 +1,7 @@
 ---
 layer: change
 artifact_type: plan
-status: proposed
+status: completed
 template_id: implementation-plan
 contract_version: "1"
 name: github-review-runner-preflight-hardening
@@ -42,8 +42,9 @@ GitHub-review readiness,” is out of scope for this plan.
 ### Immutable review provenance is admission-controlled
 
 Single and batch invocations require a repository identifier, a full commit SHA,
-and at least one commit-pinned GitHub file URL. The runner validates that the
-metadata agrees before opening the browser and persists the same values in every
+and at least one commit-pinned GitHub file URL. The runner validates every
+GitHub `/blob/` URL in the submitted prompt against the declared repository and
+SHA before opening the browser, and persists the normalized URL set in every
 review result. The runner remains responsible for metadata validation; the
 controller remains responsible for judging whether the assistant response proves
 that it read the requested revision.
@@ -51,18 +52,24 @@ that it read the requested revision.
 ### Profile and context selection remain project-scoped and deterministic
 
 Owned-profile launch validates the profile at the browser-launch boundary, not
-only during CLI parsing. The profile is checked against the declared project
-key without adding a registry or cross-project discovery layer. Exceptional CDP
-mode refuses implicit context selection when more than one browser context is
-available.
+only during CLI parsing. A canonical, case-normalized `owner-repository`
+project key is derived from the declared GitHub repository and compared with the
+terminal profile directory name in both CLI and direct API paths; the caller
+cannot make an arbitrary key satisfy the check. Exceptional CDP mode refuses
+implicit context selection when more than one browser context is available.
 
 ### Failure handling stays bounded and evidence-preserving
 
-A send click failure is not treated as a possible dispatched request unless the
-runner has evidence that dispatch may have occurred. Ambiguous acknowledgement
-continues to observe exactly once, but a pre-dispatch failure returns promptly.
+Submission uses an explicit internal dispatch state:
+`not_dispatched`, `possibly_dispatched`, or `acknowledged`. A control that is
+missing before the send action starts is `not_dispatched`; once the send action
+has been invoked, any uncertain outcome, including a click/Enter exception, is
+`possibly_dispatched` until visible acknowledgement proves `acknowledged`.
+Only `not_dispatched` skips the long completion observer. The public result keeps
+the existing submission values (`not_started`, `attempted`, `acknowledged`, or
+`ambiguous`); `incomplete` remains a result status, not a submission value.
 Preflight failures and completion-observation failures persist structured
-results and best-effort visible evidence before cleanup.
+results and one bounded capture of recoverable visible evidence before cleanup.
 
 ### Documentation, tests, and generated adapters remain aligned
 
@@ -75,7 +82,9 @@ registry, or security subsystem is introduced.
 
 The following findings are retained because they are supported by the pinned
 source and by one or both completed model reviews. The skipped GitHub-app
-readiness finding is intentionally excluded.
+readiness finding is intentionally excluded. Line references in this table refer
+to the pre-patch revision reviewed by the models; the task steps below are the
+authoritative corrected implementation scope.
 
 | Severity | Validated finding | Source evidence | Model attribution |
 | --- | --- | --- | --- |
@@ -87,12 +96,21 @@ readiness finding is intentionally excluded.
 | P2 | A failed send click can hold the profile for the full 15-minute completion timeout. | `run-review-prompt.mjs:13-15,226-260,283-285`; `run-review-prompt-cli.mjs:538-550` | GPT-6 |
 | P2 | Browser preflight failures occur before per-review result allocation and therefore may exist only in stdout. | `run-review-prompt-cli.mjs:450-475,691-710` | GPT-6 |
 | P2 | Completion-observation exceptions can leave available visible response evidence unpersisted. | `run-review-prompt-cli.mjs:538-550` | GPT-6 |
+| P1 | The plan's pre-dispatch versus post-click split does not define a reliable dispatch signal and could violate exactly-once handling after a click/Enter exception. | `run-review-prompt.mjs:226-260,348-376`; plan `:188-192` | GPT-5.6-Sol |
+| P2 | The plan's project key can remain arbitrary unless it is deterministically derived from the declared owner/repository. | `run-review-prompt-cli.mjs:96-113`; plan `:151-153` | GPT-5.6-Sol |
+| P2 | Requiring one valid pinned URL does not reject additional conflicting or unpinned `/blob/` URLs in the same prompt. | plan `:151-153` | GPT-5.6-Sol |
+| P2 | The proposed preflight artifact boundary cannot preserve visible evidence after `preflightAuthenticatedContext()` and `openReviewContext()` close their pages or context. | `run-review-prompt.mjs:71-88`; `run-review-prompt-cli.mjs:355-364` | GPT-5.6-Sol |
+| P2 | `tests/test_github_browser_review_runner.py` is executed by Task 4 but is not owned by a task that updates its new required arguments. | plan `:139-142,214-217,266-274`; `tests/test_github_browser_review_runner.py:77-117` | GPT-5.6-Sol |
 
 The prior test-coverage observation is not included as a standalone finding:
 `tests/test_github_browser_review_lifecycle.mjs` already provides behavioral
 coverage beyond the source-shape assertions in
 `tests/test_github_browser_reviews.py`. The implementation tasks below extend
-that behavioral suite only for the retained contracts.
+that behavioral suite only for the retained contracts. The latest review also
+identified two plan omissions that are addressed directly in the task steps:
+batch failures must retain the existing per-review `run-*` artifact layout, and
+multiple review URLs must use one normalized array represented by repeatable
+`--review-url` arguments, batch `review_urls`, and direct-API `reviewUrls`.
 
 ## Execution Approach
 
@@ -110,18 +128,53 @@ that behavioral suite only for the retained contracts.
 
 - Coordination owner: `single lead controller`
 - Coordination schema: `2`
-- Branch: `main`
+- Branch: `codex/github-review-plan-preflight-hardening`
 - Base commit: `4b7821099032b3c751fb92be08977bab0aa7e715`
-- Expected workspace: `tracked clean; preserve existing untracked .playwright-mcp/, .review-profile/, .runtime/, and node_modules/ artifacts`
-- Next action: `approve this plan, then activate Task 1`
+- Expected workspace: `tracked changes limited to the plan, canonical scripts, tests, and generated adapters; preserve existing untracked .playwright-mcp/, .review-profile/, .runtime/, and node_modules/ artifacts`
+- Next action: `commit and publish the completed implementation when separately authorized`
 - Blockers: `none`
 
 | Task | State | Workspace | Executor | Depends On | Required Proof | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Task 1 | `pending` | current | `unresolved` | none | provenance/profile/CDP lifecycle tests | pending |
-| Task 2 | `pending` | current | `unresolved` | Task 1 | bounded submission and evidence-preservation tests | pending |
-| Task 3 | `pending` | current | `unresolved` | Tasks 1–2 | canonical docs and adapter synchronization checks | pending |
-| Task 4 | `pending` | current | `unresolved` | Task 3 | full focused verification suite and `git diff --check` | pending |
+| Task 1 | `completed` | current | `codex` | none | provenance/profile/CDP lifecycle tests | 81 lifecycle tests passed; parser contract tests passed |
+| Task 2 | `completed` | current | `codex` | Task 1 | bounded submission and evidence-preservation tests | lifecycle dispatch/evidence tests passed |
+| Task 3 | `completed` | current | `codex` | Tasks 1–2 | canonical docs and adapter synchronization checks | canonical skill regenerated to all three adapters |
+| Task 4 | `completed` | current | `codex` | Task 3 | full focused verification suite and `git diff --check` | fresh verification recorded below |
+
+## Task Breakdown
+
+### Provenance and admission
+
+**Status:** completed
+
+- Require repository, full commit SHA, and commit-pinned review URLs for single and batch reviews.
+- Derive and enforce the repository-specific project key for owned profiles.
+- Reject ambiguous CDP context selection when multiple contexts are attached.
+- Proof: lifecycle and runner contract tests pass.
+
+### Dispatch and evidence
+
+**Status:** completed
+
+- Classify dispatch as `not_dispatched`, `possibly_dispatched`, or `acknowledged` without resubmission.
+- Persist bounded visible evidence and per-review artifacts across preflight, submission, completion, and cleanup failures.
+- Proof: lifecycle dispatch, evidence, cleanup, and batch tests pass.
+
+### Documentation and adapters
+
+**Status:** completed
+
+- Update the canonical GitHub Browser Reviews skill with provenance, project-profile, CDP, dispatch, and evidence rules.
+- Regenerate Claude, Codex, and Antigravity adapter projections from the canonical source.
+- Proof: source-shape tests and adapter synchronization checks pass.
+
+### Final verification
+
+**Status:** completed
+
+- Run focused Node/Python tests, syntax checks, repository contract validation, adapter drift checks, and `git diff --check`.
+- Preserve existing untracked runtime artifacts without modifying or deleting them.
+- Proof: all required checks pass from the final tracked state.
 
 ### Task 1: Gate provenance and owned-profile/context admission
 
@@ -130,15 +183,16 @@ that behavioral suite only for the retained contracts.
 **Task Function:** Implement the smallest source-level contract change that validates review provenance, binds the owned profile to the declared project key, validates direct API use, and rejects ambiguous CDP context selection.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** P1 provenance; P2 direct profile-validator bypass; P2 project/profile binding; P2 implicit CDP context selection; P2 stale-lease recovery UX.
 
 **Required Skills:** `skill-code-standards`, `skill-test-driven-development`
 
 **Files And Symbols:**
-- Inspect and modify `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`: `VALUE_ARGUMENTS`, `parseArguments`, `validateProjectProfilePath`, `readBatchReviews`, `acquireProfileLease`, `openContext`, `openReviewContext`, and single-review construction in `main`.
-- Extend `tests/test_github_browser_review_lifecycle.mjs` with direct API, provenance, profile-key, and multi-context CDP cases.
+- Inspect and modify `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`: `VALUE_ARGUMENTS`, `parseArguments`, `validateProjectProfilePath`, the canonical repository/project-key helper, `readBatchReviews`, `acquireProfileLease`, `openContext`, `openReviewContext`, and single-review construction in `main`.
+- Extend `tests/test_github_browser_review_lifecycle.mjs` with direct API, provenance, profile-key, prompt-URL consistency, and multi-context CDP cases.
+- Update `tests/test_github_browser_review_runner.py` for the new required provenance/project-key arguments and preserve its parser-error assertions.
 - Update `.agents/skills/skill-github-browser-reviews/SKILL.md` only after executable behavior is settled.
 
 **Dependencies:** None.
@@ -149,17 +203,17 @@ that behavioral suite only for the retained contracts.
 
 **Steps:**
 1. Add one canonical provenance validator that requires `repository`, a 40-character hexadecimal `commit_sha`, and one or more URLs matching `https://github.com/OWNER/REPOSITORY/blob/FULL_SHA/PATH`; reject branch URLs, malformed URLs, repository mismatches, and SHA mismatches before `openReviewContext()`.
-2. Expose the same provenance contract for single-review arguments and batch entries; require the prompt to contain the declared full SHA and at least one declared pinned URL so the structured metadata and submitted request cannot silently diverge.
-3. Add `--project-key` as a required owned-profile argument, require the terminal profile directory name to match it, and pass the same `projectKey` check from `openReviewContext()`/`openContext()` so direct library callers cannot bypass it. Keep the check string-based and deterministic; do not add a profile registry or filesystem-wide discovery.
+2. Expose the same provenance contract for single-review arguments and batch entries. Normalize `reviewUrls` as an array: accept repeatable `--review-url` values for the CLI, `review_urls` arrays in manifests, and `reviewUrls` arrays for direct callers. Extract every GitHub `/blob/` URL from the prompt and require each one to match the declared repository and full SHA; require at least one declared URL and reject any conflicting or unpinned target URL.
+3. Add `--project-key` as a required owned-profile argument, but derive the expected value from the declared repository using one canonical case-normalized `owner-repository` helper. Require the terminal profile directory name and supplied key to equal that derived value, and pass the same repository/project-key check from `openReviewContext()`/`openContext()` so direct library callers cannot bypass it. Keep the check string-based and deterministic; do not add a profile registry or filesystem-wide discovery.
 4. Keep stale lease handling fail-closed, but include the exact lock path and the non-destructive operator command `Remove-Item -LiteralPath '<resolved lock path>'` in the stale-lease error after the recorded PID is confirmed dead. The runner must never execute that command or remove the lock automatically.
 5. Preserve whether `--context-index` was explicitly supplied. In CDP mode, fail with a blocked context-selection error when multiple contexts exist and no explicit index is present; retain index `0` only when exactly one context exists.
-6. Add focused tests for valid/invalid provenance, direct owned-profile setup, project-key mismatch, stale-lease error guidance, one-context CDP defaulting, and multi-context CDP rejection.
+6. Add focused tests for valid/invalid provenance, every-prompt-URL consistency, direct owned-profile setup, repository-derived project-key mismatch, same-repository-name/different-owner separation, stale-lease error guidance, one-context CDP defaulting, and multi-context CDP rejection.
 
 **Verification:**
 - `node --test tests/test_github_browser_review_lifecycle.mjs`
 - `node --check .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs`
 
-**Exit Criteria:** The runner cannot start a review with missing or internally inconsistent provenance, an unbound owned profile, or an ambiguous multi-context CDP selection, and all new admission cases pass without launching a real browser.
+**Exit Criteria:** The runner cannot start a review with missing or internally inconsistent provenance, conflicting prompt targets, an unbound owned profile, or an ambiguous multi-context CDP selection, and all new admission cases pass without launching a real browser.
 
 ### Task 2: Bound send-failure waits and preserve failure evidence
 
@@ -168,7 +222,7 @@ that behavioral suite only for the retained contracts.
 **Task Function:** Refine transaction state classification and artifact persistence without changing exactly-once submission semantics.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** P2 failed-send timeout; P2 preflight artifact loss; P2 completion-evidence loss.
 
@@ -186,10 +240,11 @@ that behavioral suite only for the retained contracts.
 - Stop for: retrying a prompt, sending a second prompt, changing the 15-minute successful-response budget for valid in-flight reviews, or treating arbitrary text as proof of completion.
 
 **Steps:**
-1. Distinguish a send-control failure before a dispatch signal from a post-click acknowledgement timeout. Mark both as non-success, but only observe completion after the latter; return the former immediately with `submission: ambiguous` or `incomplete` according to the existing exactly-once contract.
-2. Allocate the batch/run result directory before owned-context preflight, persist the initial blocked/incomplete result, and update it with the precise failure stage when context creation or authentication preflight fails.
-3. When completion observation or evidence extraction throws after a page is retained, make one bounded best-effort visible snapshot attempt and persist any available assistant text, message identity, URL, and failure reason before cleanup. Do not retry observation indefinitely.
-4. Add lifecycle tests proving that pre-dispatch failures do not call the long completion observer, ambiguous acknowledgement still observes at most once, preflight failures write `result.json`, and partial evidence survives a completion-extraction exception.
+1. Implement the explicit internal dispatch state machine: `not_dispatched` before the send action is invoked, `possibly_dispatched` immediately when the action is invoked or its outcome is uncertain, and `acknowledged` only after visible acknowledgement. A click/Enter exception after invocation remains `possibly_dispatched`; do not infer `not_dispatched` from a thrown UI action. Map these states to the existing public submission values without introducing `incomplete` as a submission value.
+2. Observe completion at most once for `possibly_dispatched` and `acknowledged`; only `not_dispatched` returns promptly without the long observer. Preserve the 15-minute valid in-flight response budget and never retry or resubmit.
+3. Allocate the batch output root and every review's existing `run-*` result directory before owned-context preflight. Persist one initial per-review blocked/incomplete result plus a batch summary when shared context creation or authentication preflight fails; retain the failure scope and precise stage in both forms.
+4. Before `preflightAuthenticatedContext()` or `openReviewContext()` closes a page/context after a failure, capture one bounded visible-evidence record containing the current URL and recoverable visible login/composer/error text. Attach it to the structured error and persist it before cleanup. When completion observation or evidence extraction throws after a page is retained, make one bounded best-effort visible capture and persist any available assistant text, message identity, URL, and failure reason. Do not retry observation indefinitely.
+5. Add lifecycle tests proving that controls missing before send do not call the long completion observer, click/Enter exceptions after invocation observe at most once, ambiguous acknowledgement observes at most once, shared-context preflight writes every per-review `result.json` plus the batch summary, preflight evidence survives cleanup, and partial completion evidence survives an extraction exception.
 
 **Verification:**
 - `node --test tests/test_github_browser_review_lifecycle.mjs`
@@ -205,7 +260,7 @@ that behavioral suite only for the retained contracts.
 **Task Function:** Update the canonical skill and its maintained behavioral/source-shape tests, then regenerate all adapter projections from canonical sources.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** Documentation alignment; generated-surface ownership; personal-workflow simplicity; skipped-finding exclusion.
 
@@ -214,6 +269,7 @@ that behavioral suite only for the retained contracts.
 **Files And Symbols:**
 - Modify `.agents/skills/skill-github-browser-reviews/SKILL.md`.
 - Modify `tests/test_github_browser_reviews.py` only for canonical wording/contract assertions that changed.
+- Keep `tests/test_github_browser_review_runner.py` aligned with the finalized CLI contract; Task 1 owns argument behavior, while Task 3 updates only documentation/source-shape assertions if wording changes.
 - Regenerate, never hand-edit, the projections under `generated_agents/claude/skills/skill-github-browser-reviews`, `generated_agents/codex/skills/skill-github-browser-reviews`, and `generated_agents/antigravity/skills/skill-github-browser-reviews` using `python scripts/sync_agent_adapters.py --all-platforms`.
 
 **Dependencies:** Tasks 1–2.
@@ -223,7 +279,7 @@ that behavioral suite only for the retained contracts.
 - Stop for: editing generated adapter files directly, adding the skipped GitHub-app readiness requirement, or introducing a new browser lifecycle owner/profile registry.
 
 **Steps:**
-1. Document the required provenance fields, `--project-key`/profile relationship, explicit CDP selection rule, pre-dispatch timeout boundary, artifact timing, and the printed stale-lease recovery command.
+1. Document the required provenance fields, all-prompt-URL consistency rule, repository-derived `--project-key`/profile relationship, explicit CDP selection rule, dispatch state machine, pre-dispatch timeout boundary, per-review batch artifact timing, and the printed stale-lease recovery command.
 2. Keep the documentation explicit that controller-side revision evidence remains distinct from runner completion and that no automatic retry or resubmission is allowed.
 3. Update source-shape assertions only where canonical wording or required symbols changed.
 4. Run `python scripts/sync_agent_adapters.py --all-platforms` and verify the three generated surfaces match the canonical skill and scripts.
@@ -242,7 +298,7 @@ that behavioral suite only for the retained contracts.
 **Task Function:** Run fresh focused and repository contract checks, inspect the diff, and reconcile the plan ledger without marking implementation complete.
 
 **Template Profile:**
-- Controller-selected: `unresolved`
+- Controller-selected: `none (lead controller)`
 
 **Specification Coverage:** Final proof, source/test/generated-surface consistency, preserved untracked artifacts, and stop-condition compliance.
 
@@ -292,6 +348,16 @@ changing this plan to a terminal state:
 No live GitHub browser review is part of implementation proof. The completed
 read-only review artifacts remain preserved under
 `.runtime/github-review-20261025-final/` and must not be resubmitted.
+
+## Observed Proof
+
+- `node --test tests/test_github_browser_review_lifecycle.mjs` — 81 passed, 0 failed.
+- `py -m pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py` — 25 passed, 0 failed.
+- Node syntax checks passed for `run-review-prompt-cli.mjs`, `run-review-prompt.mjs`, and `select-review-model.mjs`.
+- `py -B scripts/validate_repo_contracts.py` — repository contract validation passed.
+- `python scripts/sync_agent_adapters.py --all-platforms --check` — all generated adapters are up to date.
+- `git diff --check` — no whitespace errors.
+- Existing untracked review/runtime artifacts were preserved and not modified by the implementation.
 
 ## Completion Criteria
 

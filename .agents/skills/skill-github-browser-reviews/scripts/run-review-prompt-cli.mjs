@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import {
+  captureVisibleEvidence,
   runReviewPromptInNewTab,
   preflightAuthenticatedContext,
   waitForReviewCompletion,
@@ -22,16 +23,22 @@ const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
 const PROJECT_PROFILE_MARKER = "github-review";
 const VALUE_ARGUMENTS = new Set([
   "--cdp-endpoint",
+  "--commit-sha",
   "--context-index",
   "--effort",
   "--model",
   "--output-dir",
   "--prompt-file",
+  "--project-key",
+  "--repository",
+  "--review-url",
   "--batch-file",
   "--user-data-dir",
 ]);
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) [--project-key <owner-repository>] (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> --repository <owner/repository> --commit-sha <sha> --review-url <url>...) | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
 const FLAG_ARGUMENTS = new Set();
+const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const GITHUB_BLOB_URL_PATTERN = /https:\/\/github\.com\/[^\s<>"']+/gi;
 
 function usageError(message) {
   throw new Error(`${message}\n${USAGE}`);
@@ -51,25 +58,37 @@ export function parseArguments(argv) {
 
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) usageError(`Missing value for argument: ${argument}`);
-    if (argumentsByName.has(argument)) usageError(`Duplicate argument: ${argument}`);
-    argumentsByName.set(argument, value);
+    if (argument === "--review-url") {
+      const reviewUrls = argumentsByName.get(argument) || [];
+      reviewUrls.push(value);
+      argumentsByName.set(argument, reviewUrls);
+    } else {
+      if (argumentsByName.has(argument)) usageError(`Duplicate argument: ${argument}`);
+      argumentsByName.set(argument, value);
+    }
     index += 1;
   }
 
   const cdpEndpoint = argumentsByName.get("--cdp-endpoint");
+  const commitSha = argumentsByName.get("--commit-sha");
   const userDataDir = argumentsByName.get("--user-data-dir");
   const model = argumentsByName.get("--model");
   const effort = argumentsByName.get("--effort");
   const promptFile = argumentsByName.get("--prompt-file");
+  const projectKey = argumentsByName.get("--project-key");
+  const repository = argumentsByName.get("--repository");
+  const reviewUrls = argumentsByName.get("--review-url") || [];
   const batchFile = argumentsByName.get("--batch-file");
   const contextIndexValue = argumentsByName.get("--context-index");
   const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
+  if (userDataDir && !projectKey) usageError("Missing required argument: --project-key for --user-data-dir");
+  if (cdpEndpoint && projectKey) usageError("--project-key requires --user-data-dir");
   if (userDataDir) validateProjectProfilePath(userDataDir);
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
-  if (batchFile && (model || effort || promptFile)) {
+  if (batchFile && (model || effort || promptFile || repository || commitSha || reviewUrls.length > 0)) {
     usageError("Single-review arguments cannot be combined with --batch-file");
   }
   if (!batchFile && !model) usageError("Missing required argument: --model");
@@ -77,6 +96,9 @@ export function parseArguments(argv) {
   if (!batchFile && !promptFile) usageError("Missing required argument: --prompt-file");
   if (model && !SUPPORTED_MODELS.has(model)) usageError(`Unsupported model: ${model}`);
   if (effort && !SUPPORTED_EFFORTS.has(effort)) usageError(`Unsupported effort: ${effort}`);
+  if (!batchFile && !repository) usageError("Missing required argument: --repository");
+  if (!batchFile && !commitSha) usageError("Missing required argument: --commit-sha");
+  if (!batchFile && reviewUrls.length === 0) usageError("Missing required argument: --review-url");
 
   const contextIndex = contextIndexValue === undefined ? DEFAULT_CONTEXT_INDEX : Number(contextIndexValue);
   if (!Number.isInteger(contextIndex) || contextIndex < 0) usageError(`Invalid context index: ${contextIndexValue}`);
@@ -84,16 +106,94 @@ export function parseArguments(argv) {
   return {
     cdpEndpoint,
     contextIndex,
+    contextIndexProvided: contextIndexValue !== undefined,
+    commitSha,
     effort,
     model,
     batchFile,
     outputDir,
     promptFile,
+    projectKey,
+    repository,
+    reviewUrls,
     userDataDir: userDataDir ? resolve(userDataDir) : undefined,
   };
 }
 
-export function validateProjectProfilePath(userDataDir) {
+export function deriveProjectKey(repository) {
+  if (typeof repository !== "string") throw new Error("repository must be an owner/repository identifier");
+  const match = repository.trim().match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (!match) throw new Error("repository must use the owner/repository form");
+  return `${match[1]}-${match[2]}`.toLowerCase();
+}
+
+function normalizeUrlCandidate(value) {
+  return value.replace(/[),.;:!?]+$/g, "");
+}
+
+export function normalizeGitHubBlobUrl(value) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("review URLs must be non-empty strings");
+  const candidate = normalizeUrlCandidate(value.trim());
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch (error) {
+    throw new Error(`Invalid GitHub review URL: ${value}`, { cause: error });
+  }
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com" || segments.length < 4 || segments[2] !== "blob" || !segments[3]) {
+    throw new Error(`Review URL must be a commit-pinned GitHub blob URL: ${value}`);
+  }
+  if (!FULL_SHA_PATTERN.test(segments[3])) throw new Error(`Review URL must contain a full commit SHA: ${value}`);
+  return `https://github.com/${segments[0].toLowerCase()}/${segments[1].toLowerCase()}/blob/${segments[3].toLowerCase()}/${segments.slice(4).join("/")}`;
+}
+
+export function extractPromptGitHubBlobUrls(prompt) {
+  if (typeof prompt !== "string") return [];
+  return [...prompt.matchAll(GITHUB_BLOB_URL_PATTERN)]
+    .map((match) => normalizeUrlCandidate(match[0]))
+    .filter((value) => value.includes("/blob/"));
+}
+
+export function validateReviewProvenance({ repository, commitSha, reviewUrls, prompt }) {
+  const normalizedRepository = typeof repository === "string" ? repository.trim().toLowerCase() : "";
+  const repositoryMatch = normalizedRepository.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (!repositoryMatch) throw new Error("repository must use the owner/repository form");
+  if (!FULL_SHA_PATTERN.test(commitSha || "")) throw new Error("commit_sha must be a full 40-character hexadecimal SHA");
+  const normalizedSha = commitSha.toLowerCase();
+  if (!Array.isArray(reviewUrls) || reviewUrls.length === 0) throw new Error("review_urls must contain at least one pinned GitHub URL");
+
+  const normalizedUrls = [...new Set(reviewUrls.map(normalizeGitHubBlobUrl))];
+  for (const url of normalizedUrls) {
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (`${segments[0]}/${segments[1]}` !== normalizedRepository || segments[3] !== normalizedSha) {
+      throw new Error(`Review URL does not match repository or commit SHA: ${url}`);
+    }
+  }
+
+  if (!prompt.includes(commitSha) && !prompt.includes(normalizedSha)) {
+    throw new Error("Prompt must contain the declared full commit SHA");
+  }
+  const promptUrls = extractPromptGitHubBlobUrls(prompt).map(normalizeGitHubBlobUrl);
+  if (promptUrls.length === 0) throw new Error("Prompt must contain at least one commit-pinned GitHub blob URL");
+  const declaredSet = new Set(normalizedUrls);
+  for (const url of promptUrls) {
+    if (!declaredSet.has(url)) throw new Error(`Prompt contains an undeclared or conflicting review URL: ${url}`);
+  }
+  for (const url of normalizedUrls) {
+    if (!promptUrls.includes(url)) throw new Error(`Declared review URL is missing from the prompt: ${url}`);
+  }
+
+  return {
+    repository: `${repositoryMatch[1]}/${repositoryMatch[2]}`,
+    commitSha: normalizedSha,
+    reviewUrls: normalizedUrls,
+    projectKey: deriveProjectKey(`${repositoryMatch[1]}/${repositoryMatch[2]}`),
+  };
+}
+
+export function validateProjectProfilePath(userDataDir, expectedProjectKey) {
   if (typeof userDataDir !== "string" || !userDataDir.trim()) {
     usageError("--user-data-dir must point to a dedicated project profile");
   }
@@ -108,6 +208,9 @@ export function validateProjectProfilePath(userDataDir) {
 
   if (normalProfile || markerIndex < 0 || markerIndex === segments.length - 1) {
     usageError("--user-data-dir must resolve to a dedicated github-review/<project> profile, not the normal Chrome profile");
+  }
+  if (expectedProjectKey && basename(profilePath).toLowerCase() !== expectedProjectKey.toLowerCase()) {
+    usageError(`--user-data-dir terminal directory must match project key: ${expectedProjectKey}`);
   }
 
   return profilePath;
@@ -125,6 +228,7 @@ export function createResult(options) {
     effort_verified: null,
     submission_attempted: false,
     submission: "not_started",
+    dispatch_state: "not_dispatched",
     completion: "not_started",
     conversation_url: null,
     conversation_id: null,
@@ -136,6 +240,7 @@ export function createResult(options) {
     failure_scope: null,
     failure_stage: null,
     failure_reason: null,
+    visible_evidence: null,
     review_index: options.reviewIndex ?? null,
     request_provenance: {
       prompt_file: options.promptFile || null,
@@ -208,14 +313,22 @@ export async function readBatchReviews(batchFile) {
     }
     if (!prompt.trim()) throw new Error(`Prompt file for batch review ${index + 1} must not be empty`);
 
+    const provenance = validateReviewProvenance({
+      repository: review.repository,
+      commitSha: review.commit_sha || review.commitSha,
+      reviewUrls: review.review_urls,
+      prompt,
+    });
+
     return {
       effort: review.effort,
       model: review.model,
       prompt,
       promptFile,
-      repository: review.repository || null,
-      commitSha: review.commit_sha || review.commitSha || null,
-      reviewUrls: Array.isArray(review.review_urls) ? [...review.review_urls] : [],
+      repository: provenance.repository,
+      commitSha: provenance.commitSha,
+      reviewUrls: provenance.reviewUrls,
+      projectKey: provenance.projectKey,
       reviewIndex: index,
     };
   }));
@@ -267,7 +380,7 @@ export async function acquireProfileLease(
     if (ownerAlive) {
       throw new Error(`Browser profile is already in use: ${profilePath}`);
     }
-    throw new Error(`Stale profile lease requires operator-confirmed recovery: ${profilePath}`);
+    throw new Error(`Stale profile lease requires operator-confirmed recovery: ${profilePath}; lock path: ${lockPath}; after confirming PID ${metadata.pid} is dead, run Remove-Item -LiteralPath '${lockPath}'`);
   }
 
   const token = randomUUID();
@@ -329,10 +442,14 @@ async function loadPlaywright() {
   }
 }
 
-async function openContext(chromium, options) {
+export async function openContext(chromium, options) {
   if (options.cdpEndpoint) {
     const browser = await chromium.connectOverCDP(options.cdpEndpoint);
     const contexts = browser.contexts();
+    if (contexts.length > 1 && !options.contextIndexProvided) {
+      await browser.close().catch(() => {});
+      throw new Error(`Explicit --context-index is required when multiple authenticated browser contexts exist; available contexts: ${contexts.length}`);
+    }
     const context = contexts[options.contextIndex];
     if (!context) {
       await browser.close().catch(() => {});
@@ -341,6 +458,11 @@ async function openContext(chromium, options) {
     return { browser, context, ownsContext: false };
   }
 
+  const derivedProjectKey = deriveProjectKey(options.repository);
+  if (options.projectKey?.toLowerCase() !== derivedProjectKey) {
+    throw new Error(`Project key does not match repository-derived key: expected ${derivedProjectKey}`);
+  }
+  validateProjectProfilePath(options.userDataDir, derivedProjectKey);
   const profileLease = await acquireProfileLease(options.userDataDir);
   try {
     const context = await chromium.launchPersistentContext(options.userDataDir, { headless: false });
@@ -458,6 +580,7 @@ export async function runReviewTransaction(context, options) {
   let outputDir;
   let runId;
   let page;
+  let dispatchState = "not_dispatched";
   let stage = "artifacts";
   let resultPersisted = false;
 
@@ -468,7 +591,12 @@ export async function runReviewTransaction(context, options) {
   };
 
   try {
-    ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
+    if (options.runOutputDir) {
+      outputDir = resolve(options.runOutputDir);
+      runId = options.runId || basename(outputDir);
+    } else {
+      ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
+    }
     result = createResult({ ...options, runId });
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
     await persist();
@@ -498,6 +626,8 @@ export async function runReviewTransaction(context, options) {
     result.model_verified = review.model;
     result.effort_verified = review.effort;
     result.submission = review.submission;
+    dispatchState = review.dispatchState || "acknowledged";
+    result.dispatch_state = dispatchState;
     result.completion = "waiting";
     stage = "artifacts";
     await persist();
@@ -524,6 +654,10 @@ export async function runReviewTransaction(context, options) {
     }
   } catch (error) {
     const transactionFailureReason = errorMessage(error);
+    dispatchState = error.dispatchState
+      || (error.submissionAttempted || (stage === "submission" && result.submission_attempted) ? "possibly_dispatched" : dispatchState);
+    result.dispatch_state = dispatchState;
+    if (error.visibleEvidence) result.visible_evidence = error.visibleEvidence;
     if (error?.reviewPage) {
       page = error.reviewPage;
       const baseline = error.reviewBaseline;
@@ -535,7 +669,7 @@ export async function runReviewTransaction(context, options) {
       }
       result.conversation_url = baseline?.conversationUrl || currentUrl;
       result.conversation_id = baseline?.conversationId || null;
-      if (error.submissionAttempted && baseline) {
+      if (dispatchState !== "not_dispatched" && baseline) {
         try {
           const completion = await waitForCompletion(page, { baseline });
           result.completion = completion.status;
@@ -551,11 +685,14 @@ export async function runReviewTransaction(context, options) {
         }
       }
     }
+    if (page && !result.visible_evidence) {
+      result.visible_evidence = await captureVisibleEvidence(page).catch(() => null);
+    }
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
     result.failure_scope = classifyFailureScope(stage, error);
     result.failure_stage = stage;
     result.failure_reason ||= transactionFailureReason;
-      if (stage === "submission" && result.submission !== "acknowledged" && error.submissionAttempted !== false) {
+      if (stage === "submission" && result.submission !== "acknowledged" && dispatchState !== "not_dispatched") {
         result.submission = "ambiguous";
       }
   } finally {
@@ -627,10 +764,14 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
           results.push({
             ...createResult({ ...skippedReview, reviewIndex: skippedReview.reviewIndex ?? skippedIndex }),
             status: "skipped",
+            output_dir: skippedReview.runOutputDir ? relative(process.cwd(), skippedReview.runOutputDir) : null,
             failure_scope: "shared_context",
             failure_stage: "batch",
             failure_reason: `Skipped after review ${index + 1} stopped the shared batch`,
           });
+          if (skippedReview.runOutputDir) {
+            await writeResult(skippedReview.runOutputDir, results.at(-1)).catch(() => {});
+          }
         }
         break;
       }
@@ -661,6 +802,20 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
   return results;
 }
 
+async function allocateReviewArtifacts(reviews, parentDir) {
+  return Promise.all(reviews.map(async (review) => {
+    const { outputDir, runId } = await createRunOutputDirectory(parentDir);
+    const initial = createResult({ ...review, runId });
+    initial.response_path = relative(process.cwd(), join(outputDir, "response.md"));
+    await writeResult(outputDir, initial);
+    return { ...review, runId, runOutputDir: outputDir };
+  }));
+}
+
+async function persistBatchSummary(outputDir, summary) {
+  await atomicWrite(join(resolve(outputDir), "batch-result.json"), `${JSON.stringify(summary, null, 2)}\n`);
+}
+
 export async function main(argv, dependencies = {}) {
   if (argv.length === 1 && ["-h", "--help"].includes(argv[0])) {
     console.log(USAGE);
@@ -674,22 +829,47 @@ export async function main(argv, dependencies = {}) {
   const runTransaction = dependencies.runReviewTransaction || runReviewTransaction;
 
   const options = parseArguments(argv);
-  const reviews = options.batchFile
-    ? await readBatchReviews(options.batchFile)
-    : [{
+  let reviews;
+  if (options.batchFile) {
+    reviews = await readBatchReviews(options.batchFile);
+  } else {
+    const prompt = await readFile(options.promptFile, "utf8");
+    const provenance = validateReviewProvenance({
+      repository: options.repository,
+      commitSha: options.commitSha,
+      reviewUrls: options.reviewUrls,
+      prompt,
+    });
+    reviews = [{
       effort: options.effort,
       model: options.model,
-      prompt: await readFile(options.promptFile, "utf8"),
+      prompt,
       promptFile: options.promptFile,
+      ...provenance,
     }];
+  }
   if (!options.batchFile && !reviews[0].prompt.trim()) usageError("Prompt file must not be empty");
+
+  const projectKeys = [...new Set(reviews.map((review) => review.projectKey))];
+  if (options.userDataDir) {
+    if (projectKeys.length !== 1) usageError("Owned-profile batches must target one repository-derived project key");
+    if (options.projectKey?.toLowerCase() !== projectKeys[0]) {
+      usageError(`--project-key must match the repository-derived project key: ${projectKeys[0]}`);
+    }
+  }
+  reviews = await allocateReviewArtifacts(reviews, options.outputDir);
+  const contextOptions = {
+    ...options,
+    projectKey: options.projectKey || projectKeys[0],
+    repository: reviews[0].repository,
+  };
 
   let result;
   let attached;
   let removeTerminationCleanup = () => {};
 
   try {
-    attached = await openContextForReview(options);
+    attached = await openContextForReview(contextOptions);
     removeTerminationCleanup = installCleanup(attached, closeAttachedContext);
     if (options.batchFile) {
       result = summarizeBatchResults(await runBatch({
@@ -697,6 +877,7 @@ export async function main(argv, dependencies = {}) {
         outputDir: options.outputDir,
         reviews,
       }));
+      await persistBatchSummary(options.outputDir, result);
     } else {
       result = await runTransaction(attached.context, {
         effort: options.effort,
@@ -707,6 +888,8 @@ export async function main(argv, dependencies = {}) {
         repository: reviews[0].repository,
         commitSha: reviews[0].commitSha,
         reviewUrls: reviews[0].reviewUrls,
+        runId: reviews[0].runId,
+        runOutputDir: reviews[0].runOutputDir,
       });
     }
   } catch (error) {
@@ -722,12 +905,18 @@ export async function main(argv, dependencies = {}) {
       };
     } else if (options.batchFile) {
       const reason = errorMessage(error);
-      const skipped = reviews.map((review, index) => ({
+      const skipped = await Promise.all(reviews.map(async (review, index) => {
+        const skippedResult = {
         ...createResult({ ...review, reviewIndex: review.reviewIndex ?? index }),
         status: "skipped",
+        output_dir: relative(process.cwd(), review.runOutputDir),
         failure_scope: "shared_context",
         failure_stage: "browser",
         failure_reason: `Skipped because the shared batch context was unavailable: ${reason}`,
+        visible_evidence: error.visibleEvidence || null,
+        };
+        await writeResult(review.runOutputDir, skippedResult).catch(() => {});
+        return skippedResult;
       }));
       result = {
         ...summarizeBatchResults(skipped, reviews.length),
@@ -736,15 +925,18 @@ export async function main(argv, dependencies = {}) {
         failure_stage: "browser",
         failure_reason: reason,
       };
+      await persistBatchSummary(options.outputDir, result).catch(() => {});
     } else {
       result = {
-        ...createResult(options),
+        ...createResult({ ...reviews[0], reviewIndex: reviews[0].reviewIndex ?? 0 }),
         status: "blocked",
+        output_dir: relative(process.cwd(), reviews[0].runOutputDir),
         failure_scope: "shared_context",
         failure_stage: "browser",
         failure_reason: errorMessage(error),
-        output_dir: null,
+        visible_evidence: error.visibleEvidence || null,
       };
+      await writeResult(reviews[0].runOutputDir, result).catch(() => {});
     }
   } finally {
     removeTerminationCleanup();
