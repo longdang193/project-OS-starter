@@ -4,7 +4,7 @@ artifact_type: plan
 status: completed
 template_id: implementation-plan
 contract_version: "1"
-distribution_tier: starter_kit
+distribution_tier: project
 name: github-review-runner-profile-preflight-stability
 reviewed_repository: longdang193/project-OS-starter
 reviewed_branch: main
