@@ -7,6 +7,7 @@
 
 
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -16,6 +17,7 @@ import {
   captureVisibleEvidence,
   runReviewPromptInNewTab,
   preflightAuthenticatedContext,
+  AMBIGUOUS_DISPATCH_TIMEOUT_MS,
   waitForReviewCompletion,
 } from "./run-review-prompt.mjs";
 import {
@@ -92,7 +94,7 @@ export function parseArguments(argv) {
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
   if (userDataDir && !projectKey) usageError("Missing required argument: --project-key for --user-data-dir");
   if (cdpEndpoint && projectKey) usageError("--project-key requires --user-data-dir");
-  if (userDataDir) validateProjectProfilePath(userDataDir);
+  if (userDataDir) argumentsByName.set("--user-data-dir", validateProjectProfilePath(userDataDir));
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
   if (batchFile && (model || effort || promptFile || repository || commitSha || reviewUrls.length > 0)) {
     usageError("Single-review arguments cannot be combined with --batch-file");
@@ -147,7 +149,7 @@ export function normalizeGitHubBlobUrl(value) {
     throw new Error(`Invalid GitHub review URL: ${value}`, { cause: error });
   }
   const segments = parsed.pathname.split("/").filter(Boolean);
-  if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com" || segments.length < 4 || segments[2] !== "blob" || !segments[3]) {
+  if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com" || segments.length < 5 || segments[2] !== "blob" || !segments[3] || !segments.slice(4).join("/")) {
     throw new Error(`Review URL must be a commit-pinned GitHub blob URL: ${value}`);
   }
   if (!FULL_SHA_PATTERN.test(segments[3])) throw new Error(`Review URL must contain a full commit SHA: ${value}`);
@@ -199,12 +201,25 @@ export function validateReviewProvenance({ repository, commitSha, reviewUrls, pr
   };
 }
 
+function canonicalProfilePath(userDataDir) {
+  let currentPath = resolve(userDataDir);
+  const missingSegments = [];
+  while (!existsSync(currentPath)) {
+    const parentPath = dirname(currentPath);
+    if (parentPath === currentPath) return currentPath;
+    missingSegments.unshift(basename(currentPath));
+    currentPath = parentPath;
+  }
+  const resolvedExistingPath = (realpathSync.native || realpathSync)(currentPath);
+  return resolve(resolvedExistingPath, ...missingSegments);
+}
+
 export function validateProjectProfilePath(userDataDir, expectedProjectKey) {
   if (typeof userDataDir !== "string" || !userDataDir.trim()) {
     usageError("--user-data-dir must point to a dedicated project profile");
   }
 
-  const profilePath = resolve(userDataDir);
+  const profilePath = canonicalProfilePath(userDataDir);
   const segments = profilePath.split(/[\\/]+/).filter(Boolean);
   const markerIndex = segments.findIndex((segment) => segment.toLowerCase() === PROJECT_PROFILE_MARKER);
   const normalProfile = segments.some((segment) => {
@@ -356,15 +371,43 @@ export function summarizeBatchResults(results, requestedCount = results.length) 
   };
 }
 
+export function validateReviewBatch(reviews, { projectKey, repository } = {}) {
+  if (!Array.isArray(reviews) || reviews.length === 0) {
+    throw new Error("reviews must contain at least one review");
+  }
+  const expectedProjectKey = projectKey?.toLowerCase() || (repository ? deriveProjectKey(repository) : null);
+  if (!expectedProjectKey) throw new Error("runReviewBatch requires an attached project key or repository");
+  const expectedRepository = repository?.toLowerCase() || null;
+
+  return reviews.map((review, index) => {
+    if (!review || typeof review !== "object") throw new Error(`Review ${index + 1} must be an object`);
+    if (!SUPPORTED_MODELS.has(review.model)) throw new Error(`Review ${index + 1} has unsupported model: ${review.model}`);
+    if (!SUPPORTED_EFFORTS.has(review.effort)) throw new Error(`Review ${index + 1} has unsupported effort: ${review.effort}`);
+    const provenance = validateReviewProvenance({
+      repository: review.repository,
+      commitSha: review.commitSha || review.commit_sha,
+      reviewUrls: review.reviewUrls || review.review_urls,
+      prompt: review.prompt,
+    });
+    if (expectedRepository && provenance.repository.toLowerCase() !== expectedRepository) {
+      throw new Error(`Review ${index + 1} repository does not match the attached project: ${provenance.repository}`);
+    }
+    if (provenance.projectKey !== expectedProjectKey) {
+      throw new Error(`Review ${index + 1} project key does not match the attached project: ${provenance.projectKey}`);
+    }
+    return { ...review, ...provenance };
+  });
+}
+
 function profileLeasePath(userDataDir) {
-  return `${resolve(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
+  return `${canonicalProfilePath(userDataDir)}${PROFILE_LEASE_SUFFIX}`;
 }
 
 export async function acquireProfileLease(
   userDataDir,
   { writeMetadata = defaultWriteLeaseMetadata, isProcessAlive = defaultIsProcessAlive } = {},
 ) {
-  const profilePath = resolve(userDataDir);
+  const profilePath = canonicalProfilePath(userDataDir);
   const lockPath = profileLeasePath(profilePath);
   await mkdir(dirname(profilePath), { recursive: true });
 
@@ -468,11 +511,19 @@ export async function openContext(chromium, options) {
   if (options.projectKey?.toLowerCase() !== derivedProjectKey) {
     throw new Error(`Project key does not match repository-derived key: expected ${derivedProjectKey}`);
   }
-  validateProjectProfilePath(options.userDataDir, derivedProjectKey);
-  const profileLease = await acquireProfileLease(options.userDataDir);
+  const profilePath = validateProjectProfilePath(options.userDataDir, derivedProjectKey);
+  const profileLease = await acquireProfileLease(profilePath);
   try {
-    const context = await chromium.launchPersistentContext(options.userDataDir, { headless: false });
-    return { browser: null, context, ownsContext: true, profileLease };
+    const context = await chromium.launchPersistentContext(profilePath, { headless: false });
+    return {
+      browser: null,
+      context,
+      ownsContext: true,
+      profileLease,
+      profilePath,
+      projectKey: derivedProjectKey,
+      repository: options.repository,
+    };
   } catch (error) {
     await releaseProfileLease(profileLease).catch(() => {});
     const detail = error instanceof Error ? `: ${error.message}` : "";
@@ -548,12 +599,23 @@ export function installTerminationCleanup(attached, closeAttachedContext = close
   };
 }
 
-function classifyFailureScope(stage, error) {
+async function isContextHealthy(context) {
+  if (!context || typeof context.pages !== "function") return true;
+  try {
+    await context.pages();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function classifyFailureScope(stage, error, context) {
   if (error?.failureScope) return error.failureScope;
-  if (/(?:browser|context|target|page).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target|page)/i.test(errorMessage(error))) {
+  if (!(await isContextHealthy(context))) return "shared_context";
+  if (typeof context?.pages !== "function" && /(?:browser|context|target).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target)/i.test(errorMessage(error))) {
     return "shared_context";
   }
-  if (stage === "selection") return error?.failureScope === "review" ? "review" : "shared_context";
+  if (stage === "selection") return error?.code === "MODEL_UNAVAILABLE" ? "shared_context" : "review";
   if (stage === "submission" || stage === "completion") return "review";
   return null;
 }
@@ -677,7 +739,10 @@ export async function runReviewTransaction(context, options) {
       result.conversation_id = baseline?.conversationId || null;
       if (dispatchState !== "not_dispatched" && baseline) {
         try {
-          const completion = await waitForCompletion(page, { baseline });
+          const timeoutMs = dispatchState === "possibly_dispatched" && result.submission !== "acknowledged"
+            ? AMBIGUOUS_DISPATCH_TIMEOUT_MS
+            : undefined;
+          const completion = await waitForCompletion(page, { baseline, timeoutMs });
           result.completion = completion.status;
           result.conversation_url = completion.currentUrl || result.conversation_url;
           result.conversation_id = completion.conversationId || result.conversation_id;
@@ -695,7 +760,7 @@ export async function runReviewTransaction(context, options) {
       result.visible_evidence = await captureVisibleEvidence(page).catch(() => null);
     }
     result.status = stage === "artifacts" || stage === "selection" ? "blocked" : "incomplete";
-    result.failure_scope = classifyFailureScope(stage, error);
+    result.failure_scope = await classifyFailureScope(stage, error, context);
     result.failure_stage = stage;
     result.failure_reason ||= transactionFailureReason;
       if (stage === "submission" && result.submission !== "acknowledged" && dispatchState !== "not_dispatched") {
@@ -749,15 +814,18 @@ export async function runReviewTransaction(context, options) {
   };
 }
 
-export async function runReviewBatch({ attached, outputDir, reviews, runTransaction = runReviewTransaction }) {
+export async function runReviewBatch({ attached, outputDir, reviews, projectKey, repository, runTransaction = runReviewTransaction }) {
   const results = [];
   let cleanupError;
   try {
     if (!attached?.context) throw new Error("attached authenticated context is required");
-    if (!Array.isArray(reviews) || reviews.length === 0) throw new Error("reviews must contain at least one review");
+    const validatedReviews = validateReviewBatch(reviews, {
+      projectKey: projectKey || attached.projectKey,
+      repository: repository || attached.repository,
+    });
 
-    for (let index = 0; index < reviews.length; index += 1) {
-      const review = reviews[index];
+    for (let index = 0; index < validatedReviews.length; index += 1) {
+      const review = validatedReviews[index];
       const result = await runTransaction(attached.context, {
         ...review,
         reviewIndex: review.reviewIndex ?? index,
@@ -765,8 +833,8 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
       });
       results.push(result);
       if (result.status !== "completed" && result.failure_scope !== "review") {
-        for (let skippedIndex = index + 1; skippedIndex < reviews.length; skippedIndex += 1) {
-          const skippedReview = reviews[skippedIndex];
+        for (let skippedIndex = index + 1; skippedIndex < validatedReviews.length; skippedIndex += 1) {
+          const skippedReview = validatedReviews[skippedIndex];
           results.push({
             ...createResult({ ...skippedReview, reviewIndex: skippedReview.reviewIndex ?? skippedIndex }),
             status: "skipped",
@@ -808,14 +876,44 @@ export async function runReviewBatch({ attached, outputDir, reviews, runTransact
   return results;
 }
 
-async function allocateReviewArtifacts(reviews, parentDir) {
-  return Promise.all(reviews.map(async (review) => {
-    const { outputDir, runId } = await createRunOutputDirectory(parentDir);
-    const initial = createResult({ ...review, runId });
-    initial.response_path = relative(process.cwd(), join(outputDir, "response.md"));
-    await writeResult(outputDir, initial);
-    return { ...review, runId, runOutputDir: outputDir };
+async function allocateReviewArtifacts(
+  reviews,
+  parentDir,
+  { createDirectory = createRunOutputDirectory, persistResult = writeResult } = {},
+) {
+  const allocated = [];
+  try {
+    for (const review of reviews) {
+      const { outputDir, runId } = await createDirectory(parentDir);
+      const allocatedReview = { ...review, runId, runOutputDir: outputDir };
+      allocated.push(allocatedReview);
+      const initial = createResult(allocatedReview);
+      initial.response_path = relative(process.cwd(), join(outputDir, "response.md"));
+      await persistResult(outputDir, initial);
+    }
+    return allocated;
+  } catch (error) {
+    error.allocatedReviews = allocated;
+    throw error;
+  }
+}
+
+async function settleArtifactAllocationFailure(reviews, allocatedReviews, failureReason) {
+  const allocatedByIndex = new Map(allocatedReviews.map((review) => [review.reviewIndex, review]));
+  const results = reviews.map((review, index) => {
+    const allocated = allocatedByIndex.get(review.reviewIndex ?? index);
+    const result = createResult({ ...review, runId: allocated?.runId, reviewIndex: review.reviewIndex ?? index });
+    result.status = "blocked";
+    result.output_dir = allocated?.runOutputDir ? relative(process.cwd(), allocated.runOutputDir) : null;
+    result.failure_scope = "artifacts";
+    result.failure_stage = "artifacts";
+    result.failure_reason = `Review artifacts could not be allocated before dispatch: ${failureReason}`;
+    return { result, allocated };
+  });
+  await Promise.all(results.map(async ({ result, allocated }) => {
+    if (allocated?.runOutputDir) await writeResult(allocated.runOutputDir, result).catch(() => {});
   }));
+  return results.map(({ result }) => result);
 }
 
 async function persistBatchSummary(outputDir, summary) {
@@ -863,7 +961,6 @@ export async function main(argv, dependencies = {}) {
       usageError(`--project-key must match the repository-derived project key: ${projectKeys[0]}`);
     }
   }
-  reviews = await allocateReviewArtifacts(reviews, options.outputDir);
   const contextOptions = {
     ...options,
     projectKey: options.projectKey || projectKeys[0],
@@ -875,6 +972,23 @@ export async function main(argv, dependencies = {}) {
   let removeTerminationCleanup = () => {};
 
   try {
+    if (options.batchFile) {
+      try {
+        reviews = await allocateReviewArtifacts(reviews, options.outputDir, {
+          createDirectory: dependencies.createRunOutputDirectory,
+          persistResult: dependencies.writeResult,
+        });
+      } catch (error) {
+        const allocationResults = await settleArtifactAllocationFailure(
+          reviews,
+          error.allocatedReviews || [],
+          errorMessage(error),
+        );
+        error.artifactAllocation = true;
+        error.results = allocationResults;
+        throw error;
+      }
+    }
     attached = await openContextForReview(contextOptions);
     removeTerminationCleanup = installCleanup(attached, closeAttachedContext);
     if (options.batchFile) {
@@ -882,8 +996,21 @@ export async function main(argv, dependencies = {}) {
         attached,
         outputDir: options.outputDir,
         reviews,
+        projectKey: contextOptions.projectKey,
+        repository: contextOptions.repository,
       }));
-      await persistBatchSummary(options.outputDir, result);
+      try {
+        await persistBatchSummary(options.outputDir, result);
+      } catch (error) {
+        result = {
+          ...result,
+          status: "incomplete",
+          failure_scope: "artifacts",
+          failure_stage: "batch_summary",
+          failure_reason: `Batch summary persistence failed: ${errorMessage(error)}`,
+          batch_summary_persisted: false,
+        };
+      }
     } else {
       result = await runTransaction(attached.context, {
         effort: options.effort,
@@ -899,7 +1026,16 @@ export async function main(argv, dependencies = {}) {
       });
     }
   } catch (error) {
-    if (options.batchFile && Array.isArray(error.results)) {
+    if (options.batchFile && error.artifactAllocation && Array.isArray(error.results)) {
+      result = {
+        ...summarizeBatchResults(error.results, reviews.length),
+        status: "blocked",
+        failure_scope: "artifacts",
+        failure_stage: "artifacts",
+        failure_reason: errorMessage(error),
+      };
+      await persistBatchSummary(options.outputDir, result).catch(() => {});
+    } else if (options.batchFile && Array.isArray(error.results)) {
       const cleanupReason = errorMessage(error.cause || error);
       result = {
         ...summarizeBatchResults(error.results),

@@ -11,6 +11,7 @@ export const UI_ACTION_TIMEOUT_MS = 5000;
 export const COMPOSER_READINESS_TIMEOUT_MS = 10000;
 export const SUBMISSION_ACK_TIMEOUT_MS = 2000;
 export const SUBMISSION_ACK_POLL_MS = 50;
+export const AMBIGUOUS_DISPATCH_TIMEOUT_MS = 15000;
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
 const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
@@ -32,8 +33,8 @@ export class ReviewPromptError extends Error {
 function withFailureScope(error, failureScope) {
   if (error?.failureScope) return error;
   const message = error instanceof Error ? error.message : String(error);
-  const sharedContext = /(?:browser|context|target|page).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target|page)/i.test(message);
-  const wrapped = new ReviewPromptError(message, sharedContext ? "shared_context" : failureScope, error);
+  const sharedScope = error?.code === "MODEL_UNAVAILABLE" || error?.code === "AUTHENTICATION_REQUIRED";
+  const wrapped = new ReviewPromptError(message, sharedScope ? "shared_context" : failureScope, error);
   if (error && typeof error === "object") {
     wrapped.reviewPage = error.reviewPage;
     wrapped.reviewBaseline = error.reviewBaseline;
@@ -255,6 +256,7 @@ export function evaluateReviewCompletion({
   baselineAssistantTurnCount,
   composerReady,
   conversationId,
+  expectedConversationId = null,
   generationObserved,
   generating,
   interrupted,
@@ -265,6 +267,7 @@ export function evaluateReviewCompletion({
     && composerReady
     && !interrupted
     && Boolean(conversationId)
+    && (!expectedConversationId || conversationId === expectedConversationId)
     && Boolean(assistantMessageId)
     && (generationObserved || responseActionsReady)
     && assistantTurnCount > baselineAssistantTurnCount
@@ -348,6 +351,7 @@ export async function waitForReviewCompletion(page, {
   let generationObserved = false;
   let stableSampleCount = 0;
   let snapshot;
+  let expectedConversationId = baseline.conversationId || null;
 
   while (Date.now() <= deadline) {
     if (await readVisibleInterruption(page)) {
@@ -361,6 +365,15 @@ export async function waitForReviewCompletion(page, {
     }
 
     snapshot = await readCompletionSnapshot(page);
+    if (expectedConversationId && snapshot.conversationId && snapshot.conversationId !== expectedConversationId) {
+      return {
+        ...snapshot,
+        response: snapshot.assistantText,
+        status: "incomplete",
+        failureReason: "conversation identity changed during completion observation",
+      };
+    }
+    if (!expectedConversationId && snapshot.conversationId) expectedConversationId = snapshot.conversationId;
     generationObserved ||= snapshot.generating;
     const sameMessage = !snapshot.assistantMessageId
       || !previousMessageId
@@ -376,6 +389,7 @@ export async function waitForReviewCompletion(page, {
     if (evaluateReviewCompletion({
       ...snapshot,
       baselineAssistantTurnCount: baseline.assistantTurnCount,
+      expectedConversationId,
       generationObserved,
       stableSampleCount,
     })) {

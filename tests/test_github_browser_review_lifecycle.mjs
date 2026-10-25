@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
   ASSISTANT_TURN_SELECTOR,
+  AMBIGUOUS_DISPATCH_TIMEOUT_MS,
   INTERRUPTION_PATTERN,
   INTERRUPTION_UI_SELECTOR,
   evaluateReviewCompletion,
@@ -36,6 +37,7 @@ import {
   runReviewTransaction,
   summarizeBatchResults,
   validateProjectProfilePath,
+  validateReviewBatch,
   validateReviewProvenance,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
@@ -54,6 +56,15 @@ const REVIEW_REPOSITORY = "longdang193/project-OS-starter";
 const REVIEW_SHA = "c163271b437046c61daab974a190dc9bc4764d57";
 const REVIEW_URL = `https://github.com/${REVIEW_REPOSITORY}/blob/${REVIEW_SHA}/README.md`;
 const NORMALIZED_REVIEW_URL = `https://github.com/${REVIEW_REPOSITORY.toLowerCase()}/blob/${REVIEW_SHA}/README.md`;
+const REVIEW_PROJECT_KEY = deriveProjectKey(REVIEW_REPOSITORY);
+const makeBatchReview = (label, model = "GPT-6") => ({
+  model,
+  effort: "High",
+  prompt: `${REVIEW_URL} ${REVIEW_SHA}\n${label}`,
+  repository: REVIEW_REPOSITORY,
+  commitSha: REVIEW_SHA,
+  reviewUrls: [REVIEW_URL],
+});
 
 test("model-menu interactions use the bounded five-second timeout", async () => {
   const clickOptions = [];
@@ -224,6 +235,33 @@ test("provenance rejects a conflicting prompt blob URL", () => {
   );
 });
 
+test("provenance rejects a commit-only blob URL", () => {
+  assert.throws(
+    () => validateReviewProvenance({
+      repository: REVIEW_REPOSITORY,
+      commitSha: REVIEW_SHA,
+      reviewUrls: [`https://github.com/${REVIEW_REPOSITORY}/blob/${REVIEW_SHA}`],
+      prompt: `${REVIEW_SHA}`,
+    }),
+    /commit-pinned GitHub blob URL/,
+  );
+});
+
+test("direct review batches validate every review against the attached project", () => {
+  assert.throws(
+    () => validateReviewBatch([
+      makeBatchReview("first"),
+      {
+        ...makeBatchReview("second", "GPT-5.6-Sol"),
+        repository: "other/repository",
+        prompt: "https://github.com/other/repository/blob/c163271b437046c61daab974a190dc9bc4764d57/README.md c163271b437046c61daab974a190dc9bc4764d57\nsecond",
+        reviewUrls: ["https://github.com/other/repository/blob/c163271b437046c61daab974a190dc9bc4764d57/README.md"],
+      },
+    ], { projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY }),
+    /attached project|repository|project key/i,
+  );
+});
+
 test("project key derives from the full owner and repository", () => {
   assert.equal(deriveProjectKey(REVIEW_REPOSITORY), "longdang193-project-os-starter");
   assert.throws(
@@ -312,6 +350,27 @@ test("profile arguments require a dedicated project profile path", () => {
     ]),
     /normal Chrome profile/,
   );
+});
+
+test("profile validation canonicalizes symlinked project profiles", async (t) => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-profile-alias-"));
+  const targetRoot = join(parent, "github-review");
+  const aliasRoot = join(parent, "profile-alias");
+  const target = join(targetRoot, REVIEW_PROJECT_KEY);
+  const alias = join(aliasRoot, REVIEW_PROJECT_KEY);
+  try {
+    await mkdir(targetRoot, { recursive: true });
+    await symlink(targetRoot, aliasRoot, "junction");
+    assert.equal(validateProjectProfilePath(alias, REVIEW_PROJECT_KEY), resolve(target));
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES") {
+      t.skip(`junction creation unavailable: ${error.code}`);
+      return;
+    }
+    throw error;
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("unknown CLI arguments fail before browser setup", () => {
@@ -1065,6 +1124,23 @@ test("completion requires a new stable visible assistant turn and conversation",
   }), true);
 });
 
+test("completion rejects a response from a different conversation", () => {
+  assert.equal(evaluateReviewCompletion({
+    assistantMessageId: "assistant-1",
+    assistantText: "Finding",
+    assistantTurnCount: 2,
+    baselineAssistantTurnCount: 1,
+    composerReady: true,
+    conversationId: "conversation-2",
+    expectedConversationId: "conversation-1",
+    generationObserved: true,
+    generating: false,
+    interrupted: false,
+    responseActionsReady: true,
+    stableSampleCount: 2,
+  }), false);
+});
+
 test("assistant fallback excludes rich-text user turns", () => {
   assert.match(ASSISTANT_TURN_SELECTOR, /data-message-author-role="assistant"/);
   assert.match(ASSISTANT_TURN_SELECTOR, /:not\(/);
@@ -1723,6 +1799,28 @@ test("selection failure is not reported as submission ambiguity", async () => {
   }
 });
 
+test("page-local closure stays review-scoped when the shared context is healthy", async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), "github-review-page-local-closure-"));
+  try {
+    const result = await runReviewTransaction({ pages: async () => [] }, {
+    effort: "High",
+    model: "GPT-6",
+    outputDir,
+    prompt: "review",
+    dependencies: {
+      runReviewPromptInNewTab: async () => {
+        throw new Error("page closed during review tab setup");
+      },
+    },
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.failure_scope, "review");
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
 test("unacknowledged submission remains ambiguous at the submission stage", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-submission-failure-"));
   try {
@@ -1751,6 +1849,7 @@ test("ambiguous submission preserves the owned page and visible completion evide
   const parent = await mkdtemp(join(tmpdir(), "github-review-ambiguous-evidence-"));
   let closeCount = 0;
   let completionCalls = 0;
+  let completionTimeout;
   try {
     const page = {
       url() {
@@ -1778,8 +1877,9 @@ test("ambiguous submission preserves the owned page and visible completion evide
           error.submissionAttempted = true;
           throw error;
         },
-        waitForReviewCompletion: async () => {
+        waitForReviewCompletion: async (_page, options) => {
           completionCalls += 1;
+          completionTimeout = options.timeoutMs;
           return {
             assistantMessageId: "assistant-ambiguous",
             assistantTurnIndex: 1,
@@ -1794,6 +1894,7 @@ test("ambiguous submission preserves the owned page and visible completion evide
 
     const persisted = JSON.parse(await readFile(join(result.output_dir, "result.json"), "utf8"));
     assert.equal(completionCalls, 1);
+    assert.equal(completionTimeout, AMBIGUOUS_DISPATCH_TIMEOUT_MS);
     assert.equal(closeCount, 1);
     assert.equal(result.status, "incomplete");
     assert.equal(result.submission, "ambiguous");
@@ -2262,6 +2363,98 @@ test("batch context-open failure accounts for every requested review as skipped"
   }
 });
 
+test("batch summary persistence failure preserves completed review artifacts", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-batch-summary-failure-"));
+  const promptFile = join(parent, "review.md");
+  const manifestFile = join(parent, "reviews.json");
+  const outputDir = join(parent, "output");
+  const logged = [];
+  const originalLog = console.log;
+  try {
+    await writeFile(promptFile, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
+    await writeFile(manifestFile, JSON.stringify({
+      reviews: [
+        { model: "GPT-6", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+      ],
+    }), "utf8");
+    await mkdir(join(outputDir, "batch-result.json"), { recursive: true });
+    console.log = (value) => logged.push(value);
+
+    const exitCode = await main([
+      "--user-data-dir", "github-review/project",
+      "--project-key", REVIEW_PROJECT_KEY,
+      "--batch-file", manifestFile,
+      "--output-dir", outputDir,
+    ], {
+      openReviewContext: async () => ({ context: {}, ownsContext: false }),
+      runReviewBatch: async ({ reviews }) => {
+        const results = reviews.map((review) => ({ status: "completed", output_dir: review.runOutputDir }));
+        await Promise.all(results.map((result, index) => writeResult(reviews[index].runOutputDir, result)));
+        return results;
+      },
+    });
+
+    const result = JSON.parse(logged[0]);
+    assert.equal(exitCode, 1);
+    assert.equal(result.failure_stage, "batch_summary");
+    assert.equal(result.batch_summary_persisted, false);
+    for (const review of result.reviews) {
+      assert.equal(JSON.parse(await readFile(join(review.output_dir, "result.json"), "utf8")).status, "completed");
+    }
+  } finally {
+    console.log = originalLog;
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("partial batch allocation finalizes created runs without opening a browser", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-partial-allocation-"));
+  const promptFile = join(parent, "review.md");
+  const manifestFile = join(parent, "reviews.json");
+  const logged = [];
+  const originalLog = console.log;
+  let allocationCalls = 0;
+  try {
+    await writeFile(promptFile, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
+    await writeFile(manifestFile, JSON.stringify({
+      reviews: [
+        { model: "GPT-6", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+      ],
+    }), "utf8");
+    console.log = (value) => logged.push(value);
+
+    const exitCode = await main([
+      "--user-data-dir", "github-review/project",
+      "--project-key", REVIEW_PROJECT_KEY,
+      "--batch-file", manifestFile,
+      "--output-dir", join(parent, "output"),
+    ], {
+      createRunOutputDirectory: async (outputDir) => {
+        allocationCalls += 1;
+        if (allocationCalls === 2) throw new Error("allocation failed");
+        return createRunOutputDirectory(outputDir);
+      },
+      openReviewContext: async () => {
+        throw new Error("browser must not open after partial allocation");
+      },
+    });
+
+    const result = JSON.parse(logged[0]);
+    assert.equal(exitCode, 1);
+    assert.equal(result.failure_stage, "artifacts");
+    assert.equal(result.reviews.length, 2);
+    assert.equal(result.reviews[0].status, "blocked");
+    assert.equal(result.reviews[0].dispatch_state, "not_dispatched");
+    assert.equal(result.reviews[1].status, "blocked");
+    assert.equal(result.reviews[1].output_dir, null);
+  } finally {
+    console.log = originalLog;
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("each output allocation creates a distinct run directory", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-runs-"));
   try {
@@ -2284,6 +2477,8 @@ test("review batch reuses one context, isolates runs, and closes the context onc
     browser: null,
     context,
     ownsContext: true,
+    projectKey: REVIEW_PROJECT_KEY,
+    repository: REVIEW_REPOSITORY,
   };
   const seenContexts = [];
   const seenPages = [];
@@ -2299,8 +2494,8 @@ test("review batch reuses one context, isolates runs, and closes the context onc
       attached,
       outputDir: parent,
       reviews: [
-        { model: "GPT-5.6-Sol", effort: "High", prompt: "first" },
-        { model: "GPT-5.6-Sol", effort: "High", prompt: "second" },
+        makeBatchReview("first", "GPT-5.6-Sol"),
+        makeBatchReview("second", "GPT-5.6-Sol"),
       ],
       runTransaction: async (reviewContext, review) => {
         const allocation = await createRunOutputDirectory(review.outputDir);
@@ -2328,7 +2523,7 @@ test("review batch reuses one context, isolates runs, and closes the context onc
 
 test("review batch stops after a shared-context failure", async () => {
   const context = {};
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
   const attempted = [];
   let closeCount = 0;
   context.close = async () => {
@@ -2339,12 +2534,12 @@ test("review batch stops after a shared-context failure", async () => {
     attached,
     outputDir: "review-output",
     reviews: [
-      { model: "GPT-6", effort: "High", prompt: "first" },
-      { model: "GPT-6", effort: "High", prompt: "second" },
+      makeBatchReview("first"),
+      makeBatchReview("second"),
     ],
     runTransaction: async (_reviewContext, review) => {
-      attempted.push(review.prompt);
-      return review.prompt === "first"
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
         ? { status: "blocked", failure_scope: "shared_context" }
         : { status: "completed" };
     },
@@ -2362,7 +2557,7 @@ test("review batch stops after a shared-context failure", async () => {
 
 test("batch continues after an explicit review-scoped failure", async () => {
   const context = {};
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
   const attempted = [];
   let closeCount = 0;
   context.close = async () => {
@@ -2373,12 +2568,12 @@ test("batch continues after an explicit review-scoped failure", async () => {
     attached,
     outputDir: "review-output",
     reviews: [
-      { model: "GPT-6", effort: "High", prompt: "first" },
-      { model: "GPT-6", effort: "High", prompt: "second" },
+      makeBatchReview("first"),
+      makeBatchReview("second"),
     ],
     runTransaction: async (_reviewContext, review) => {
-      attempted.push(review.prompt);
-      return review.prompt === "first"
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
         ? { status: "blocked", failure_scope: "review" }
         : { status: "completed" };
     },
@@ -2391,7 +2586,7 @@ test("batch continues after an explicit review-scoped failure", async () => {
 
 test("batch stops after an unknown failure scope", async () => {
   const context = {};
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
   const attempted = [];
   context.close = async () => {};
 
@@ -2399,11 +2594,11 @@ test("batch stops after an unknown failure scope", async () => {
     attached,
     outputDir: "review-output",
     reviews: [
-      { model: "GPT-6", effort: "High", prompt: "first" },
-      { model: "GPT-6", effort: "High", prompt: "second" },
+      makeBatchReview("first"),
+      makeBatchReview("second"),
     ],
     runTransaction: async (_reviewContext, review) => {
-      attempted.push(review.prompt);
+      attempted.push(review.prompt.split("\n").at(-1));
       return { status: "blocked", failure_scope: "unknown" };
     },
   });
@@ -2508,13 +2703,15 @@ test("batch context cleanup failure retains completed review results", async () 
       throw new Error("context close failed");
     },
   };
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
 
   await assert.rejects(
     () => runReviewBatch({
       attached,
       outputDir: "review-output",
-      reviews: [{ model: "GPT-6", effort: "High", prompt: "review" }],
+       projectKey: REVIEW_PROJECT_KEY,
+       repository: REVIEW_REPOSITORY,
+       reviews: [makeBatchReview("review")],
       runTransaction: async () => ({ status: "completed", output_dir: "run-a" }),
     }),
     (error) => {
@@ -2563,7 +2760,7 @@ test("authentication preflight preserves bounded visible evidence before cleanup
 
 test("batch stops after uncertain page cleanup", async () => {
   const context = {};
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
   const attempted = [];
   context.close = async () => {};
 
@@ -2571,12 +2768,12 @@ test("batch stops after uncertain page cleanup", async () => {
     attached,
     outputDir: "review-output",
     reviews: [
-      { model: "GPT-6", effort: "High", prompt: "first" },
-      { model: "GPT-6", effort: "High", prompt: "second" },
+      makeBatchReview("first"),
+      makeBatchReview("second"),
     ],
     runTransaction: async (_reviewContext, review) => {
-      attempted.push(review.prompt);
-      return review.prompt === "first"
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
         ? { status: "incomplete", failure_scope: "shared_context", failure_stage: "cleanup" }
         : { status: "completed" };
     },
@@ -2589,7 +2786,7 @@ test("batch stops after uncertain page cleanup", async () => {
 
 test("batch continues after a review-scoped fresh-tab readiness failure", async () => {
   const context = {};
-  const attached = { context, ownsContext: true };
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
   const attempted = [];
   context.close = async () => {};
 
@@ -2597,12 +2794,12 @@ test("batch continues after a review-scoped fresh-tab readiness failure", async 
     attached,
     outputDir: "review-output",
     reviews: [
-      { model: "GPT-6", effort: "High", prompt: "first" },
-      { model: "GPT-6", effort: "High", prompt: "second" },
+      makeBatchReview("first"),
+      makeBatchReview("second"),
     ],
     runTransaction: async (_reviewContext, review) => {
-      attempted.push(review.prompt);
-      return review.prompt === "first"
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
         ? { status: "blocked", failure_scope: "review", failure_stage: "page_readiness" }
         : { status: "completed" };
     },
