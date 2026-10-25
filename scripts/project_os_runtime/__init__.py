@@ -24,6 +24,7 @@ from .attempt import (
 )
 from .capabilities import (
     DEFAULT_LOCAL_CAPABILITIES,
+    capability_binding_digest,
     capability_digest,
     capability_evidence_matches,
     effective_local_capabilities,
@@ -112,6 +113,7 @@ __all__ = [
     "apply_accepted_plan_transitions",
     "apply_plan_transitions",
     "attempt_decision",
+    "capability_binding_digest",
     "capability_digest",
     "capability_evidence_matches",
     "continuation_decision",

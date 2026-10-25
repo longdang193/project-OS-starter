@@ -5,7 +5,12 @@ import pytest
 
 from scripts.project_os_runtime import acceptance as acceptance_module
 from scripts.project_os_runtime.acceptance import release_authorized_evidence
-from scripts.project_os_runtime.results import parse_task_result, publish_task_result
+from scripts.project_os_runtime.results import (
+    parse_task_result,
+    prune_result_artifact_recovery,
+    publish_task_result,
+    settle_result_artifacts,
+)
 
 
 def _payload(*, accepted: bool, checkpoint_sha: str) -> dict:
@@ -115,6 +120,135 @@ def _resource(
         "producer": "dcode-project",
         "schema": "dcode-project.task-result.v1",
     }
+
+
+def _result_artifact(
+    tmp_path: Path,
+    *,
+    directory_name: str = "herdr-result-attempt-1-owned",
+) -> tuple[Path, Path, dict]:
+    directory = tmp_path / directory_name
+    directory.mkdir()
+    (directory / "result.json").write_text('{"state":"confirmed"}\n', encoding="utf-8")
+    task_result_file = directory / "task-result.json"
+    publish_task_result(task_result_file, _payload(accepted=True, checkpoint_sha="c"))
+    task_result = parse_task_result(
+        task_result_file,
+        assignment_id="assignment-1",
+        attempt_id="attempt-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+    )
+    return directory, task_result_file, task_result
+
+
+def _settle_result_artifact(
+    directory: Path,
+    task_result: dict | None,
+    *,
+    tmp_path: Path,
+    lifecycle_settled: bool = True,
+) -> dict:
+    return settle_result_artifacts(
+        directory,
+        attempt_id="attempt-1",
+        assignment_id="assignment-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+        receipt={"state": "confirmed"},
+        task_result=task_result,
+        lifecycle_settled=lifecycle_settled,
+        no_continuation=True,
+        temp_root=tmp_path,
+        now=100.0,
+    )
+
+
+def test_settled_result_artifacts_are_removed_after_identity_and_lifecycle_proof(tmp_path: Path) -> None:
+    directory, _, task_result = _result_artifact(tmp_path)
+
+    result = _settle_result_artifact(directory, task_result, tmp_path=tmp_path)
+
+    assert result["state"] == "removed"
+    assert not directory.exists()
+
+
+def test_absent_result_artifacts_are_idempotently_settled(tmp_path: Path) -> None:
+    directory = tmp_path / "herdr-result-attempt-1-already-absent"
+
+    result = _settle_result_artifact(directory, None, tmp_path=tmp_path)
+
+    assert result["state"] == "absent"
+
+
+def test_foreign_result_directory_is_preserved(tmp_path: Path) -> None:
+    directory, _, task_result = _result_artifact(
+        tmp_path,
+        directory_name="herdr-result-foreign-owned",
+    )
+
+    result = _settle_result_artifact(directory, task_result, tmp_path=tmp_path)
+
+    assert result["state"] == "preserved"
+    assert "ownership" in result["reason"]
+    assert directory.exists()
+
+
+def test_identity_mismatch_preserves_result_artifacts(tmp_path: Path) -> None:
+    directory, task_result_file, _ = _result_artifact(tmp_path)
+    mismatched = parse_task_result(
+        task_result_file,
+        assignment_id="assignment-2",
+        attempt_id="attempt-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+    )
+
+    result = _settle_result_artifact(directory, mismatched, tmp_path=tmp_path)
+
+    assert result["state"] == "preserved"
+    assert "publication or identity" in result["reason"]
+    assert directory.exists()
+
+
+def test_unresolved_publication_is_retained_for_recovery(tmp_path: Path) -> None:
+    directory, _, _ = _result_artifact(tmp_path)
+
+    result = _settle_result_artifact(directory, None, tmp_path=tmp_path, lifecycle_settled=False)
+
+    assert result["state"] == "preserved"
+    assert directory.exists()
+    assert (directory / ".herdr-recovery.json").exists()
+
+
+def test_recovery_pruning_is_bounded_to_marked_result_directories(tmp_path: Path) -> None:
+    first, _, first_result = _result_artifact(
+        tmp_path,
+        directory_name="herdr-result-attempt-1-first",
+    )
+    second, _, second_result = _result_artifact(
+        tmp_path,
+        directory_name="herdr-result-attempt-1-second",
+    )
+    _settle_result_artifact(first, None, tmp_path=tmp_path, lifecycle_settled=False)
+    _settle_result_artifact(second, None, tmp_path=tmp_path, lifecycle_settled=False)
+    foreign = tmp_path / "herdr-result-foreign-unmarked"
+    foreign.mkdir()
+    (foreign / "keep.txt").write_text("keep", encoding="utf-8")
+
+    result = prune_result_artifact_recovery(
+        temp_root=tmp_path,
+        max_age_seconds=1000,
+        max_count=1,
+        now=100.0,
+    )
+
+    assert result["removed"] == 1
+    assert result["preserved"] == 1
+    assert foreign.exists()
+    assert first.exists() != second.exists()
+    assert first_result["state"] == "confirmed"
+    assert second_result["state"] == "confirmed"
 
 
 def _canonical_consequence(binding: dict[str, str] | None = None) -> dict[str, object]:

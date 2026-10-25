@@ -45,6 +45,40 @@ def capability_digest(value: object) -> str:
     ).hexdigest()
 
 
+def capability_binding_digest(
+    local_capabilities: object,
+    mcp_selection: object,
+) -> str:
+    if not isinstance(mcp_selection, Mapping):
+        raise AttemptContractError("MCP capability evidence must be a mapping")
+    mcp_fields = (
+        "requested",
+        "effective_servers",
+        "effective_tools",
+        "server_names",
+        "runtime_only_servers",
+    )
+    normalized_mcp: dict[str, list[str]] = {}
+    for field in mcp_fields:
+        raw_value = mcp_selection.get(field)
+        if (
+            not isinstance(raw_value, Sequence)
+            or isinstance(raw_value, (str, bytes, bytearray))
+            or not all(isinstance(item, str) and item.strip() for item in raw_value)
+        ):
+            raise AttemptContractError(
+                f"MCP capability evidence field `{field}` must be a sequence of strings"
+            )
+        normalized_mcp[field] = sorted(set(item.strip() for item in raw_value))
+    payload = {
+        "local_capabilities": effective_local_capabilities(local_capabilities),
+        "mcp_selection": normalized_mcp,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def capability_evidence_matches(
     expected: Mapping[str, Any], actual: object
 ) -> bool:
@@ -104,6 +138,7 @@ def capability_evidence_matches(
 __all__ = [
     "AttemptContractError",
     "DEFAULT_LOCAL_CAPABILITIES",
+    "capability_binding_digest",
     "capability_digest",
     "capability_evidence_matches",
     "effective_local_capabilities",

@@ -2,7 +2,11 @@ from collections import defaultdict
 
 import pytest
 
-from scripts.benchmark_secretary_architecture import SCENARIOS, run_contract_benchmark
+from scripts.benchmark_secretary_architecture import (
+    SCENARIOS,
+    run_contract_benchmark,
+    run_live_benchmark,
+)
 
 
 def test_contract_benchmark_runs_six_paired_deterministic_scenarios() -> None:
@@ -82,3 +86,55 @@ def test_contract_cli_mode_is_explicit_and_preserves_fixture_provenance() -> Non
 
     assert result.returncode == 0
     assert '"measurement_status": "not_attempted"' in result.stdout
+
+
+def test_live_benchmark_reports_runner_measurements_without_inventing_unobserved_state() -> None:
+    calls: list[tuple[str, str]] = []
+
+    def runner(scenario_id: str, architecture: str) -> dict[str, object]:
+        calls.append((scenario_id, architecture))
+        return {
+            "correct": None,
+            "latency_ms": 12.5,
+            "time_to_first_result_ms": 8.0,
+            "subprocess_count": 2,
+            "allocation_reuse": "reused" if architecture == "target" else "recreated",
+            "reconciliation_count": 1 if architecture == "target" else 2,
+            "measurement_source": "test-runner",
+        }
+
+    results = run_live_benchmark(runner=runner)
+
+    assert len(results) == len(SCENARIOS) * 2
+    assert len(calls) == len(results)
+    assert all(item.live is True for item in results)
+    assert all(item.measurement_status == "measured" for item in results)
+    assert all(item.measurement_source == "test-runner" for item in results)
+    assert all(item.latency_ms == 12.5 for item in results)
+    assert all(item.subprocess_count == 2 for item in results)
+    assert {item.allocation_reuse for item in results} == {"reused", "recreated"}
+    assert {item.reconciliation_count for item in results} == {1, 2}
+    assert all(item.correct is None for item in results)
+
+
+def test_live_cli_mode_records_real_command_measurement() -> None:
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    script = Path(__file__).parents[1] / "scripts" / "benchmark_secretary_architecture.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "live", "1"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    rows = __import__("json").loads(result.stdout)
+    assert len(rows) == len(SCENARIOS) * 2
+    assert all(row["live"] is True for row in rows)
+    assert all(row["measurement_status"] == "measured" for row in rows)
+    assert all(row["subprocess_count"] == 1 for row in rows)
+    assert all(row["allocation_reuse"] == "unavailable" for row in rows)
+    assert all(row["reconciliation_count"] is None for row in rows)

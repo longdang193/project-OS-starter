@@ -11,6 +11,7 @@ from typing import Any
 from .capabilities import (
     AttemptContractError,
     DEFAULT_LOCAL_CAPABILITIES,
+    capability_binding_digest,
     capability_digest,
     capability_evidence_matches,
     effective_local_capabilities,
@@ -587,6 +588,7 @@ __all__ = [
     "default_runtime_grant",
     "assignment_id",
     "attempt_decision",
+    "capability_binding_digest",
     "capability_digest",
     "capability_evidence_matches",
     "effective_local_capabilities",

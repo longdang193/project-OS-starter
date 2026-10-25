@@ -331,6 +331,12 @@ resources remain caller-owned through `runtime.json`.
   exactly two predeclared CoS lanes over one identical workload. The utility
   consumes controller-owned records; it never launches work, dispatches
   Workers, owns retries, accepts outcomes, or mutates Plan state.
+- `scripts/benchmark_secretary_architecture.py contract` remains deterministic
+  contract evidence. Its separate `live`/`trace` mode runs bounded command
+  samples and reports actual measured latency and subprocess count. Allocation
+  reuse and reconciliation frequency are explicitly unavailable when the runner
+  cannot observe them; deterministic rows never claim latency or resource
+  improvements.
 - A missing protocol-conforming producer, attribution, or accepted-outcome
   evidence is recorded as `BLOCKED_CAPABILITY`, `INCONCLUSIVE`, or
   `unavailable`; it is never converted to a zero or synthetic success. A

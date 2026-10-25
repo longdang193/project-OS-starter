@@ -53,6 +53,25 @@ Runtime completion, pane output, or transport acknowledgement does not prove
 acceptance. Keep lifecycle facts, structured results, tests, and Git state as
 the evidence trail.
 
+For DeepAgents, a structured task result and lifecycle settlement are separate
+facts. A reported result remains available to CoS when optional receipt or
+cleanup observation is missing, but the attempt remains reconciliation-required
+until settlement is proven. Submitted-only Codex work is also reconciliation-
+required until execution and task evidence are observed.
+
+The Secretary architecture benchmark has two explicit modes:
+
+```powershell
+python scripts/benchmark_secretary_architecture.py contract 1
+python scripts/benchmark_secretary_architecture.py live 1
+```
+
+`contract` is deterministic fixture evidence. `live` (also available as
+`trace`) runs bounded command samples and reports measured wall time and
+subprocess count; pane allocation/reuse and reconciliation counts remain
+`unavailable` unless the injected or runtime runner observes them. Neither mode
+sets a universal optimization threshold.
+
 ## Daily Loop
 
 - Read the active plan before editing.

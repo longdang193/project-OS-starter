@@ -41,6 +41,7 @@ try:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
+        settle_result_artifacts,
     )
 except ModuleNotFoundError:
     from scripts.project_os_runtime.results import (
@@ -49,11 +50,13 @@ except ModuleNotFoundError:
         RESULT_SCHEMA,
         parse_task_result,
         parse_result_receipt,
+        settle_result_artifacts,
     )
 try:
     from project_os_runtime.attempt import (
         AttemptContractError,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+        capability_binding_digest,
         capability_digest,
         grant_digest,
         normalize_local_capabilities,
@@ -66,6 +69,7 @@ except ModuleNotFoundError:
     from scripts.project_os_runtime.attempt import (
         AttemptContractError,
         WHOLE_ATTEMPT_WALL_CLOCK_SECONDS,
+        capability_binding_digest,
         capability_digest,
         grant_digest,
         normalize_local_capabilities,
@@ -131,6 +135,7 @@ _DEEPAGENTS_OBSERVATION_RESERVE_SECONDS = 0.1
 _CODEX_ASSIGNMENT_TIMEOUT = _CODEX_TASK_PROGRESS_TIMEOUT_SECONDS + 5.0
 _TARGET_DISCOVERY_TIMEOUT = 5.0
 _TARGET_ALLOCATION_RESERVE_SECONDS = 1.0
+_TARGET_ALLOCATION_LOCK_TIMEOUT = 1.0
 _HERDR_DEFAULT_SESSION = "default"
 _PANE_LOCK_PARENT = "herdr-pane-ownership"
 _NATIVE_GRANT_VALUE = "native"
@@ -143,6 +148,7 @@ _DEEPAGENTS_SHELL_PROCESS_NAMES = {"powershell.exe", "pwsh.exe"}
 _HERDR_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _HERDR_AGENT_NAME_MAX_LENGTH = 32
 _HERDR_CONTEXT_MARKER_PATTERN = re.compile(r"-ctx-[0-9a-f]{12}$")
+_HERDR_CAPABILITY_MARKER_PATTERN = re.compile(r"-cap-[0-9a-f]{12}")
 _CODEX_TRANSPORT_ENVELOPE_MARKERS = (
     "act as the model backend for the codex task encoded below.",
     "<codex_context_json>",
@@ -634,6 +640,7 @@ def _herdr_pane(
     timeout: float = _HERDR_COMMAND_TIMEOUT,
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
+    expected_capability_digest: str | None = None,
     candidate_local: bool = False,
     candidate_deadline: float | None = None,
     agent_cache: dict[str, list[Any]] | None = None,
@@ -691,6 +698,11 @@ def _herdr_pane(
         actual_marker = _agent_context_marker(agent_info.get("name"))
         if expected_marker != actual_marker:
             raise TargetCandidateRejected(f"Pane context mismatch: {pane}")
+        if expected_capability_digest is not None:
+            expected_capability_marker = _capability_marker(expected_capability_digest)
+            actual_capability_marker = _agent_capability_marker(agent_info.get("name"))
+            if actual_capability_marker != expected_capability_marker:
+                raise TargetCandidateRejected(f"Pane capability mismatch: {pane}")
 
     process_payload = (
         _candidate_json_command(
@@ -785,6 +797,7 @@ def _inspect_auto_candidate(
     timeout: float,
     expected_profile: AgentProfile | None,
     context_identity: str | None,
+    expected_capability_digest: str | None = None,
     candidate_deadline: float | None,
     agent_cache: dict[str, list[Any]] | None,
     dry_run: bool = False,
@@ -800,6 +813,7 @@ def _inspect_auto_candidate(
         timeout=timeout,
         expected_profile=expected_profile,
         context_identity=context_identity,
+        expected_capability_digest=expected_capability_digest,
         candidate_local=True,
         candidate_deadline=candidate_deadline,
         agent_cache=agent_cache,
@@ -906,6 +920,7 @@ def _run_with_pane_ownership(
     execute_command: bool = True,
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
+    expected_capability_digest: str | None = None,
     callback: Callable[[dict[str, Any] | None], Any] | None = None,
 ) -> Any:
     with _pane_ownership_lock(cwd, session, pane):
@@ -920,6 +935,7 @@ def _run_with_pane_ownership(
                 env=env,
                 expected_profile=expected_profile,
                 context_identity=context_identity,
+                expected_capability_digest=expected_capability_digest,
             )
         if callback is not None:
             return callback(pane_state)
@@ -935,12 +951,18 @@ def _allocation_lock_path(cwd: Path, session: str, workspace_id: str) -> Path:
 
 
 @contextmanager
-def _allocation_lock(cwd: Path, session: str, workspace_id: str):
+def _allocation_lock(
+    cwd: Path,
+    session: str,
+    workspace_id: str,
+    *,
+    wait_timeout_seconds: float = _TARGET_ALLOCATION_LOCK_TIMEOUT,
+):
     path = _allocation_lock_path(cwd, session, workspace_id)
     with _exclusive_file_lock(
         path,
         f"Another launch is allocating a pane for `{session}:{workspace_id}`.",
-        wait_timeout_seconds=_TARGET_ALLOCATION_RESERVE_SECONDS,
+        wait_timeout_seconds=wait_timeout_seconds,
     ):
         yield
 
@@ -955,6 +977,7 @@ def _resolve_target_selector(
     env: dict[str, str] | None = None,
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
+    expected_capability_digest: str | None = None,
     dry_run: bool = False,
 ) -> tuple[str, str | None, dict[str, Any]]:
     if session == "auto" and pane != "auto":
@@ -1001,7 +1024,7 @@ def _resolve_target_selector(
         return timeout
 
     def allocation_timeout(allocation_deadline: float) -> float:
-        remaining = min(deadline, allocation_deadline) - time.monotonic()
+        remaining = allocation_deadline - time.monotonic()
         if remaining <= 0:
             raise TargetResolutionBlocked(
                 "target allocation deadline expired",
@@ -1056,7 +1079,7 @@ def _resolve_target_selector(
         if session != "auto":
             raise
         raise global_snapshot_block("snapshot_envelope_invalid", str(exc)) from exc
-    candidates: list[tuple[bool, str, str]] = []
+    candidates: list[tuple[bool, str, str, dict[str, Any]]] = []
     source_panes: list[dict[str, Any]] = []
     workspace_panes: dict[str, list[dict[str, Any]]] = {}
     agent_cache: dict[str, list[Any]] = {}
@@ -1081,6 +1104,13 @@ def _resolve_target_selector(
         source_panes.append(item)
         workspace_panes.setdefault(workspace_id, []).append(item)
 
+    source_panes.sort(
+        key=lambda item: (
+            bool(item.get("focused")),
+            str(item.get("workspace_id")),
+            str(item.get("pane_id")),
+        )
+    )
     for item in source_panes:
         workspace_id = str(item["workspace_id"])
         pane_id = str(item["pane_id"])
@@ -1092,7 +1122,7 @@ def _resolve_target_selector(
         if bool(item.get("agent") or item.get("agent_status") not in (None, "unknown")):
             candidate_agents = agent_cache
         try:
-            _inspect_auto_candidate(
+            inspected_state = _inspect_auto_candidate(
                 cwd,
                 control_session,
                 pane_id,
@@ -1103,6 +1133,7 @@ def _resolve_target_selector(
                 timeout=candidate_budget,
                 expected_profile=expected_profile,
                 context_identity=context_identity,
+                expected_capability_digest=expected_capability_digest,
                 candidate_deadline=deadline - _TARGET_ALLOCATION_RESERVE_SECONDS,
                 agent_cache=candidate_agents,
                 dry_run=dry_run,
@@ -1127,7 +1158,14 @@ def _resolve_target_selector(
                 },
             ) from exc
         else:
-            candidates.append((bool(item.get("focused")), control_session, pane_id))
+            candidates.append(
+                (
+                    bool(item.get("focused")),
+                    control_session,
+                    pane_id,
+                    inspected_state,
+                )
+            )
 
     candidates.sort(key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
     if not candidates:
@@ -1159,9 +1197,10 @@ def _resolve_target_selector(
                         else "pre-existing"
                     ),
                 }
-            allocation_deadline = time.monotonic() + _TARGET_ALLOCATION_RESERVE_SECONDS
-
-            def split_and_validate(source_pane: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+            def split_and_validate(
+                source_pane: Mapping[str, Any],
+                allocation_deadline: float,
+            ) -> tuple[str, dict[str, Any]]:
                 split_payload = _json_command(
                     [
                         herdr,
@@ -1186,10 +1225,11 @@ def _resolve_target_selector(
                 allocated_pane = allocated.get("pane_id")
                 if not isinstance(allocated_pane, str) or not allocated_pane:
                     raise LaunchBlocked("Herdr split response is missing pane_id.")
+                inspected_state: dict[str, Any] | None = None
                 try:
                     while True:
                         try:
-                            _herdr_pane(
+                            inspected_state = _herdr_pane(
                                 cwd,
                                 control_session,
                                 allocated_pane,
@@ -1200,6 +1240,7 @@ def _resolve_target_selector(
                                 timeout=allocation_timeout(allocation_deadline),
                                 expected_profile=expected_profile,
                                 context_identity=context_identity,
+                                expected_capability_digest=expected_capability_digest,
                             )
                             break
                         except PaneProcessInfoIncomplete:
@@ -1228,9 +1269,44 @@ def _resolve_target_selector(
                             },
                         },
                     ) from exc
-                return allocated_pane, allocated
+                except (CommandTransportTimeout, LaunchBlocked) as exc:
+                    raise TargetResolutionBlocked(
+                        f"allocated pane created but verification is incomplete: {exc}",
+                        {
+                            "status": "incomplete",
+                            "mode": "auto",
+                            "failure_kind": "created_unverified",
+                            "candidate_count": 0,
+                            "candidates": [],
+                            "rejections": rejections,
+                            "allocation": {
+                                "status": "created_unverified",
+                                "source_pane": str(source_pane["pane_id"]),
+                                "pane": allocated_pane,
+                            },
+                        },
+                    ) from exc
+                if inspected_state is None:
+                    raise TargetResolutionBlocked(
+                        "allocated pane verification produced no state",
+                        {
+                            "status": "incomplete",
+                            "mode": "auto",
+                            "failure_kind": "created_unverified",
+                            "candidate_count": 0,
+                            "candidates": [],
+                            "rejections": rejections,
+                            "allocation": {
+                                "status": "created_unverified",
+                                "source_pane": str(source_pane["pane_id"]),
+                                "pane": allocated_pane,
+                            },
+                        },
+                    )
+                return allocated_pane, inspected_state
 
             with _allocation_lock(cwd, control_session, str(source["workspace_id"])):
+                allocation_deadline = time.monotonic() + _TARGET_ALLOCATION_RESERVE_SECONDS
                 refresh_command = (
                     [herdr, "api", "snapshot"]
                     if session == "auto"
@@ -1322,7 +1398,7 @@ def _resolve_target_selector(
                     if not isinstance(current_pane, str):
                         continue
                     try:
-                        _inspect_auto_candidate(
+                        inspected_state = _inspect_auto_candidate(
                             cwd,
                             control_session,
                             current_pane,
@@ -1333,6 +1409,7 @@ def _resolve_target_selector(
                             timeout=allocation_timeout(allocation_deadline),
                             expected_profile=expected_profile,
                             context_identity=context_identity,
+                            expected_capability_digest=expected_capability_digest,
                             candidate_deadline=allocation_deadline,
                             agent_cache=refresh_agent_cache,
                             dry_run=dry_run,
@@ -1365,6 +1442,7 @@ def _resolve_target_selector(
                             "rejections": rejections,
                             "session": control_session,
                             "pane": current_pane,
+                            "_inspected_pane_state": inspected_state,
                             "session_provenance": (
                                 "shared/default"
                                 if control_session == _HERDR_DEFAULT_SESSION
@@ -1382,7 +1460,10 @@ def _resolve_target_selector(
                         },
                     )
                 source = current_candidates[0]
-                allocated_pane, allocated = split_and_validate(source)
+                allocated_pane, allocated_state = split_and_validate(
+                    source,
+                    allocation_deadline,
+                )
             return control_session, allocated_pane, {
                 "status": "selected",
                 "mode": "auto",
@@ -1394,6 +1475,7 @@ def _resolve_target_selector(
                     "source_pane": str(source["pane_id"]),
                     "pane": allocated_pane,
                 },
+                "_inspected_pane_state": allocated_state,
                 "session": control_session,
                 "pane": allocated_pane,
                 "session_provenance": (
@@ -1414,7 +1496,7 @@ def _resolve_target_selector(
                 "rejections": rejections,
             },
         )
-    _, selected_session, selected_pane = candidates[0]
+    _, selected_session, selected_pane, selected_state = candidates[0]
     return selected_session, selected_pane, {
         "status": "selected",
         "mode": "auto",
@@ -1422,10 +1504,11 @@ def _resolve_target_selector(
         "rejections": rejections,
         "candidates": [
             {"session": candidate_session, "pane": candidate_pane}
-            for _, candidate_session, candidate_pane in candidates
+            for _, candidate_session, candidate_pane, _ in candidates
         ],
         "session": selected_session,
         "pane": selected_pane,
+        "_inspected_pane_state": selected_state,
         "session_provenance": (
             "shared/default"
             if selected_session == _HERDR_DEFAULT_SESSION
@@ -1862,6 +1945,16 @@ def _classify_deepagents_outcome(
     reconciliation_required = True
     launcher_exit_code = 2
     receipt_confirmed = receipt.get("state") == "confirmed"
+    if delivery.get("state") == "delivery_failed" and (
+        receipt_confirmed
+        or task_result["state"] in {"reported_completed", "reported_failed"}
+    ):
+        delivery = {
+            **delivery,
+            "state": "delivery_uncertain",
+            "certainty": "uncertain",
+            "detail": "pane command failed after worker evidence was observed",
+        }
 
     if receipt_confirmed:
         worker_state = receipt["worker_state"]
@@ -1957,7 +2050,14 @@ def _classify_deepagents_outcome(
             status = "unverified"
         reconciliation_required = launcher_exit_code != 0
     else:
-        failure_kind = fallback_failure_kind or receipt.get("detail") or "receipt_unavailable"
+        if task_result["state"] == "reported_failed":
+            status = "failed"
+            failure_kind = fallback_failure_kind or "task_report_failed"
+        elif task_result["state"] == "reported_completed":
+            status = "completed"
+            failure_kind = fallback_failure_kind or "receipt_unavailable"
+        else:
+            failure_kind = fallback_failure_kind or receipt.get("detail") or "receipt_unavailable"
 
     return {
         "delivery": delivery,
@@ -2096,7 +2196,7 @@ def _classify_codex_prompt_result(result: subprocess.CompletedProcess[str]) -> d
             "submission": "acknowledged",
             "prompt_accepted": True,
             "failure_kind": None,
-            "reconciliation_required": False,
+            "reconciliation_required": True,
         }
     error_code: str | None = None
     for output in (result.stdout, result.stderr):
@@ -2472,6 +2572,21 @@ def _context_marker(context_identity: str | None) -> str | None:
     return f"ctx-{_sha256_text(context_identity.strip())[:12]}"
 
 
+def _capability_marker(capability_digest_value: str | None) -> str | None:
+    if not isinstance(capability_digest_value, str) or not capability_digest_value.strip():
+        return None
+    if not re.fullmatch(r"[0-9a-f]{64}", capability_digest_value):
+        raise LaunchBlocked("Capability binding digest must be a lowercase SHA-256 value.")
+    return f"cap-{capability_digest_value[:12]}"
+
+
+def _agent_capability_marker(agent_name: str | None) -> str | None:
+    if not isinstance(agent_name, str):
+        return None
+    match = _HERDR_CAPABILITY_MARKER_PATTERN.search(agent_name)
+    return match.group(0)[1:] if match else None
+
+
 def _agent_context_marker(agent_name: str | None) -> str | None:
     if not isinstance(agent_name, str):
         return None
@@ -2479,11 +2594,18 @@ def _agent_context_marker(agent_name: str | None) -> str | None:
     return match.group(0)[1:] if match else None
 
 
-def _contextual_agent_name(profile_name: str, context_identity: str | None) -> str:
+def _contextual_agent_name(
+    profile_name: str,
+    context_identity: str | None,
+    capability_digest_value: str | None = None,
+) -> str:
     marker = _context_marker(context_identity)
-    if marker is None:
+    capability_marker = _capability_marker(capability_digest_value)
+    if marker is None and capability_marker is None:
         return _unique_agent_name(f"{profile_name}-main")
-    suffix = f"-{marker}"
+    suffix = "".join(
+        f"-{value}" for value in (capability_marker, marker) if value is not None
+    )
     base = f"{profile_name}-main"
     return f"{base[:_HERDR_AGENT_NAME_MAX_LENGTH - len(suffix)]}{suffix}"
 
@@ -3693,6 +3815,27 @@ def resolve_launch(
     herdr = _executable("herdr")
     codex = _executable("codex") if executor == "codex" else None
     dcode = _managed_deepagents_executable() if executor == "deepagents" else None
+    codex_mcp_selection: dict[str, tuple[str, ...]] | None = None
+    effective_capability_binding_digest: str | None = None
+    if executor == "codex":
+        runtime_mcp_servers = _codex_runtime_mcp_servers(
+            str(codex),
+            cwd,
+            env=environment,
+        )
+        codex_mcp_selection = _codex_mcp_selection(
+            cwd,
+            Path(str(runtime["codex_home"])),
+            list(mcp_select or []),
+            runtime_servers=runtime_mcp_servers,
+        )
+        try:
+            effective_capability_binding_digest = capability_binding_digest(
+                effective_local_capabilities,
+                codex_mcp_selection,
+            )
+        except AttemptContractError as exc:
+            raise LaunchBlocked(str(exc)) from exc
     git = _git_identity(cwd, expected_base)
     performance = _new_performance_evidence()
     _record_performance_phase(performance, "preflight", launch_started)
@@ -3706,23 +3849,26 @@ def resolve_launch(
         env=environment,
         expected_profile=selected,
         context_identity=context_identity,
+        expected_capability_digest=effective_capability_binding_digest,
         dry_run=dry_run,
     )
     _record_performance_phase(performance, "target_discovery", target_started)
     worker_started = time.monotonic()
-    pane_state = None
+    pane_state = target_resolution.pop("_inspected_pane_state", None)
     if pane is not None:
-        pane_state = _herdr_pane(
-            cwd,
-            session,
-            pane,
-            herdr,
-            executor=executor,
-            env=environment,
-            expected_profile=selected,
-            context_identity=context_identity,
-            dry_run=dry_run,
-        )
+        if pane_state is None:
+            pane_state = _herdr_pane(
+                cwd,
+                session,
+                pane,
+                herdr,
+                executor=executor,
+                env=environment,
+                expected_profile=selected,
+                context_identity=context_identity,
+                expected_capability_digest=effective_capability_binding_digest,
+                dry_run=dry_run,
+            )
     elif not dry_run:
         raise LaunchBlocked("Target resolution returned no pane outside dry-run mode.")
     if executor == "deepagents":
@@ -3750,23 +3896,18 @@ def resolve_launch(
         if isinstance(existing_agent, dict) and isinstance(existing_agent.get("name"), str)
         else name
         or (
-            _contextual_agent_name(selected.name, context_identity)
+            _contextual_agent_name(
+                selected.name,
+                context_identity,
+                effective_capability_binding_digest,
+            )
             if executor == "codex"
             else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
         )
     )
     if executor == "codex":
-        runtime_mcp_servers = _codex_runtime_mcp_servers(
-            str(codex),
-            cwd,
-            env=environment,
-        )
-        codex_mcp_selection = _codex_mcp_selection(
-            cwd,
-            Path(str(runtime["codex_home"])),
-            list(mcp_select or []),
-            runtime_servers=runtime_mcp_servers,
-        )
+        if codex_mcp_selection is None or effective_capability_binding_digest is None:
+            raise LaunchBlocked("Codex capability binding evidence is unavailable.")
         runtime_arguments = _codex_arguments(
             selected,
             cwd,
@@ -3855,6 +3996,8 @@ def resolve_launch(
             "delivery_task_sha256": _sha256_text(delivery_task),
             "completion_marker": completion_marker,
             "mcp_selection_requested": list(mcp_select or []),
+            "mcp_selection": dict(codex_mcp_selection or {}) if executor == "codex" else None,
+            "capability_binding_digest": effective_capability_binding_digest,
             "local_capabilities": {
                 "requested": requested_local_capabilities,
                 "effective": effective_local_capabilities,
@@ -3874,6 +4017,7 @@ def resolve_launch(
             "agent_kind": "codex" if executor == "codex" else "pane-process",
             "context_identity": context_identity,
             "context_marker": _context_marker(context_identity),
+            "capability_binding_digest": effective_capability_binding_digest,
             "reuse": reuse_existing,
             "agent": existing_agent if isinstance(existing_agent, dict) else None,
                 "pane_cwd": (
@@ -4274,11 +4418,12 @@ def _main_body(args: argparse.Namespace) -> int:
             }
         receipt_file: Path | None = None
         task_result_file: Path | None = None
+        result_artifact_dir: Path | None = None
         task_option = _task_transport_option(command)
         if args.executor == "deepagents" and not args.dry_run and task_option is not None:
-            receipt_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
-            receipt_file = receipt_dir / "result.json"
-            task_result_file = receipt_dir / "task-result.json"
+            result_artifact_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
+            receipt_file = result_artifact_dir / "result.json"
+            task_result_file = result_artifact_dir / "task-result.json"
             command = command.copy()
             command[command.index(task_option):command.index(task_option)] = [
                 "--result-file",
@@ -4448,6 +4593,34 @@ def _main_body(args: argparse.Namespace) -> int:
                         assignment["exit_code"] = 2
                         assignment["reconciliation_required"] = True
                         assignment["failure_kind"] = "retirement_unresolved"
+                if result_artifact_dir is not None:
+                    retirement_settled = (
+                        not isinstance(assignment.get("retirement"), Mapping)
+                        or assignment["retirement"].get("state") == "removed"
+                    )
+                    assignment["result_artifacts"] = settle_result_artifacts(
+                        result_artifact_dir,
+                        attempt_id=str(assignment.get("attempt_id", attempt_id)),
+                        assignment_id=(
+                            str(assignment.get("assignment_id", args.assignment_id))
+                            if assignment.get("assignment_id", args.assignment_id) is not None
+                            else None
+                        ),
+                        task_sha256=(
+                            str(assignment.get("task_sha256", args.task_sha256))
+                            if assignment.get("task_sha256", args.task_sha256) is not None
+                            else None
+                        ),
+                        grant_digest=(
+                            str(assignment.get("grant_digest", args.grant_digest))
+                            if assignment.get("grant_digest", args.grant_digest) is not None
+                            else None
+                        ),
+                        receipt=receipt,
+                        task_result=task_result,
+                        lifecycle_settled=lifecycle_settled and retirement_settled,
+                        no_continuation=task_result.get("continuation_eligible") is False,
+                    )
             legacy = {
                 key: value
                 for key, value in assignment.items()
@@ -4797,6 +4970,9 @@ def _main_body(args: argparse.Namespace) -> int:
                     env=environment,
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
+                    expected_capability_digest=registry_launcher.get(
+                        "capability_binding_digest"
+                    ),
                 )
                 pane_state = _herdr_pane(
                     args.cwd,
@@ -4807,6 +4983,9 @@ def _main_body(args: argparse.Namespace) -> int:
                     env=environment,
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
+                    expected_capability_digest=registry_launcher.get(
+                        "capability_binding_digest"
+                    ),
                 )
                 evidence["herdr"].update(
                     {
@@ -4870,7 +5049,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     else "not_delivered"
                 )
             record_phase("delivery", attempt_started, attempt_id=attempt_id)
-            print(json.dumps(emit_assignment({
+            assignment_result = emit_assignment({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
                     "attempt_id": attempt_id,
@@ -4886,7 +5065,12 @@ def _main_body(args: argparse.Namespace) -> int:
                     "grant_digest": grant_digest,
                     "task_sha256": assignment_task_sha256,
                 }
-            }), sort_keys=True))
+            })
+            print(json.dumps(assignment_result, sort_keys=True))
+            if args.executor == "deepagents":
+                assignment = assignment_result["assignment"]
+                if assignment.get("failure_kind") != "command_exit":
+                    return int(assignment.get("launcher_exit_code", result.returncode))
             return result.returncode
         if args.executor == "codex":
             herdr = str(evidence["herdr"]["executable"])
@@ -4977,6 +5161,9 @@ def _main_body(args: argparse.Namespace) -> int:
                     execute_command=False,
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
+                        expected_capability_digest=registry_launcher.get(
+                            "capability_binding_digest"
+                        ),
                     callback=lambda _pane_state: submit_prompt(),
                 )
             elif not codex_prompt_submitted:
@@ -5161,7 +5348,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "grant_digest": grant_digest,
                     "phase": "prompt",
                     "prompt_accepted": True,
-                    "reconciliation_required": False,
+                    "reconciliation_required": True,
                     "session": resolved_session,
                     "status": "submitted",
                     "submission": "acknowledged",
@@ -5173,7 +5360,7 @@ def _main_body(args: argparse.Namespace) -> int:
             settle_model_submission("submitted")
         if result.returncode:
             record_phase("delivery", attempt_started)
-            print(json.dumps(emit_assignment({
+            assignment_result = emit_assignment({
                 "assignment": {
                     "agent_name": evidence["herdr"]["agent_name"],
                     "attempt_id": attempt_id,
@@ -5189,8 +5376,12 @@ def _main_body(args: argparse.Namespace) -> int:
                     "status": "failed",
                     "task_sha256": assignment_task_sha256,
                 }
-            }), sort_keys=True))
-            return result.returncode
+            })
+            print(json.dumps(assignment_result, sort_keys=True))
+            assignment = assignment_result["assignment"]
+            if assignment.get("failure_kind") == "command_exit":
+                return result.returncode
+            return int(assignment.get("launcher_exit_code", result.returncode))
         observation_started = time.monotonic()
         runtime_grant = registry_launcher.get("runtime_grant")
         wall_clock_grant = (

@@ -369,6 +369,35 @@ def test_capability_evidence_comparison_accepts_worker_shape_and_rejects_mismatc
     assert contract.capability_evidence_matches(expected, {}) is False
 
 
+def test_capability_binding_digest_is_stable_and_includes_mcp_selection() -> None:
+    selection = {
+        "requested": ("context7",),
+        "effective_servers": ("context7",),
+        "effective_tools": (),
+        "server_names": ("context7", "playwright"),
+        "runtime_only_servers": (),
+    }
+
+    digest = contract.capability_binding_digest(["Node"], selection)
+
+    assert digest == contract.capability_binding_digest(
+        ["node"],
+        {
+            **selection,
+            "server_names": ("playwright", "context7"),
+        },
+    )
+    assert digest != contract.capability_binding_digest(
+        ["node"],
+        {**selection, "effective_servers": ()},
+    )
+
+
+def test_capability_binding_digest_rejects_unstable_mcp_evidence() -> None:
+    with pytest.raises(contract.AttemptContractError, match="MCP capability evidence"):
+        contract.capability_binding_digest(["node"], {"requested": ["context7"]})
+
+
 def test_attempt_decision_keeps_settlement_when_verification_fails() -> None:
     receipt = {
         "state": "confirmed",

@@ -10,6 +10,18 @@ structured task results own reported task outcomes, `dcode-project` owns worker
 facts, and Herdr owns transport plus diagnostic observation. CoS owns final
 acceptance.
 
+Semantic task-result state is independent from lifecycle settlement. A
+`reported_completed` or `reported_failed` result can be preserved while a
+missing receipt, cleanup proof, or descendant-retirement fact keeps the attempt
+in reconciliation. Submitted-only Codex work is not treated as settled.
+
+The DeepAgents launcher owns its `herdr-result-*` temporary directory. It may
+remove that directory only after publication is durable, task and attempt
+identity match, terminal lifecycle settlement is proven, and continuation is
+not eligible. Foreign, missing, ambiguous, or mismatched evidence is retained
+with a recovery marker for bounded cleanup; cleanup never scans unrelated temp
+files.
+
 Coordinated DeepAgents resolves only the setup-owned wrapper at
 `~/.local/bin/dcode-project` on POSIX or `%USERPROFILE%\.local\bin\dcode-project.cmd`
 on Windows. Missing wrapper fails closed; do not fall back to an unrelated

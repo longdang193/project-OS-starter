@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import stat
+import tempfile
 from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,6 +24,10 @@ DESCENDANT_STATES = frozenset({"terminated", "not_started", "unknown"})
 TASK_RESULT_SCHEMA = "dcode-project.task-result.v1"
 TASK_RESULT_MAX_BYTES = 16 * 1024
 TASK_RESULT_STATUSES = frozenset({"in_progress", "completed", "failed", "blocked", "unknown"})
+RESULT_ARTIFACT_PREFIX = "herdr-result-"
+RESULT_ARTIFACT_RECOVERY_MARKER = ".herdr-recovery.json"
+RESULT_ARTIFACT_RECOVERY_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+RESULT_ARTIFACT_RECOVERY_MAX_COUNT = 100
 _CAPABILITY_DIGEST_FIELDS = ("requested", "passed_to_worker", "validated_available")
 
 
@@ -331,3 +338,215 @@ def parse_task_result(
         "continuation": payload["continuation"],
         "continuation_eligible": False,
     }
+
+
+def _is_link_or_reparse_point(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+        attributes = path.stat(follow_symlinks=False).st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
+def _result_artifact_path(path: Path) -> Path:
+    return Path(os.path.abspath(path))
+
+
+def _owned_result_artifact_directory(
+    directory: Path,
+    *,
+    attempt_id: str,
+    temp_root: Path | None,
+) -> tuple[Path | None, str | None]:
+    if not isinstance(attempt_id, str) or not attempt_id:
+        return None, "attempt identity unavailable"
+    candidate = _result_artifact_path(directory)
+    root = _result_artifact_path(temp_root or Path(tempfile.gettempdir()))
+    if candidate.parent != root:
+        return None, "result directory is outside the launcher temp root"
+    if not candidate.name.startswith(f"{RESULT_ARTIFACT_PREFIX}{attempt_id}-"):
+        return None, "result directory ownership mismatch"
+    if _is_link_or_reparse_point(candidate):
+        return None, "result directory is a link or reparse point"
+    try:
+        if not candidate.is_dir():
+            return None, "result artifact path is not a directory"
+    except OSError:
+        return None, "result artifact directory cannot be inspected"
+    return candidate, None
+
+
+def _write_recovery_marker(directory: Path, *, attempt_id: str, reason: str, now: float) -> None:
+    marker = directory / RESULT_ARTIFACT_RECOVERY_MARKER
+    payload = {
+        "schema": "herdr-result-artifact-recovery.v1",
+        "owner": "herdr-result-artifact",
+        "directory_name": directory.name,
+        "attempt_id": attempt_id,
+        "reason": reason,
+        "recorded_at": now,
+    }
+    temporary = marker.with_name(f".{marker.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, marker)
+    except OSError:
+        pass
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def prune_result_artifact_recovery(
+    *,
+    temp_root: Path | None = None,
+    max_age_seconds: float = RESULT_ARTIFACT_RECOVERY_MAX_AGE_SECONDS,
+    max_count: int = RESULT_ARTIFACT_RECOVERY_MAX_COUNT,
+    now: float | None = None,
+) -> dict[str, Any]:
+    if max_age_seconds < 0 or max_count < 0:
+        raise ValueError("recovery retention bounds must be non-negative")
+    root = _result_artifact_path(temp_root or Path(tempfile.gettempdir()))
+    current_time = time.time() if now is None else now
+    candidates: list[tuple[Path, float]] = []
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return {"state": "unavailable", "removed": 0, "preserved": 0}
+    for directory in entries:
+        if not directory.name.startswith(RESULT_ARTIFACT_PREFIX):
+            continue
+        if _is_link_or_reparse_point(directory):
+            continue
+        marker = directory / RESULT_ARTIFACT_RECOVERY_MARKER
+        if _is_link_or_reparse_point(marker) or not marker.is_file():
+            continue
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            recorded_at = payload.get("recorded_at")
+            if (
+                payload.get("schema") != "herdr-result-artifact-recovery.v1"
+                or payload.get("owner") != "herdr-result-artifact"
+                or payload.get("directory_name") != directory.name
+                or not isinstance(recorded_at, (int, float))
+            ):
+                continue
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        candidates.append((directory, float(recorded_at)))
+    candidates.sort(key=lambda item: (item[1], item[0].name))
+    remove = {
+        directory
+        for directory, recorded_at in candidates
+        if current_time - recorded_at >= max_age_seconds
+    }
+    survivors = [item for item in candidates if item[0] not in remove]
+    if len(survivors) > max_count:
+        remove.update(directory for directory, _ in survivors[: len(survivors) - max_count])
+    removed = 0
+    preserved = 0
+    for directory, _ in candidates:
+        if directory not in remove:
+            preserved += 1
+            continue
+        try:
+            shutil.rmtree(directory)
+        except OSError:
+            preserved += 1
+        else:
+            removed += 1
+    return {"state": "completed", "removed": removed, "preserved": preserved}
+
+
+def settle_result_artifacts(
+    directory: Path | None,
+    *,
+    attempt_id: str,
+    assignment_id: str | None,
+    task_sha256: str | None,
+    grant_digest: str | None,
+    receipt: Mapping[str, Any] | None,
+    task_result: Mapping[str, Any] | None,
+    lifecycle_settled: bool,
+    no_continuation: bool,
+    temp_root: Path | None = None,
+    now: float | None = None,
+) -> dict[str, Any]:
+    if directory is None:
+        return {"state": "not_applicable", "reason": "result directory unavailable"}
+    candidate = _result_artifact_path(directory)
+    current_time = time.time() if now is None else now
+    if _is_link_or_reparse_point(candidate):
+        return {"state": "preserved", "reason": "result directory is a link or reparse point"}
+    if not candidate.exists():
+        return {"state": "absent", "reason": "result directory already absent"}
+    owned, ownership_error = _owned_result_artifact_directory(
+        candidate,
+        attempt_id=attempt_id,
+        temp_root=temp_root,
+    )
+    if owned is None:
+        return {"state": "preserved", "reason": ownership_error or "ownership unresolved"}
+    receipt_file = owned / "result.json"
+    task_result_file = owned / "task-result.json"
+    if any(
+        _is_link_or_reparse_point(path) or not path.is_file()
+        for path in (receipt_file, task_result_file)
+    ):
+        reason = "result evidence missing or linked"
+        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
+        return {"state": "preserved", "reason": reason, "path": str(owned)}
+    expected = {
+        "assignment_id": assignment_id,
+        "attempt_id": attempt_id,
+        "task_sha256": task_sha256,
+        "grant_digest": grant_digest,
+    }
+    identity_matches = (
+        isinstance(task_result, Mapping)
+        and task_result.get("state") == "confirmed"
+        and all(
+            isinstance(value, str)
+            and value
+            and task_result.get(name) == value
+            for name, value in expected.items()
+        )
+    )
+    terminal_publication = identity_matches and task_result.get("status") in {
+        "completed",
+        "failed",
+        "blocked",
+    }
+    settled = (
+        isinstance(receipt, Mapping)
+        and receipt.get("state") == "confirmed"
+        and lifecycle_settled
+        and no_continuation
+        and terminal_publication
+    )
+    if not settled:
+        reason = (
+            "task result publication or identity unresolved"
+            if not identity_matches
+            else "lifecycle settlement unresolved"
+        )
+        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
+        return {"state": "preserved", "reason": reason, "path": str(owned)}
+    try:
+        shutil.rmtree(owned)
+    except OSError as exc:
+        reason = f"settled result directory removal failed: {exc}"
+        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
+        return {"state": "preserved", "reason": reason, "path": str(owned)}
+    return {"state": "removed", "reason": "durable publication and settlement proven"}

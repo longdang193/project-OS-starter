@@ -169,6 +169,54 @@ def test_deepagents_classification_keeps_structured_failure_authoritative() -> N
     assert result["launcher_exit_code"] == 2
 
 
+def test_deepagents_classification_preserves_terminal_task_result_without_receipt() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={"state": "delivered", "certainty": "confirmed"},
+        observation={"state": "unknown", "observation_error": "receipt unavailable"},
+        receipt={"state": "unknown", "detail": "receipt unavailable"},
+        fallback_failure_kind=None,
+        task_result_evidence={
+            "state": "confirmed",
+            "status": "completed",
+            "producer": "dcode-project",
+            "checkpoint": "checkpoint-sha",
+            "verification": {"references": ["tests/test_task.py"]},
+        },
+    )
+
+    assert result["task_result"]["state"] == "reported_completed"
+    assert result["status"] == "completed"
+    assert result["failure_kind"] == "receipt_unavailable"
+    assert result["reconciliation_required"] is True
+    assert result["launcher_exit_code"] == 2
+
+
+def test_deepagents_classification_downgrades_pane_failure_to_uncertain_with_worker_evidence() -> None:
+    result = LAUNCHER._classify_deepagents_outcome(
+        delivery={
+            "state": "delivery_failed",
+            "certainty": "not_delivered",
+        },
+        observation={"state": "unknown", "observation_error": "pane command exit"},
+        receipt={
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 7,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "role_views_state": "removed",
+            "recovery_required": False,
+        },
+        fallback_failure_kind="command_exit",
+    )
+
+    assert result["delivery"]["state"] == "delivery_uncertain"
+    assert result["delivery"]["certainty"] == "uncertain"
+    assert result["status"] == "failed"
+    assert result["failure_kind"] == "worker_exit"
+    assert result["launcher_exit_code"] == 7
+
+
 def test_deepagents_classification_rejects_wrapper_completion_without_task_proof() -> None:
     result = LAUNCHER._classify_deepagents_outcome(
         delivery={"state": "delivered"},
@@ -1033,7 +1081,7 @@ def test_codex_prompt_result_marks_success_acknowledged() -> None:
         "submission": "acknowledged",
         "prompt_accepted": True,
         "failure_kind": None,
-        "reconciliation_required": False,
+        "reconciliation_required": True,
     }
 
 
@@ -2405,6 +2453,63 @@ def test_main_reports_deepagents_pane_run_failure(
     assert result["failure_kind"] == "command_exit"
 
 
+def test_main_classifies_pane_command_failure_from_worker_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 9, "", "pane failed"),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_receipt",
+        lambda *args, **kwargs: {
+            "state": "confirmed",
+            "worker_state": "exited",
+            "worker_exit_code": 7,
+            "descendant_state": "terminated",
+            "cleanup_state": "removed",
+            "role_views_state": "removed",
+            "recovery_required": False,
+        },
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_read_deepagents_task_result",
+        lambda *args, **kwargs: {"state": "confirmed", "status": "failed"},
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(tmp_path), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 7
+    result = json.loads(capsys.readouterr().out.splitlines()[-1])["assignment"]
+    assert result["delivery_state"] == "delivery_uncertain"
+    assert result["delivery_certainty"] == "uncertain"
+    assert result["status"] == "failed"
+    assert result["failure_kind"] == "worker_exit"
+    assert result["worker_exit_code"] == 7
+
+
 def test_main_immediate_transport_timeout_does_not_expire_long_grant(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -3075,6 +3180,46 @@ def test_target_selector_selects_first_deterministic_auto_target(
     assert resolution["session_provenance"] == "shared/default"
 
 
+def test_target_selector_inspects_preferred_candidates_first_and_carries_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    panes = [
+        {
+            "workspace_id": "w1",
+            "pane_id": "w1:p1",
+            "cwd": str(ROOT),
+            "focused": True,
+        },
+        {
+            "workspace_id": "w1",
+            "pane_id": "w1:p2",
+            "cwd": str(ROOT),
+            "focused": False,
+        },
+    ]
+    inspected: list[str] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: {"result": {"snapshot": {"panes": panes}}},
+    )
+
+    def inspect_candidate(*args: object, **kwargs: object) -> dict[str, object]:
+        pane = str(args[2])
+        inspected.append(pane)
+        return {"pane": {"pane_id": pane}, "process_info": {"foreground_processes": []}}
+
+    monkeypatch.setattr(LAUNCHER, "_inspect_auto_candidate", inspect_candidate)
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert inspected == ["w1:p2", "w1:p1"]
+    assert resolution["_inspected_pane_state"]["pane"]["pane_id"] == "w1:p2"
+
+
 def test_target_selector_marks_non_default_exact_session_pre_existing() -> None:
     session, pane, resolution = LAUNCHER._resolve_target_selector(
         ROOT, "existing-session", "w1:p1", "herdr.exe",
@@ -3259,6 +3404,106 @@ def test_target_selector_candidate_deadline_preserves_allocation_reserve(
     ]
     assert timeouts[0] == pytest.approx(4.0)
     assert timeouts[2] == pytest.approx(0.9, abs=0.1)
+
+
+def test_target_selector_lock_wait_gets_separate_post_lock_allocation_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+    }
+    allocated = {**source, "pane_id": "w1:p2", "focused": False}
+    now = 0.0
+    process_info_timeouts: list[float] = []
+
+    def fake_monotonic() -> float:
+        return now
+
+    class DelayedAllocationLock:
+        def __enter__(self):
+            nonlocal now
+            now += 0.8
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        if command[3:5] == ["pane", "process-info"]:
+            process_info_timeouts.append(float(kwargs["timeout"]))
+            return {"result": {"process_info": {"foreground_processes": []}}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+    monkeypatch.setattr(LAUNCHER, "_allocation_lock", lambda *args, **kwargs: DelayedAllocationLock())
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_inspect_auto_candidate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.TargetCandidateRejected("incompatible pane")
+        ),
+    )
+
+    session, pane, resolution = LAUNCHER._resolve_target_selector(
+        ROOT, "auto", "auto", "herdr.exe",
+    )
+
+    assert (session, pane) == ("default", "w1:p2")
+    assert resolution["allocation"]["status"] == "allocated"
+    assert process_info_timeouts == [pytest.approx(LAUNCHER._TARGET_ALLOCATION_RESERVE_SECONDS)]
+
+
+def test_target_selector_marks_created_pane_unverified_when_post_split_proof_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = {
+        "workspace_id": "w1",
+        "pane_id": "w1:p1",
+        "cwd": str(ROOT),
+        "focused": True,
+    }
+    allocated = {**source, "pane_id": "w1:p2", "focused": False}
+
+    def fake_json(command: list[str], **kwargs: object) -> dict[str, object]:
+        if command[1:3] == ["api", "snapshot"]:
+            return {"result": {"snapshot": {"panes": [source]}}}
+        if command[3:5] == ["pane", "split"]:
+            return {"result": {"pane": allocated}}
+        raise AssertionError(command)
+
+    monkeypatch.setattr(LAUNCHER, "_json_command", fake_json)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_inspect_auto_candidate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.TargetCandidateRejected("incompatible pane")
+        ),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            LAUNCHER.CommandTransportTimeout("verification timeout")
+        ),
+    )
+
+    with pytest.raises(LAUNCHER.TargetResolutionBlocked) as error:
+        LAUNCHER._resolve_target_selector(ROOT, "auto", "auto", "herdr.exe")
+
+    assert error.value.resolution["failure_kind"] == "created_unverified"
+    assert error.value.resolution["allocation"] == {
+        "status": "created_unverified",
+        "source_pane": "w1:p1",
+        "pane": "w1:p2",
+    }
 
 
 def test_named_session_candidate_deadline_preserves_allocation_reserve(
@@ -5798,6 +6043,14 @@ def test_contextual_agent_name_is_stable_for_web_profiles(profile_name: str, mod
     assert model.startswith("combo-")
 
 
+def test_contextual_agent_name_binds_capability_and_context_markers() -> None:
+    digest = "a" * 64
+    name = LAUNCHER._contextual_agent_name("high", "task:subject-1", digest)
+
+    assert LAUNCHER._agent_capability_marker(name) == f"cap-{digest[:12]}"
+    assert LAUNCHER._agent_context_marker(name) == LAUNCHER._context_marker("task:subject-1")
+
+
 def _reusable_codex_pane_responses(
     *,
     tmp_path: Path,
@@ -5882,6 +6135,71 @@ def test_pane_safety_reuses_same_context_and_compatible_profile(
 
     assert result["reuse"] is True
     assert result["agent"]["name"] == LAUNCHER._contextual_agent_name(profile_name, context)
+
+
+def test_pane_safety_reuses_same_capability_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
+    )
+    digest = "b" * 64
+    context = "task:subject-1"
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("high", context, digest),
+        model="combo-high",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    result = LAUNCHER._herdr_pane(
+        tmp_path,
+        "session",
+        "p1",
+        "herdr",
+        expected_profile=profile,
+        context_identity=context,
+        expected_capability_digest=digest,
+    )
+
+    assert result["reuse"] is True
+
+
+@pytest.mark.parametrize(
+    ("agent_name", "expected_digest"),
+    [
+        ("high-main-ctx-placeholder", "c" * 64),
+        ("high-main-cap-deadbeefdead-ctx-placeholder", "d" * 64),
+    ],
+)
+def test_pane_safety_rejects_missing_or_mismatched_capability_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    agent_name: str,
+    expected_digest: str,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
+    )
+    context = "task:subject-1"
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=agent_name.replace("ctx-placeholder", LAUNCHER._context_marker(context) or ""),
+        model="combo-high",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="capability mismatch"):
+        LAUNCHER._herdr_pane(
+            tmp_path,
+            "session",
+            "p1",
+            "herdr",
+            expected_profile=profile,
+            context_identity=context,
+            expected_capability_digest=expected_digest,
+        )
 
 
 def test_pane_safety_rejects_completed_codex_agent_without_context(
