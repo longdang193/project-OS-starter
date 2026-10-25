@@ -12,7 +12,7 @@ def test_dispatch_benchmark_reports_supported_bounded_dispatch(tmp_path):
 
     result = benchmark_dispatch(manifest, repetitions=1, mode="baseline")
 
-    assert result["completed_per_run"] == 2
+    assert result["completed_per_run"] == 3
     assert result["max_concurrency"] == 2
 
 

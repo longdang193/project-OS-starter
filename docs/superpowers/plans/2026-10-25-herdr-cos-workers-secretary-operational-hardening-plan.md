@@ -16,6 +16,7 @@ targets:
   - scripts/herdr_main_launcher.py
   - scripts/secretary_live_runtime.py
   - tests/test_herdr_parallel_dispatch.py
+  - tests/test_benchmark_dispatch.py
   - tests/test_herdr_attempt_contract.py
   - tests/test_herdr_main_launcher.py
   - tests/test_project_os_runtime.py

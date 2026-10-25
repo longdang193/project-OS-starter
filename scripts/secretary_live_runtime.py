@@ -164,6 +164,19 @@ _SOURCE_SAFE_FIELDS = {
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
+
+
+class WorkspaceProvisioningError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        workspace_id: str | None,
+        workspace_close: Mapping[str, Any] | None,
+    ) -> None:
+        super().__init__(message)
+        self.workspace_id = workspace_id
+        self.workspace_close = workspace_close
 _CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
 _WORKSPACE_STATUS_MAX_BYTES = 4 * 1024 * 1024
 _WORKSPACE_TRACKED_DIFF_MAX_BYTES = 16 * 1024 * 1024
@@ -720,9 +733,12 @@ def _prepare_herdr_target(
     try:
         _verify_herdr_pane(request, herdr, pane, env=env)
     except Exception as exc:
-        exc.workspace_id = workspace_id
-        exc.workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise
+        workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
+        raise WorkspaceProvisioningError(
+            "Herdr workspace pane verification failed",
+            workspace_id=workspace_id,
+            workspace_close=workspace_close,
+        ) from exc
     return replace(request, session=_HERDR_DEFAULT_SESSION, pane=pane), {
         "server": server["state"],
         "server_started": server["started"],

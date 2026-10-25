@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -59,13 +60,22 @@ def test_prepare_lane_is_frozen() -> None:
 
 
 def test_evidence_path_lock_reports_bounded_contention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import msvcrt
     from scripts.project_os_runtime import results
 
-    def busy_lock(*args: object) -> None:
-        raise OSError("lock busy")
+    if os.name == "nt":
+        import msvcrt
 
-    monkeypatch.setattr(msvcrt, "locking", busy_lock)
+        def busy_lock(*args: object) -> None:
+            raise OSError("lock busy")
+
+        monkeypatch.setattr(msvcrt, "locking", busy_lock)
+    else:
+        import fcntl
+
+        def busy_lock(*args: object) -> None:
+            raise BlockingIOError("lock busy")
+
+        monkeypatch.setattr(fcntl, "flock", busy_lock)
 
     with pytest.raises(results.EvidenceLockTimeout):
         with results.evidence_path_lock(tmp_path / "evidence.json", timeout_seconds=0):

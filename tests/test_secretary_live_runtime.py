@@ -5862,11 +5862,12 @@ def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)
     monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane read failed")))
 
-    with pytest.raises(OSError) as raised:
+    with pytest.raises(runtime.WorkspaceProvisioningError) as raised:
         runtime._prepare_herdr_target(request(worktree=Path("C:/worktree")), herdr="herdr", env={})
 
     assert getattr(raised.value, "workspace_id") == "w99"
     assert getattr(raised.value, "workspace_close")["verified"] is True
+    assert isinstance(raised.value.__cause__, OSError)
     assert closed == ["w99"]
 
 
