@@ -24,6 +24,14 @@ def canonical_token(value: object) -> str:
     return str(value).replace("\\", "/").strip("/").casefold()
 
 
+def pane_resource_key(session: object, pane: object) -> tuple[str, str] | None:
+    session_token = canonical_token(session)
+    pane_token = canonical_token(pane)
+    if not session_token or not pane_token or "auto" in {session_token, pane_token}:
+        return None
+    return session_token, pane_token
+
+
 def path_conflicts(left: object, right: object) -> bool:
     left_value = canonical_token(left)
     right_value = canonical_token(right)

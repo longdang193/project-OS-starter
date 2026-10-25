@@ -396,9 +396,12 @@ and do not own independent normalization, admission, or settlement semantics.
 
 Admission, resource state, and task outcome remain independent. `DEFERRED`
 means temporary capacity or explicitly shareable-resource contention only.
-Dependency acceptance waits, overlapping writes, duplicate assignments, and
-uncertain ownership are `BLOCKED` or reconciliation states and never trigger
-automatic refill, replay, acceptance, or capacity release.
+Never-started capacity-deferred lanes may be submitted once, in bounded FIFO
+order, when an admitted lane releases capacity; a started lane is never replayed.
+Interruption, coordinator failure, unresolved ownership, dependency acceptance
+waits, overlapping writes, and duplicate assignments remain `BLOCKED`,
+incomplete, or reconciliation states and never trigger replay, acceptance, or
+capacity release without proof.
 
 ### Deadline and retry boundary
 
@@ -503,5 +506,11 @@ CoS owns continuation. Dispatcher may stop admission and return unresolved owner
 Accepted work requires executable Git checkpoint evidence: checkpoint revision exists, is reachable from expected base, contains only allowed writes, and passes task verification. Fresh worktree identity and checkpoint revision remain distinct contracts.
 
 `local_capabilities` flows from validated runtime selection into dispatcher admission, launcher invocation, and receipt evidence. Selectors accept only declared capability IDs; unknown IDs, tool names, conflicting selectors, and undeclared runtime-only capabilities reject before launch. Launcher JSON passes through dispatcher unchanged enough for correlation and validation; malformed, stale, or mismatched records remain unresolved.
+
+Concrete pane ownership is keyed by `(session, pane)`; the literal `auto`
+selector is provisional until target resolution returns a verified concrete
+binding. The resolved binding is checked before launch and released only after
+settlement. Missing assignment, task, or attempt identity cannot correlate a
+receipt, and unverified runtime-grant evidence is a verification failure.
 
 Task 1 regression scope covers runtime completion versus acceptance, missing grant evidence, timeout ownership, fake-clock boundaries, launcher JSON through dispatcher, capability flow and selector validation, policy/checkpoint contracts, and duplicate launcher wait-test names.

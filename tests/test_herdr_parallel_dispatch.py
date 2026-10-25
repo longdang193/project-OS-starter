@@ -117,6 +117,27 @@ def test_load_lane_descriptors_rejects_shared_resources(
     assert result["rejected"] == []
 
 
+def test_load_lane_descriptors_scopes_pane_conflicts_to_session(tmp_path: Path) -> None:
+    first = lane("a", tmp_path, pane="shared")
+    second = lane("b", tmp_path, pane="shared")
+    second["session"] = "other-session"
+
+    result = dispatcher.load_lane_descriptors(write_lanes(tmp_path, [first, second]))
+
+    assert [item["lane_id"] for item in result["admitted"]] == ["a", "b"]
+    assert result["blocked"] == []
+
+
+def test_load_lane_descriptors_does_not_treat_auto_as_one_shared_pane(tmp_path: Path) -> None:
+    first = lane("a", tmp_path, pane="auto")
+    second = lane("b", tmp_path, pane="auto")
+
+    result = dispatcher.load_lane_descriptors(write_lanes(tmp_path, [first, second]))
+
+    assert [item["lane_id"] for item in result["admitted"]] == ["a", "b"]
+    assert result["blocked"] == []
+
+
 def test_load_lane_descriptors_rejects_unready_dependency(tmp_path: Path) -> None:
     result = dispatcher.load_lane_descriptors(
         write_lanes(tmp_path, [lane("a", tmp_path, dependency_ready=False)])
@@ -180,6 +201,26 @@ def test_launch_preflight_reports_independent_plan_and_base_blockers(tmp_path: P
     names = {item.name for item in preflight.blockers}
     assert "git_base" in names
     assert any(item.code == "not_supplied" for item in preflight.checks if item.name == "plan_source")
+
+
+def test_launch_preflight_classifies_git_timeout_without_running_later_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    item = lane("a", tmp_path)
+    item["worktree"] = str(worktree)
+    prepared = dispatcher.prepare_lane(item)
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout"))
+
+    monkeypatch.setattr(dispatcher.subprocess, "run", timeout)
+
+    preflight = dispatcher.launch_preflight(prepared, timeout_seconds=0.01)
+
+    assert preflight.blockers[0].code == "git_timeout"
+    assert [check.name for check in preflight.checks if check.name.startswith("prerequisite:")] == []
 
 
 def test_launch_preflight_marks_missing_binding_unverified_and_not_ready(tmp_path: Path) -> None:
@@ -313,7 +354,7 @@ def test_load_lane_descriptors_caps_capacity_and_reports_queued_lane(tmp_path: P
 
     assert [item["lane_id"] for item in result["admitted"]] == ["a", "b"]
     assert result["rejected"] == []
-    assert [item["lane_id"] for item in result["deferred"]] == ["c"]
+    assert {item["lane_id"] for item in result["deferred"]} == {"c"}
 
 
 def test_later_conflict_does_not_invalidate_ready_lane(tmp_path: Path) -> None:
@@ -382,10 +423,49 @@ def test_run_parallel_emits_admission_and_terminal_events_once(tmp_path: Path, m
         "admitted",
         "deferred",
     ]
-    assert [event["tag"] for event in events[3:]] == ["lane_result", "lane_result"]
-    assert {event["lane_id"] for event in events[3:]} == {"a", "b"}
-    assert len(result["results"]) == 2
+    assert [event["tag"] for event in events[3:]] == [
+        "lane_result",
+        "lane_refilled",
+        "lane_result",
+        "lane_result",
+    ]
+    assert {event["lane_id"] for event in events[3:] if event["tag"] == "lane_result"} == {"a", "b", "c"}
+    assert len(result["results"]) == 3
+    assert result["refilled"] == ["c"]
     assert result["callback_errors"] == []
+
+
+def test_run_parallel_refills_capacity_deferred_lane_once(tmp_path: Path, monkeypatch) -> None:
+    started: list[str] = []
+
+    def fake_run_lane(item, **kwargs):
+        started.append(item["lane_id"])
+        return {"lane_id": item["lane_id"], "unresolved": False, "capacity": "retired"}
+
+    monkeypatch.setattr(dispatcher, "run_lane", fake_run_lane)
+    result = dispatcher.run_parallel(
+        [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)]
+    )
+
+    assert set(started) == {"a", "b", "c"}
+    assert result["refilled"] == ["c"]
+    assert result["deferred"] == []
+    assert {item["lane_id"] for item in result["results"]} == {"a", "b", "c"}
+
+
+def test_run_parallel_reports_leftover_deferred_lanes_as_incomplete(
+    tmp_path: Path,
+) -> None:
+    stop_event = threading.Event()
+    stop_event.set()
+
+    result = dispatcher.run_parallel(
+        [lane("a", tmp_path), lane("b", tmp_path), lane("c", tmp_path)],
+        stop_event=stop_event,
+    )
+
+    assert {item["lane_id"] for item in result["deferred"]} == {"a", "b", "c"}
+    assert result["incomplete"] is True
 
 
 def test_duplicate_lane_id_has_one_canonical_admission_and_one_event(
@@ -772,6 +852,8 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
 ) -> None:
     item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
     class CompletedProcess:
         returncode = 2
 
@@ -779,11 +861,13 @@ def test_run_lane_task_uncertainty_does_not_keep_settled_resources_occupied(
             return (
                 "\n".join(
                     [
-                            json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}}),
+                            json.dumps({"registry_launcher": {"attempt_id": "a", "assignment_id": expected_assignment, "assignment_task_sha256": task_sha256, "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}}),
                         json.dumps(
                             {
                                     "assignment": {
                                         "attempt_id": "a",
+                                        "assignment_id": expected_assignment,
+                                        "task_sha256": task_sha256,
                                         "grant_digest": item["grant_digest"],
                                         "execution": {
                                             "state": "exited",
@@ -1093,8 +1177,12 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
 ) -> None:
     item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
     assignment = {
         "attempt_id": "a",
+        "assignment_id": expected_assignment,
+        "task_sha256": task_sha256,
         "grant_digest": item["grant_digest"],
         "execution": {"state": "exited", "descendant_state": descendant_state},
         "lifecycle_receipt": {
@@ -1112,7 +1200,7 @@ def test_run_lane_explicit_descendant_retirement_requires_cleanup(
 
         def communicate(self, *, timeout):
             return (
-                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "assignment_id": expected_assignment, "assignment_task_sha256": task_sha256, "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps({"assignment": assignment}),
                 "",
@@ -1165,6 +1253,10 @@ def test_effective_budget_accepts_contained_explicit_grant_above_native_default(
 
 
 def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path: Path) -> None:
+    item = dispatcher.prepare_lane(launch_lane("a", tmp_path)).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
+
     class CompletedProcess:
         returncode = 0
 
@@ -1173,11 +1265,15 @@ def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path
                 "\n".join([
                     json.dumps({"registry_launcher": {
                         "attempt_id": "a",
+                        "assignment_id": expected_assignment,
+                        "assignment_task_sha256": task_sha256,
                         "runtime_grant": {"turns": {"requested": 8}},
                         "grant_digest": "prep-digest",
                     }}),
                     json.dumps({"assignment": {
                         "attempt_id": "a",
+                        "assignment_id": expected_assignment,
+                        "task_sha256": task_sha256,
                         "grant_digest": "final-digest",
                         "execution": {"state": "exited", "descendant_state": "terminated"},
                         "lifecycle_receipt": {
@@ -1193,17 +1289,42 @@ def test_run_lane_grant_digest_mismatch_keeps_settled_capacity_reusable(tmp_path
                 "",
             )
 
-    result = dispatcher.run_lane(launch_lane("a", tmp_path), popen_factory=lambda *args, **kwargs: CompletedProcess())
+    result = dispatcher.run_lane(item, popen_factory=lambda *args, **kwargs: CompletedProcess())
 
     assert result["capacity"] == "retired"
     assert result["unresolved"] is True
     assert result["grant_verification"] == "unverified"
     assert result["verification_failure"] == "grant_mismatch"
+    assert result["failure_kind"] == "grant_mismatch"
+
+
+def test_receipt_correlation_requires_all_mandatory_identity_fields(tmp_path: Path) -> None:
+    item = dispatcher.prepare_lane(launch_lane("a", tmp_path)).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
+    parsed = {
+        "preparation": {
+            "registry_launcher": {
+                "attempt_id": "attempt-1",
+                "assignment_id": expected_assignment,
+                "assignment_task_sha256": task_sha256,
+            }
+        },
+        "assignment": {
+            "attempt_id": "attempt-1",
+            "assignment_id": expected_assignment,
+            "task_sha256": None,
+        },
+    }
+
+    assert dispatcher._receipt_correlation_matches(item, parsed) is False
 
 
 def test_run_lane_stale_assignment_identity_keeps_capacity_occupied(tmp_path: Path) -> None:
     item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
     task_sha256 = dispatcher._sha256_text(str(item["task"]))
 
     class CompletedProcess:
@@ -1261,6 +1382,8 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 
     item = launch_lane("a", tmp_path)
     item = dispatcher.prepare_lane(item).to_dict()
+    expected_assignment = item["assignment_id"]
+    task_sha256 = dispatcher._sha256_text(item["task"])
 
     classified = launcher._classify_deepagents_outcome(
         delivery={"state": "delivered", "certainty": "confirmed", "prompt_accepted": True},
@@ -1288,6 +1411,8 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
         launcher_exit_code=classified["launcher_exit_code"],
         legacy={"status": classified["status"], "reconciliation_required": classified["reconciliation_required"]},
     )
+    emitted["assignment"]["assignment_id"] = expected_assignment
+    emitted["assignment"]["task_sha256"] = task_sha256
     emitted["assignment"]["grant_digest"] = item["grant_digest"]
     emitted["assignment"]["lifecycle_receipt"] = {
         "worker_state": "exited",
@@ -1301,7 +1426,7 @@ def test_dispatcher_consumes_actual_launcher_assignment_json_with_pending_cos_ac
 
         def communicate(self, *, timeout):
             return (
-                    json.dumps({"registry_launcher": {"attempt_id": "a", "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
+                    json.dumps({"registry_launcher": {"attempt_id": "a", "assignment_id": expected_assignment, "assignment_task_sha256": task_sha256, "runtime_grant": item["runtime_grant"], "grant_digest": item["grant_digest"]}})
                 + "\n"
                 + json.dumps(emitted),
                 "",

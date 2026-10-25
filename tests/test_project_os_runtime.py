@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,29 @@ def test_prepare_lane_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         lane.lane_id = "other"  # type: ignore[misc]
+
+
+def test_evidence_path_lock_reports_bounded_contention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.project_os_runtime import results
+
+    if os.name == "nt":
+        import msvcrt
+
+        def busy_lock(*args: object) -> None:
+            raise OSError("lock busy")
+
+        monkeypatch.setattr(msvcrt, "locking", busy_lock)
+    else:
+        import fcntl
+
+        def busy_lock(*args: object) -> None:
+            raise BlockingIOError("lock busy")
+
+        monkeypatch.setattr(fcntl, "flock", busy_lock)
+
+    with pytest.raises(results.EvidenceLockTimeout):
+        with results.evidence_path_lock(tmp_path / "evidence.json", timeout_seconds=0):
+            pass
 
 
 def test_admission_result_is_immutable_and_states_are_disjoint() -> None:
@@ -205,6 +229,26 @@ def test_cos_acceptance_projects_one_resolved_attempt_identity() -> None:
     assert decision["task"]["attempt_id"] == "attempt-1"
     assert decision["acceptance_proof"]["attempt_id"] == "attempt-1"
     assert decision["acceptance_proof"]["git"]["attempt_id"] == "attempt-1"
+
+
+@pytest.mark.parametrize(
+    ("field", "reason"),
+    [
+        ("assignment_id", "assignment binding"),
+        ("checkpoint_sha", "acceptance checkpoint binding"),
+    ],
+)
+def test_cos_acceptance_blocks_missing_authorization_binding(field: str, reason: str) -> None:
+    from scripts.project_os_runtime.acceptance import evaluate_acceptance
+
+    inputs = _acceptance_inputs()
+    inputs["git"].pop(field)
+
+    decision = evaluate_acceptance(**inputs)
+
+    assert decision["decision"] == "BLOCKED"
+    assert decision["task_transition"]["authorized"] is False
+    assert reason in decision["reasons"]
 
 
 @pytest.mark.parametrize("mutation", [

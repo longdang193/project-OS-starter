@@ -27,8 +27,10 @@ try:
     from scripts.herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
         _herdr_pane,
+        _resolve_target_selector,
         CommandTransportTimeout,
         LaunchBlocked,
+        TargetResolutionBlocked,
         TargetCandidateRejected,
         _codex_completion_snapshot,
         _run as _herdr_run,
@@ -37,8 +39,10 @@ except ModuleNotFoundError:
     from herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
         _herdr_pane,
+        _resolve_target_selector,
         CommandTransportTimeout,
         LaunchBlocked,
+        TargetResolutionBlocked,
         TargetCandidateRejected,
         _codex_completion_snapshot,
         _run as _herdr_run,
@@ -160,6 +164,19 @@ _SOURCE_SAFE_FIELDS = {
     "repository_identity", "plan_identity", "git_revision", "worktree",
     "workstream", "checkpoint", "provider", "model", "controller_id", "session_id",
 }
+
+
+class WorkspaceProvisioningError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        workspace_id: str | None,
+        workspace_close: Mapping[str, Any] | None,
+    ) -> None:
+        super().__init__(message)
+        self.workspace_id = workspace_id
+        self.workspace_close = workspace_close
 _CODEX_OBSERVATION_TIMEOUT_SECONDS = 120.0
 _WORKSPACE_STATUS_MAX_BYTES = 4 * 1024 * 1024
 _WORKSPACE_TRACKED_DIFF_MAX_BYTES = 16 * 1024 * 1024
@@ -678,6 +695,35 @@ def _prepare_herdr_target(
             "pane_cwd_verified": False,
             "workspace_created": False,
         }, None
+    try:
+        resolved_session, resolved_pane, resolution = _resolve_target_selector(
+            request.worktree,
+            request.session,
+            request.pane,
+            herdr,
+            executor="codex",
+            env=env,
+        )
+    except (LaunchBlocked, TargetResolutionBlocked):
+        resolved_pane = None
+        resolution = None
+    if isinstance(resolved_pane, str) and resolved_pane.strip():
+        resolved_request = replace(
+            request,
+            session=resolved_session,
+            pane=resolved_pane,
+        )
+        _verify_herdr_pane(resolved_request, herdr, resolved_pane, env=env)
+        return resolved_request, {
+            "server": server["state"],
+            "server_started": server["started"],
+            "selector_mode": "reused-verified",
+            "session": resolved_session,
+            "pane": resolved_pane,
+            "pane_cwd_verified": True,
+            "workspace_created": False,
+            "target_resolution": resolution,
+        }, None
     workspace_id, pane = _create_herdr_workspace(
         request,
         herdr,
@@ -687,9 +733,12 @@ def _prepare_herdr_target(
     try:
         _verify_herdr_pane(request, herdr, pane, env=env)
     except Exception as exc:
-        exc.workspace_id = workspace_id
-        exc.workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
-        raise
+        workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
+        raise WorkspaceProvisioningError(
+            "Herdr workspace pane verification failed",
+            workspace_id=workspace_id,
+            workspace_close=workspace_close,
+        ) from exc
     return replace(request, session=_HERDR_DEFAULT_SESSION, pane=pane), {
         "server": server["state"],
         "server_started": server["started"],
@@ -3706,25 +3755,57 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             attempt_id=submission_attempt_id,
         )
         submission_prepared = True
-        completed = subprocess.run(
-            build_launcher_command(launch_request),
-            cwd=request.worktree,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
-        payload = select_launcher_payload(payloads) if payloads else None
-        result = sanitize_launcher_result(
-            request,
-            returncode=completed.returncode,
-            payload=payload,
-            configured_model=configured_model,
-            started_at=started,
-            finished_at=datetime.now(timezone.utc).isoformat(),
-        )
-        if result.get("disposition") != "READY" and completed.returncode == 0 and isinstance(payload, Mapping):
+        launcher_command = build_launcher_command(launch_request)
+        try:
+            completed = subprocess.run(
+                launcher_command,
+                cwd=request.worktree,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_CODEX_OBSERVATION_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            partial_stdout = (
+                exc.stdout.decode("utf-8", errors="replace")
+                if isinstance(exc.stdout, bytes)
+                else exc.stdout if isinstance(exc.stdout, str) else ""
+            )
+            partial_stderr = (
+                exc.stderr.decode("utf-8", errors="replace")
+                if isinstance(exc.stderr, bytes)
+                else exc.stderr if isinstance(exc.stderr, str) else ""
+            )
+            result = sanitize_launcher_result(
+                request,
+                returncode=124,
+                payload=None,
+                configured_model=configured_model,
+                started_at=started,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            result.update({
+                "disposition": "BLOCKED_CAPABILITY",
+                "failure_kind": "launcher_timeout",
+                "reconciliation_required": True,
+                "ownership_state": "unknown",
+                "launcher_output": {"stdout": partial_stdout, "stderr": partial_stderr},
+            })
+            completed = None
+            payload = None
+        else:
+            payloads = _json_payloads(completed.stdout) + _json_payloads(completed.stderr)
+            payload = select_launcher_payload(payloads) if payloads else None
+            result = sanitize_launcher_result(
+                request,
+                returncode=completed.returncode,
+                payload=payload,
+                configured_model=configured_model,
+                started_at=started,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        if result.get("disposition") != "READY" and completed is not None and completed.returncode == 0 and isinstance(payload, Mapping):
             assignment = payload.get("assignment")
             launcher_observation = (
                 assignment.get("observation")

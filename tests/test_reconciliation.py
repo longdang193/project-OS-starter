@@ -93,6 +93,41 @@ def test_integrate_rejects_missing_required_check() -> None:
     assert "required_checks" in result.contradictions
 
 
+def test_integrate_allows_bound_policy_with_zero_required_checks() -> None:
+    remote = replace(_remote(), required_checks=(), checks=())
+
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+
+    assert remote.checks_current is True
+    assert remote.checks_satisfy_policy is True
+    assert result.eligible is True
+
+
+def test_integrate_rejects_zero_required_checks_without_bound_policy() -> None:
+    remote = replace(_remote(), required_checks=(), checks=(), policy_source=None, review_policy_source=None)
+
+    result = reconcile(ReconciliationInput("integrate", {
+        "cos_pass": True,
+        "repository_identity": "org/repo",
+        "pr_number": 7,
+        "base_ref": "main",
+        "base_sha": "B",
+        "candidate_sha": "H",
+    }, remote))
+
+    assert remote.checks_current is True
+    assert remote.checks_satisfy_policy is False
+    assert result.eligible is False
+    assert "required_checks" in result.contradictions
+
+
 def test_integrate_ignores_optional_failed_check() -> None:
     remote = _remote(
         checks=(
