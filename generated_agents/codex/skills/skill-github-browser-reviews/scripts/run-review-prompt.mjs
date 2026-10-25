@@ -125,6 +125,7 @@ async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
       break;
     }
   }
+  if (!assistantMessageId) assistantMessageId = `visible-assistant-turn-${count - 1}`;
 
   return {
     assistantMessageId,
