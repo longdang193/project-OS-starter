@@ -25,14 +25,18 @@ import {
   closeContext,
   createResult,
   createRunOutputDirectory,
+  deriveProjectKey,
   installTerminationCleanup,
   main,
+  openContext,
   parseArguments,
   readBatchReviews,
   releaseProfileLease,
   runReviewBatch,
   runReviewTransaction,
   summarizeBatchResults,
+  validateProjectProfilePath,
+  validateReviewProvenance,
   writeResult,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs";
 import {
@@ -45,6 +49,11 @@ import {
   selectReviewModel,
   setEffort,
 } from "../.agents/skills/skill-github-browser-reviews/scripts/select-review-model.mjs";
+
+const REVIEW_REPOSITORY = "longdang193/project-OS-starter";
+const REVIEW_SHA = "c163271b437046c61daab974a190dc9bc4764d57";
+const REVIEW_URL = `https://github.com/${REVIEW_REPOSITORY}/blob/${REVIEW_SHA}/README.md`;
+const NORMALIZED_REVIEW_URL = `https://github.com/${REVIEW_REPOSITORY.toLowerCase()}/blob/${REVIEW_SHA}/README.md`;
 
 test("model-menu interactions use the bounded five-second timeout", async () => {
   const clickOptions = [];
@@ -171,12 +180,85 @@ test("prompt acknowledgement polls once without resubmitting", async () => {
   assert.equal(waitCalls, 1);
 });
 
+test("send action exceptions are classified as possibly dispatched", async () => {
+  let entered = false;
+  const composer = {
+    async fill() { entered = true; },
+    async inputValue() { return entered ? "review" : ""; },
+    async innerText() { return ""; },
+  };
+  const page = {
+    getByRole(role) {
+      if (role === "button") return {
+        first() {
+          return {
+            async isVisible() { return true; },
+            async click() { throw new Error("click intercepted after dispatch"); },
+          };
+        },
+      };
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+  };
+
+  await assert.rejects(
+    submitPrompt(page, composer, "review"),
+    (error) => {
+      assert.equal(error.dispatchState, "possibly_dispatched");
+      assert.equal(error.submissionAttempted, true);
+      return true;
+    },
+  );
+});
+
+test("provenance rejects a conflicting prompt blob URL", () => {
+  const conflictingUrl = `https://github.com/other-owner/other-repo/blob/${REVIEW_SHA}/README.md`;
+  assert.throws(
+    () => validateReviewProvenance({
+      repository: REVIEW_REPOSITORY,
+      commitSha: REVIEW_SHA,
+      reviewUrls: [REVIEW_URL],
+      prompt: `${REVIEW_URL}\n${conflictingUrl}\n${REVIEW_SHA}`,
+    }),
+    /undeclared or conflicting review URL/,
+  );
+});
+
+test("project key derives from the full owner and repository", () => {
+  assert.equal(deriveProjectKey(REVIEW_REPOSITORY), "longdang193-project-os-starter");
+  assert.throws(
+    () => validateProjectProfilePath("github-review/other-project", "longdang193-project-os-starter"),
+    /terminal directory must match project key/,
+  );
+});
+
+test("CDP mode rejects implicit selection across multiple contexts", async () => {
+  let closeCalls = 0;
+  const browser = {
+    contexts() { return [{}, {}]; },
+    async close() { closeCalls += 1; },
+  };
+  await assert.rejects(
+    openContext({ connectOverCDP: async () => browser }, {
+      cdpEndpoint: "http://127.0.0.1:9222",
+      contextIndex: 0,
+      contextIndexProvided: false,
+    }),
+    /Explicit --context-index is required/,
+  );
+  assert.equal(closeCalls, 1);
+});
+
 test("normal CLI arguments keep the runner contract small", () => {
   const parsed = parseArguments([
-    "--user-data-dir", "github-review/project",
+    "--user-data-dir", "github-review/longdang193-project-OS-starter",
+    "--project-key", "longdang193-project-OS-starter",
     "--model", "GPT-6",
     "--effort", "High",
     "--prompt-file", "prompt.md",
+    "--repository", REVIEW_REPOSITORY,
+    "--commit-sha", REVIEW_SHA,
+    "--review-url", REVIEW_URL,
   ]);
 
   assert.equal(parsed.model, "GPT-6");
@@ -193,6 +275,9 @@ test("output directory remains optional for controller-allocated review artifact
     "--model", "GPT-6",
     "--effort", "High",
     "--prompt-file", "review.md",
+    "--repository", REVIEW_REPOSITORY,
+    "--commit-sha", REVIEW_SHA,
+    "--review-url", REVIEW_URL,
     "--output-dir", "review-output",
   ]);
 
@@ -204,18 +289,26 @@ test("profile arguments require a dedicated project profile path", () => {
   assert.throws(
     () => parseArguments([
       "--user-data-dir", "profile",
+      "--project-key", "project",
       "--model", "GPT-6",
       "--effort", "High",
       "--prompt-file", "review.md",
+      "--repository", REVIEW_REPOSITORY,
+      "--commit-sha", REVIEW_SHA,
+      "--review-url", REVIEW_URL,
     ]),
     /dedicated github-review/,
   );
   assert.throws(
     () => parseArguments([
       "--user-data-dir", "C:/Chrome/User Data",
+      "--project-key", "project",
       "--model", "GPT-6",
       "--effort", "High",
       "--prompt-file", "review.md",
+      "--repository", REVIEW_REPOSITORY,
+      "--commit-sha", REVIEW_SHA,
+      "--review-url", REVIEW_URL,
     ]),
     /normal Chrome profile/,
   );
@@ -225,9 +318,13 @@ test("unknown CLI arguments fail before browser setup", () => {
   assert.throws(
     () => parseArguments([
       "--user-data-dir", "github-review/project",
+      "--project-key", "project",
       "--model", "GPT-6",
       "--effort", "High",
       "--prompt-file", "review.md",
+      "--repository", REVIEW_REPOSITORY,
+      "--commit-sha", REVIEW_SHA,
+      "--review-url", REVIEW_URL,
       "--outpt-dir", "review-output",
     ]),
     /Unknown argument: --outpt-dir/,
@@ -237,6 +334,7 @@ test("unknown CLI arguments fail before browser setup", () => {
 test("batch CLI arguments replace single-review arguments", () => {
   const parsed = parseArguments([
     "--user-data-dir", "github-review/project",
+    "--project-key", "project",
     "--batch-file", "reviews.json",
     "--output-dir", "review-output",
   ]);
@@ -250,6 +348,7 @@ test("batch CLI arguments reject mixed single-review options", () => {
   assert.throws(
     () => parseArguments([
       "--user-data-dir", "github-review/project",
+      "--project-key", "project",
       "--batch-file", "reviews.json",
       "--model", "GPT-6",
     ]),
@@ -260,13 +359,13 @@ test("batch CLI arguments reject mixed single-review options", () => {
 test("batch manifest resolves prompt files and validates review entries", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-manifest-"));
   try {
-    await writeFile(join(parent, "sol.md"), "first review\n", "utf8");
-    await writeFile(join(parent, "gpt6.md"), "second review\n", "utf8");
+    await writeFile(join(parent, "sol.md"), `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
+    await writeFile(join(parent, "gpt6.md"), `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
     const manifestPath = join(parent, "reviews.json");
     await writeFile(manifestPath, JSON.stringify({
       reviews: [
-        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "sol.md" },
-        { model: "GPT-6", effort: "High", prompt_file: "gpt6.md" },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "sol.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+        { model: "GPT-6", effort: "High", prompt_file: "gpt6.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
       ],
     }), "utf8");
 
@@ -277,20 +376,22 @@ test("batch manifest resolves prompt files and validates review entries", async 
         model: "GPT-5.6-Sol",
         effort: "High",
         promptFile: join(parent, "sol.md"),
-        prompt: "first review\n",
-        repository: null,
-        commitSha: null,
-        reviewUrls: [],
+        prompt: `${REVIEW_URL} ${REVIEW_SHA}\n`,
+        repository: REVIEW_REPOSITORY.toLowerCase(),
+        commitSha: REVIEW_SHA,
+        reviewUrls: [NORMALIZED_REVIEW_URL],
+        projectKey: "longdang193-project-os-starter",
         reviewIndex: 0,
       },
       {
         model: "GPT-6",
         effort: "High",
         promptFile: join(parent, "gpt6.md"),
-        prompt: "second review\n",
-        repository: null,
-        commitSha: null,
-        reviewUrls: [],
+        prompt: `${REVIEW_URL} ${REVIEW_SHA}\n`,
+        repository: REVIEW_REPOSITORY.toLowerCase(),
+        commitSha: REVIEW_SHA,
+        reviewUrls: [NORMALIZED_REVIEW_URL],
+        projectKey: "longdang193-project-os-starter",
         reviewIndex: 1,
       },
     ]);
@@ -1512,6 +1613,7 @@ test("result records the requested and observed lifecycle state", () => {
     effort_verified: null,
     submission_attempted: false,
     submission: "not_started",
+    dispatch_state: "not_dispatched",
     completion: "not_started",
     conversation_url: null,
     conversation_id: null,
@@ -1523,6 +1625,7 @@ test("result records the requested and observed lifecycle state", () => {
     failure_scope: null,
     failure_stage: null,
     failure_reason: null,
+    visible_evidence: null,
     review_index: null,
     request_provenance: {
       prompt_file: null,
@@ -1993,15 +2096,17 @@ test("failed owned context cleanup retains the profile lease", async () => {
 test("batch main delegates context cleanup to the batch owner", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-main-batch-"));
   try {
-    await writeFile(join(parent, "review.md"), "review\n", "utf8");
+    await writeFile(join(parent, "review.md"), `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
     await writeFile(join(parent, "reviews.json"), JSON.stringify({
-      reviews: [{ model: "GPT-6", effort: "High", prompt_file: "review.md" }],
+      reviews: [{ model: "GPT-6", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] }],
     }), "utf8");
     let outerCleanupCalls = 0;
 
     const exitCode = await main([
       "--user-data-dir", "github-review/project",
+      "--project-key", "longdang193-project-OS-starter",
       "--batch-file", join(parent, "reviews.json"),
+      "--output-dir", join(parent, "output"),
     ], {
       openReviewContext: async () => ({ context: {}, ownsContext: true }),
       runReviewBatch: async () => [{ status: "completed", output_dir: "run-a" }],
@@ -2021,13 +2126,18 @@ test("owned context cleanup failure makes the CLI invocation nonzero", async () 
   const parent = await mkdtemp(join(tmpdir(), "github-review-main-cleanup-"));
   try {
     const promptFile = join(parent, "review.md");
-    await writeFile(promptFile, "review\n", "utf8");
+    await writeFile(promptFile, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
 
     const exitCode = await main([
       "--user-data-dir", "github-review/project",
+      "--project-key", "longdang193-project-OS-starter",
       "--model", "GPT-6",
       "--effort", "High",
       "--prompt-file", promptFile,
+      "--repository", REVIEW_REPOSITORY,
+      "--commit-sha", REVIEW_SHA,
+      "--review-url", REVIEW_URL,
+      "--output-dir", parent,
     ], {
       openReviewContext: async () => ({ context: {}, ownsContext: true }),
       runReviewTransaction: async () => ({ status: "completed", output_dir: "run-a" }),
@@ -2111,18 +2221,20 @@ test("batch context-open failure accounts for every requested review as skipped"
   const logged = [];
   const originalLog = console.log;
   try {
-    await writeFile(promptFile, "review\n", "utf8");
+    await writeFile(promptFile, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
     await writeFile(manifestFile, JSON.stringify({
       reviews: [
-        { model: "GPT-6", effort: "High", prompt_file: "review.md" },
-        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "review.md" },
+        { model: "GPT-6", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
+        { model: "GPT-5.6-Sol", effort: "High", prompt_file: "review.md", repository: REVIEW_REPOSITORY, commit_sha: REVIEW_SHA, review_urls: [REVIEW_URL] },
       ],
     }), "utf8");
     console.log = (value) => logged.push(value);
 
     const exitCode = await main([
       "--user-data-dir", "github-review/project",
+      "--project-key", "longdang193-project-OS-starter",
       "--batch-file", manifestFile,
+      "--output-dir", join(parent, "output"),
     ], {
       openReviewContext: async () => {
         throw new Error("context unavailable");
@@ -2136,6 +2248,14 @@ test("batch context-open failure accounts for every requested review as skipped"
     assert.equal(result.attempted_count, 0);
     assert.equal(result.skipped_count, 2);
     assert.deepEqual(result.reviews.map((review) => review.status), ["skipped", "skipped"]);
+    for (const review of result.reviews) {
+      assert.ok(review.output_dir);
+      const persisted = JSON.parse(await readFile(join(process.cwd(), review.output_dir, "result.json"), "utf8"));
+      assert.equal(persisted.status, "skipped");
+      assert.equal(persisted.failure_scope, "shared_context");
+    }
+    const batchSummary = JSON.parse(await readFile(join(parent, "output", "batch-result.json"), "utf8"));
+    assert.equal(batchSummary.status, "blocked");
   } finally {
     console.log = originalLog;
     await rm(parent, { recursive: true, force: true });
@@ -2411,6 +2531,34 @@ test("batch context cleanup failure retains completed review results", async () 
       return true;
     },
   );
+});
+
+test("authentication preflight preserves bounded visible evidence before cleanup", async () => {
+  let closeCalls = 0;
+  const page = {
+    url() { return "https://chatgpt.com/auth/login"; },
+    locator(selector) {
+      assert.equal(selector, "body");
+      return { async innerText() { return "Log in to continue"; } };
+    },
+    getByRole(role) {
+      if (role === "textbox") return { first() { return { async waitFor() { throw new Error("not ready"); } }; } };
+      if (role === "button") return { first() { return { async isVisible() { return true; } }; } };
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async close() { closeCalls += 1; },
+  };
+
+  await assert.rejects(
+    preflightAuthenticatedContext({ newPage: async () => page }),
+    (error) => {
+      assert.equal(error.visibleEvidence.currentUrl, "https://chatgpt.com/auth/login");
+      assert.equal(error.visibleEvidence.loginVisible, true);
+      assert.match(error.visibleEvidence.visibleText, /Log in/);
+      return true;
+    },
+  );
+  assert.equal(closeCalls, 1);
 });
 
 test("batch stops after uncertain page cleanup", async () => {

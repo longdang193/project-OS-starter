@@ -182,31 +182,52 @@ launches a visible Playwright browser with a dedicated authenticated profile:
 ```bash
 node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
   --user-data-dir ~/.codex/profiles/github-review/<project> \
+  --project-key <owner-repository> \
   --model GPT-6 \
   --effort High \
   --prompt-file <review-prompt.txt> \
+  --repository <owner/repository> \
+  --commit-sha <full-40-character-sha> \
+  --review-url https://github.com/<owner>/<repo>/blob/<full-sha>/<path> \
   --output-dir <review-output-directory>
 ```
 
- One normal invocation is one bounded review transaction. The CLI rejects
- unknown flags and invalid/default profile paths before browser setup, then
- performs one non-submitting visible authentication preflight for the owned
- context. An explicit login wall blocks the batch before fresh review tabs are
- opened. It selects and visibly verifies the requested model and effort, submits at most once, waits for a new
- stable visible assistant turn, writes `response.md` and a small `result.json`,
- and only then closes the owned browser context. While the response is visibly
- generating, completion observation polls cheap visible state and defers full
- assistant-text extraction until generation stops and stability can be checked.
- Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
- owned-context cleanup preserves the review artifacts but makes the invocation
-  nonzero and records the cleanup failure. A delayed send acknowledgement is
-  observed for a short bounded window without a second send. A visible terminal
-  interruption returns immediately with partial evidence. If the final result
-  artifact cannot be persisted, the runner reports `incomplete` and returns
-  nonzero even when the response itself completed. The controller, not the runner,
- validates revision-specific review evidence and may classify the overall
- workflow as `verified`. The runner never retries or silently recovers a failed
- submission.
+One normal invocation is one bounded review transaction. Single-review mode
+requires `--repository`, `--commit-sha`, and at least one repeatable
+`--review-url`. Every declared URL must be an HTTPS GitHub `/blob/` URL pinned
+to the same full SHA and repository, and every GitHub blob URL in the prompt
+must match that declared set. The CLI rejects unknown flags, missing
+provenance, and invalid/default profile paths before browser setup.
+
+The owned profile must end in the canonical, case-normalized project key
+derived from the repository (`owner-repository`), and `--project-key` must
+match that derived value. Use one dedicated profile per project, for example
+`~/.codex/profiles/github-review/longdang193-project-os-starter`; never use the
+normal Chrome `User Data` directory. This same repository/profile binding is
+checked by direct library callers, not only by CLI parsing.
+
+The runner performs one non-submitting visible authentication preflight for the
+owned context. An explicit login wall blocks the batch before fresh review tabs
+are opened. It selects and visibly verifies the requested model and effort,
+submits at most once, waits for a new stable visible assistant turn, writes
+`response.md` and a small `result.json`, and only then closes the owned browser
+context. While the response is visibly generating, completion observation polls
+cheap visible state and defers full assistant-text extraction until generation
+stops and stability can be checked.
+
+Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
+owned-context cleanup preserves the review artifacts but makes the invocation
+nonzero and records the cleanup failure. Internal dispatch states distinguish
+`not_dispatched`, `possibly_dispatched`, and `acknowledged`: once the send
+action begins, an uncertain click or Enter failure is never retried and is
+treated as possibly dispatched until visible acknowledgement proves otherwise.
+Only a definitely pre-dispatch failure skips the long completion observer. A
+visible terminal interruption returns immediately with partial evidence. If the
+final result artifact cannot be persisted, the runner reports `incomplete` and
+returns nonzero even when the response itself completed. The controller, not
+the runner, validates revision-specific review evidence and may classify the
+overall workflow as `verified`. The runner never retries or silently recovers a
+failed submission.
 
 For a multi-model review, keep the same transaction boundary but call the
 CLI module's `openReviewContext(options)` once, then call
@@ -216,15 +237,29 @@ standalone CLI also accepts a manifest:
 ```json
 {
   "reviews": [
-    { "model": "GPT-5.6-Sol", "effort": "High", "prompt_file": "review-sol.txt" },
-    { "model": "GPT-6", "effort": "High", "prompt_file": "review-gpt6.txt" }
+    {
+      "model": "GPT-5.6-Sol",
+      "effort": "High",
+      "prompt_file": "review-sol.txt",
+      "repository": "<owner>/<repo>",
+      "commit_sha": "<full-40-character-sha>",
+      "review_urls": ["https://github.com/<owner>/<repo>/blob/<full-sha>/<path>"]
+    },
+    {
+      "model": "GPT-6",
+      "effort": "High",
+      "prompt_file": "review-gpt6.txt",
+      "repository": "<owner>/<repo>",
+      "commit_sha": "<full-40-character-sha>",
+      "review_urls": ["https://github.com/<owner>/<repo>/blob/<full-sha>/<path>"]
+    }
   ]
 }
 ```
 
 Pass it as `--batch-file <reviews.json>` instead of the single-review flags.
 The runner validates every entry before opening the browser, reuses one
-authenticated context for sequential fresh-tab transactions, allocates a
+  authenticated context for sequential fresh-tab transactions, allocates a
  separate `run-*` directory per review, persists response and result artifacts
  before page cleanup, closes the shared context once through the batch owner,
  prints a JSON summary, and returns nonzero if any review is not `completed` or
@@ -246,8 +281,11 @@ send acknowledgement is ambiguous, preserve the owned page and any visible
 conversation/completion evidence before cleanup, mark `submission` as
 `ambiguous`, and never send the prompt again. Batch summaries include requested,
 attempted, completed, failed, and skipped entries; each result retains sanitized
-prompt hash, repository, full commit SHA, and pinned review URL provenance when
-the controller supplies them.
+  prompt hash, repository, full commit SHA, and pinned review URL provenance.
+  Batch validation completes before browser setup, so a malformed entry cannot
+  consume a profile lease or open a partial batch. If an explicit CDP endpoint
+  exposes multiple browser contexts, `--context-index` is required; the runner
+  never silently chooses context `0`.
 
 Model-menu interaction uses a five-second UI action/transition timeout. Initial
 model-menu opening remains ten seconds, completion observation remains bounded

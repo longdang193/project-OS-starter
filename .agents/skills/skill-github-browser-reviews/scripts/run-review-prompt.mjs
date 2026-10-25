@@ -32,6 +32,8 @@ function withFailureScope(error, failureScope) {
     wrapped.reviewPage = error.reviewPage;
     wrapped.reviewBaseline = error.reviewBaseline;
     wrapped.submissionAttempted = error.submissionAttempted === true;
+    wrapped.dispatchState = error.dispatchState || null;
+    wrapped.visibleEvidence = error.visibleEvidence || null;
   }
   return wrapped;
 }
@@ -68,6 +70,43 @@ async function openChatGPT(page) {
   return composer;
 }
 
+export async function captureVisibleEvidence(page) {
+  if (!page) return null;
+  let currentUrl = null;
+  try {
+    currentUrl = typeof page.url === "function" ? page.url() : null;
+  } catch {
+    currentUrl = null;
+  }
+  let visibleText = "";
+  try {
+    visibleText = (await page.locator("body").innerText({ timeout: UI_ACTION_TIMEOUT_MS }))
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 4000);
+  } catch {
+    visibleText = "";
+  }
+  let composerVisible = false;
+  try {
+    composerVisible = await page.getByRole("textbox", { name: "Ask ChatGPT" }).first().isVisible();
+  } catch {
+    composerVisible = false;
+  }
+  let loginVisible = false;
+  try {
+    loginVisible = await page.getByRole("button", { name: /^(Log in|Sign up)$/i }).first().isVisible();
+  } catch {
+    loginVisible = false;
+  }
+  return {
+    currentUrl,
+    visibleText,
+    composerVisible,
+    loginVisible,
+  };
+}
+
 export async function preflightAuthenticatedContext(context) {
   let page;
   let failure;
@@ -76,6 +115,10 @@ export async function preflightAuthenticatedContext(context) {
     await openChatGPT(page);
   } catch (error) {
     failure = withFailureScope(error, "shared_context");
+  }
+
+  if (failure && page) {
+    failure.visibleEvidence = await captureVisibleEvidence(page);
   }
 
   try {
@@ -232,14 +275,18 @@ export async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}
 
   const sendButton = page.getByRole("button", { name: /^(Send|Send message|Submit)$/i }).first();
   if (beforeSubmit) await beforeSubmit();
+  let dispatchState = "not_dispatched";
   try {
     if (await sendButton.isVisible()) {
+      dispatchState = "possibly_dispatched";
       await sendButton.click({ timeout: UI_ACTION_TIMEOUT_MS });
     } else {
+      dispatchState = "possibly_dispatched";
       await composer.press("Enter", { timeout: UI_ACTION_TIMEOUT_MS });
     }
   } catch (error) {
-    error.submissionAttempted = true;
+    error.submissionAttempted = dispatchState !== "not_dispatched";
+    error.dispatchState = dispatchState;
     throw error;
   }
 
@@ -250,16 +297,18 @@ export async function submitPrompt(page, composer, prompt, { beforeSubmit } = {}
       if (remaining <= 0) {
         const error = new Error("Prompt submission was not visibly acknowledged");
         error.submissionAttempted = true;
+        error.dispatchState = "possibly_dispatched";
         throw error;
       }
       await page.waitForTimeout(Math.min(SUBMISSION_ACK_POLL_MS, remaining));
     }
   } catch (error) {
     error.submissionAttempted = true;
+    error.dispatchState ||= "possibly_dispatched";
     throw error;
   }
 
-  return { submission: "acknowledged" };
+  return { dispatchState: "acknowledged", submission: "acknowledged" };
 }
 
 async function prepareReviewPrompt(page, { model, effort }) {
@@ -360,6 +409,7 @@ export async function runReviewPrompt(page, { beforeSubmit, model, effort, promp
   } catch (error) {
     error.reviewBaseline = baseline;
     error.submissionAttempted = error.submissionAttempted === true;
+    error.dispatchState ||= "not_dispatched";
     throw error;
   }
 
