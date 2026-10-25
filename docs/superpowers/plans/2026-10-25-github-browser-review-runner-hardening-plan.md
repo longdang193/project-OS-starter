@@ -3,7 +3,7 @@ layer: change
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: proposed
+status: completed
 name: github-browser-review-runner-hardening
 parent_spec: none
 targets:
@@ -13,6 +13,7 @@ targets:
   - tests/test_github_browser_review_lifecycle.mjs
   - tests/test_github_browser_review_runner.py
   - tests/test_github_browser_reviews.py
+  - tests/test_skill_github_browser_reviews.py
   - generated_agents/
 ---
 
@@ -36,6 +37,42 @@ Validated review basis:
 - Both reviews verified the same repository, pinned commit, model effort, and
   completion state. Full outputs remain under
   `.runtime/github-review/6238753e689746b7a9e957e21b2630743ce619d2/`.
+
+## Validated Review Findings
+
+The following mapping is the durable requirement inventory for this plan. It is
+independent of the untracked review transcripts and binds each correction to an
+immutable source location and an owning task.
+
+- `F-001` — **HIGH** — A batch-summary persistence failure can overwrite
+  completed per-review artifacts as `skipped`; source:
+  `run-review-prompt-cli.mjs:875-928` at commit
+  `6238753e689746b7a9e957e21b2630743ce619d2`; correction: separate execution
+  settlement from aggregate-summary persistence and preserve original results;
+  owner: Task 2.
+- `F-002` — **HIGH** — Direct `runReviewBatch()` calls bypass CLI provenance and
+  project/profile validation; source:
+  `run-review-prompt-cli.mjs:746-760,831-866` and `SKILL.md:202-207` at the
+  pinned commit; correction: validate the complete batch through one shared
+  boundary before submission; owner: Task 1.
+- `F-003` — **MEDIUM** — Message-based failure classification can treat a
+  page-local closure as a shared-context failure; source:
+  `run-review-prompt.mjs:26-38,138-151` and
+  `run-review-prompt-cli.mjs:760-777` at the pinned commit; correction: use
+  structured failure scope plus context-health evidence; owner: Task 3.
+- `F-004` — **MEDIUM** — Blob URL validation accepts a commit-only URL without
+  a file path; source: `run-review-prompt-cli.mjs:134-149` at the pinned commit;
+  correction: require a non-empty path after the full SHA; owner: Task 1.
+- `F-005` — **MEDIUM** — An ambiguous send acknowledgement can consume the full
+  15-minute completion observation; source:
+  `run-review-prompt.mjs:269-309,332-395` and
+  `run-review-prompt-cli.mjs:655-686` at the pinned commit; correction: add a
+  shorter bounded ambiguity phase with no resubmission; owner: Task 3.
+- `F-006` — **MEDIUM** — Profile isolation and lease exclusion use lexical
+  paths rather than physical filesystem identity; source:
+  `run-review-prompt-cli.mjs:196-216,353-395` at the pinned commit;
+  correction: canonicalize existing targets and nearest existing parents, then
+  reuse that identity for validation, leasing, and launch; owner: Task 1.
 
 ## Implementation Outcomes
 
@@ -127,6 +164,8 @@ Validated review basis:
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:normalizeGitHubBlobUrl`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:runReviewBatch`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:validateProjectProfilePath`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:openContext`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:acquireProfileLease`
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
 - Verify: `tests/test_github_browser_review_runner.py`
 
@@ -138,26 +177,26 @@ Validated review basis:
 - Stop for: `a changed public invocation contract, new credential requirement, network authentication, or any need to alter unrelated profile-management code`
 
 **Steps:**
-- [ ] Step 1: Extract one shared review-definition validation path used by
+- [x] Step 1: Extract one shared review-definition validation path used by
   single-review CLI input, batch manifests, and direct `runReviewBatch()` calls;
   require the attached/expected project key and reject mixed project keys
   before the first transaction.
-- [ ] Step 2: Tighten `normalizeGitHubBlobUrl()` to require a non-empty path
+- [x] Step 2: Tighten `normalizeGitHubBlobUrl()` to require a non-empty path
   after the full 40-character commit SHA while preserving repository/SHA
   normalization and prompt URL-set checks.
-- [ ] Step 3: Resolve the physical profile identity once for validation,
+- [x] Step 3: Resolve the physical profile identity once for validation,
   lease naming, and browser launch; handle an existing profile with
   `realpath()` and a not-yet-created profile through its nearest existing
   parent without accepting normal Chrome-profile aliases.
-- [ ] Step 4: Add negative tests for a direct-library mixed-repository batch,
+- [x] Step 4: Add negative tests for a direct-library mixed-repository batch,
   commit-only blob URLs, and symlink/junction aliases; retain positive tests
   for the existing derived profile path and pinned file URL.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs`
 - Expected: provenance, URL, and profile-identity tests pass; no browser is
   opened for invalid definitions.
-- [ ] `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- [x] `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
 - Expected: CLI and canonical-skill contracts remain satisfied.
 
 **Exit Criteria:**
@@ -216,30 +255,30 @@ Validated review basis:
 - Stop for: `a new persisted state machine, incompatible result-schema migration, deletion of existing evidence, or destructive cleanup of pre-existing runtime artifacts`
 
 **Steps:**
-- [ ] Step 1: Establish setup cleanup as soon as a profile lease is acquired;
+- [x] Step 1: Establish setup cleanup as soon as a profile lease is acquired;
   ensure launch/preflight failures release the lease and close owned context
   without suppressing the cleanup cause, while preserving fail-closed
   ambiguity when ownership cannot be proven.
-- [ ] Step 2: Move batch artifact allocation inside the protected controller
+- [x] Step 2: Move batch artifact allocation inside the protected controller
   boundary; if allocation partially succeeds, finalize created run records as
   blocked with `dispatch_state: not_dispatched` and emit an artifact-stage
   batch failure without pretending a browser failure occurred.
-- [ ] Step 3: Change per-review settlement so `completion: confirmed` may be
+- [x] Step 3: Change per-review settlement so `completion: confirmed` may be
   persisted before cleanup, but `status: completed` is written only after
   cleanup and the final durable result write succeed. A failed final write
   must leave the last durable state nonterminal and diagnostic.
-- [ ] Step 4: Separate `persistBatchSummary()` errors from browser/context
+- [x] Step 4: Separate `persistBatchSummary()` errors from browser/context
   errors. Preserve all original per-review results, return nonzero/incomplete,
   and record the aggregate-write failure without rewriting results as skipped.
-- [ ] Step 5: Keep one lifecycle owner for context close and lease release;
+- [x] Step 5: Keep one lifecycle owner for context close and lease release;
   remove any duplicate signal/cleanup owner introduced during the change.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs`
 - Expected: injected launch, preflight, lease-release, partial-allocation,
   final-result-write, and batch-summary-write failures preserve truthful
   per-review state and never produce false `skipped` outcomes.
-- [ ] `pytest -q tests/test_github_browser_review_runner.py`
+- [x] `pytest -q tests/test_github_browser_review_runner.py`
 - Expected: owned-profile and batch failure contracts remain fail-closed.
 
 **Exit Criteria:**
@@ -278,12 +317,14 @@ Validated review basis:
 
 **Files And Symbols:**
 - Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:withFailureScope`
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/waitForReviewCompletion`
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/runReviewPromptInNewTab`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:waitForReviewCompletion`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:runReviewPromptInNewTab`
 - Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:runReviewBatch`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:withFailureScope`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:waitForReviewCompletion`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:runReviewPromptInNewTab`
 - Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:runReviewBatch`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs:runReviewTransaction`
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
 
 **Dependencies:**
@@ -294,24 +335,24 @@ Validated review basis:
 - Stop for: `automatic retry/resubmission, a new browser lifecycle owner, unbounded polling, or a change that weakens fail-closed handling of ambiguous dispatch`
 
 **Steps:**
-- [ ] Step 1: Replace message-only shared-context inference with structured
+- [x] Step 1: Replace message-only shared-context inference with structured
   failure codes and a context-health decision; classify a closed/crashed tab
   as review-scoped when the shared context is still usable.
-- [ ] Step 2: Mark missing shared composer/model/completion infrastructure as
+- [x] Step 2: Mark missing shared composer/model/completion infrastructure as
   shared-context/systemic and stop the batch after the first confirmed shared
   failure; keep genuinely model-specific or page-readiness failures
   review-scoped.
-- [ ] Step 3: Add a distinct bounded ambiguity-observation timeout for a send
+- [x] Step 3: Add a distinct bounded ambiguity-observation timeout for a send
   acknowledgement failure when no new assistant turn, generation, or visible
   dispatch evidence exists. Preserve `possibly_dispatched` and never call
   submission again.
-- [ ] Step 4: Preserve the existing normal completion timeout for confirmed or
+- [x] Step 4: Preserve the existing normal completion timeout for confirmed or
   visibly active generations and retain visible interruption handling.
-- [ ] Step 5: Add tests for healthy-context page closure, systemic selector
+- [x] Step 5: Add tests for healthy-context page closure, systemic selector
   failure, repeated batch entries, ambiguous send, and no-resubmission proof.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs`
 - Expected: page-local failures continue only when safe, systemic failures
   stop the batch, ambiguous sends finish within the shorter bound, and no test
   observes a second submission attempt.
@@ -351,9 +392,10 @@ Validated review basis:
 
 **Files And Symbols:**
 - Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:runReviewPrompt`
-- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/evaluateReviewCompletion`
-- Modify: `.agents/skills/skill-github-browser-reviews/scripts/waitForReviewCompletion`
+- Inspect: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:evaluateReviewCompletion`
+- Modify: `.agents/skills/skill-github-browser-reviews/scripts/run-review-prompt.mjs:waitForReviewCompletion`
 - Modify: `.agents/skills/skill-github-browser-reviews/SKILL.md`
+- Modify: `tests/test_skill_github_browser_reviews.py`
 - Verify: `tests/test_github_browser_review_lifecycle.mjs`
 - Verify: `tests/test_skill_github_browser_reviews.py`
 
@@ -366,21 +408,21 @@ Validated review basis:
 - Stop for: `new public review-request wording, private credential/profile details, or direct edits to generated adapter mirrors`
 
 **Steps:**
-- [ ] Step 1: Bind the first post-submit conversation identity to the review
+- [x] Step 1: Bind the first post-submit conversation identity to the review
   baseline and require it to remain stable through completion; any unexpected
   identity switch returns incomplete rather than confirmed.
-- [ ] Step 2: Document the shared validation boundary, lifecycle ownership,
+- [x] Step 2: Document the shared validation boundary, lifecycle ownership,
   artifact settlement semantics, failure-scope categories, ambiguity timeout,
   and stable conversation evidence in `SKILL.md`.
-- [ ] Step 3: Update skill contract tests for the new documented invariants
+- [x] Step 3: Update skill contract tests for the new documented invariants
   without weakening the existing explicit-invocation, read-only, model,
   effort, pinned-revision, and no-retry requirements.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs`
 - Expected: conversation-identity mismatch is incomplete and stable identity
   is confirmed only with the expected assistant turn.
-- [ ] `pytest -q tests/test_github_browser_reviews.py`
+- [x] `pytest -q tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
 - Expected: canonical skill text contains the strengthened lifecycle and
   evidence requirements and still rejects forbidden legacy paths.
 
@@ -431,23 +473,23 @@ Validated review basis:
 - Stop for: `publication, push, destructive cleanup, generated drift requiring manual edits, or any unrelated failing test outside this plan's changed surfaces`
 
 **Steps:**
-- [ ] Step 1: Run `py -3 scripts/sync_agent_adapters.py --all-platforms`.
-- [ ] Step 2: Run `py -3 scripts/sync_agent_adapters.py --all-platforms --check` and inspect that only expected canonical/generated files differ.
-- [ ] Step 3: Run focused Node and Python tests for the review runner and skill.
-- [ ] Step 4: Run repository contract validation and `git diff --check`.
-- [ ] Step 5: Reconcile any generated or test failures against current source;
+- [x] Step 1: Run `py -3 scripts/sync_agent_adapters.py --all-platforms`.
+- [x] Step 2: Run `py -3 scripts/sync_agent_adapters.py --all-platforms --check` and inspect that only expected canonical/generated files differ.
+- [x] Step 3: Run focused Node and Python tests for the review runner and skill.
+- [x] Step 4: Run repository contract validation and `git diff --check`.
+- [x] Step 5: Reconcile any generated or test failures against current source;
   do not weaken validators or edit generated mirrors manually.
 
 **Verification:**
-- [ ] `node --test tests/test_github_browser_review_lifecycle.mjs`
+- [x] `node --test tests/test_github_browser_review_lifecycle.mjs`
 - Expected: lifecycle regression suite passes.
-- [ ] `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- [x] `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
 - Expected: runner and skill contract suites pass.
-- [ ] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
+- [x] `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - Expected: generated adapters are in sync.
-- [ ] `py -3 scripts/validate_repo_contracts.py --repo-root .`
+- [x] `py -3 scripts/validate_repo_contracts.py --repo-root .`
 - Expected: repository contract validation passes.
-- [ ] `git diff --check`
+- [x] `git diff --check`
 - Expected: no whitespace errors.
 
 **Exit Criteria:**
@@ -460,7 +502,7 @@ Validated review basis:
 Use this section for final artifact-level verification only.
 
 - `node --test tests/test_github_browser_review_lifecycle.mjs`
-- `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py`
+- `pytest -q tests/test_github_browser_review_runner.py tests/test_github_browser_reviews.py tests/test_skill_github_browser_reviews.py`
 - `py -3 scripts/sync_agent_adapters.py --all-platforms --check`
 - `py -3 scripts/validate_repo_contracts.py --repo-root .`
 - `git diff --check`

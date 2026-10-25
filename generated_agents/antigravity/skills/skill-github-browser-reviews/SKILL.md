@@ -212,7 +212,10 @@ derived from the repository (`owner-repository`), and `--project-key` must
 match that derived value. Use one dedicated profile per project, for example
 `~/.codex/profiles/github-review/longdang193-project-os-starter`; never use the
 normal Chrome `User Data` directory. This same repository/profile binding is
-checked by direct library callers, not only by CLI parsing.
+checked by direct library callers, not only by CLI parsing. Profile validation,
+lease naming, and persistent-browser launch use the same physical filesystem
+identity; existing symlink/junction aliases and aliases through the nearest
+existing parent do not create a second lease identity.
 
 The runner performs one non-submitting visible authentication preflight for the
 owned context. An explicit login wall blocks the batch before fresh review tabs
@@ -222,6 +225,14 @@ submits at most once, waits for a new stable visible assistant turn, writes
 context. While the response is visibly generating, completion observation polls
 cheap visible state and defers full assistant-text extraction until generation
 stops and stability can be checked.
+
+Completion evidence is bound to one conversation identity. If the baseline
+conversation is known, the assistant turn must remain in that conversation; if
+it is not known, the first post-dispatch conversation identity is bound and any
+later switch returns `incomplete`. An ambiguous send acknowledgement uses a
+short bounded observation window, preserves `possibly_dispatched`, and never
+resubmits; confirmed or visibly active generations retain the normal completion
+window.
 
 Terminal runner results are `completed`, `incomplete`, or `blocked`; a failed
 owned-context cleanup preserves the review artifacts but makes the invocation
@@ -290,8 +301,14 @@ conversation/completion evidence before cleanup, mark `submission` as
 `ambiguous`, and never send the prompt again. Batch summaries include requested,
 attempted, completed, failed, and skipped entries; each result retains sanitized
   prompt hash, repository, full commit SHA, and pinned review URL provenance.
+  A failure writing the aggregate `batch-result.json` is recorded as an
+  artifact-stage incomplete result without rewriting already-settled per-review
+  artifacts.
   Batch validation completes before browser setup, so a malformed entry cannot
-  consume a profile lease or open a partial batch. If an explicit CDP endpoint
+  consume a profile lease or open a partial batch. If run-directory allocation
+  fails partway through a batch, every created run is finalized as blocked with
+  `dispatch_state: not_dispatched` and the batch stops before browser setup. If
+  an explicit CDP endpoint
   exposes multiple browser contexts, `--context-index` is required; the runner
   never silently chooses context `0`.
 
