@@ -2,7 +2,7 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: active
+status: completed
 layer: change
 ---
 
@@ -434,6 +434,8 @@ Use this section for final artifact-level verification only.
 - Canonical runner and skill documentation were updated; generated adapter mirrors were refreshed with `py -3 scripts/sync_agent_adapters.py --all-platforms`.
 - Fresh proof currently passes: `node --test tests/test_github_browser_review_lifecycle.mjs`, `py -3 scripts/sync_agent_adapters.py --all-platforms --check`, `py -3 scripts/validate_repo_contracts.py --fast`, `py -3 scripts/validate_planning_lifecycle.py`, and `git diff --check`.
 - Unrelated local artifacts preserved: `.playwright-mcp/`, `.review-profile/`, `.runtime/`, and `node_modules/`.
+- Final merged candidate: `694e2550784ee192aa151a83122d6c4d5f2dff4e` on `main`; PR `#175` was head-reviewed at `7783e6959e29d46746126c75ce5ea2ec3e4dc370` with all GitHub checks passing.
+- Post-merge kit proof passes: `py -3 scripts/sync_agent_adapters.py --all-platforms`, `py -3 scripts/sync_agent_adapters.py --all-platforms --check`, `py -3 scripts/build_starter_kit.py`, and `py -3 scripts/validate_starter_kit.py`.
 
 ## Completion Criteria
 
