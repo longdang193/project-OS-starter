@@ -8,7 +8,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -18,6 +18,7 @@ import {
   runReviewPromptInNewTab,
   preflightAuthenticatedContext,
   AMBIGUOUS_DISPATCH_TIMEOUT_MS,
+  COMPLETION_TIMEOUT_MS,
   waitForReviewCompletion,
 } from "./run-review-prompt.mjs";
 import {
@@ -28,6 +29,7 @@ import {
 const DEFAULT_CONTEXT_INDEX = 0;
 const DEFAULT_OUTPUT_DIR = "review-output";
 const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
+const PROFILE_BINDING_FILE = ".codex-review-profile.json";
 const PROJECT_PROFILE_MARKER = "github-review";
 const VALUE_ARGUMENTS = new Set([
   "--cdp-endpoint",
@@ -237,6 +239,47 @@ export function validateProjectProfilePath(userDataDir, expectedProjectKey) {
   return profilePath;
 }
 
+async function bindProfileIdentity(profilePath, repository, projectKey) {
+  const bindingPath = join(profilePath, PROFILE_BINDING_FILE);
+  const expected = {
+    repository: repository.toLowerCase(),
+    project_key: projectKey.toLowerCase(),
+  };
+
+  try {
+    const binding = JSON.parse(await readFile(bindingPath, "utf8"));
+    if (binding?.repository !== expected.repository || binding?.project_key !== expected.project_key) {
+      throw new Error(`Profile identity does not match repository ${repository}: ${profilePath}`);
+    }
+    return;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  let entries = [];
+  if (existsSync(profilePath)) {
+    try {
+      entries = await readdir(profilePath);
+    } catch (error) {
+      throw new Error(`Could not inspect the dedicated review profile: ${profilePath}`, { cause: error });
+    }
+  }
+  if (entries.length > 0) {
+    throw new Error(`Profile identity is unbound or ambiguous: ${profilePath}; create ${PROFILE_BINDING_FILE} with repository ${expected.repository} and project_key ${expected.project_key} after operator verification`);
+  }
+
+  await mkdir(profilePath, { recursive: true });
+  try {
+    await writeFile(bindingPath, `${JSON.stringify(expected, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+    const binding = JSON.parse(await readFile(bindingPath, "utf8"));
+    if (binding?.repository !== expected.repository || binding?.project_key !== expected.project_key) {
+      throw new Error(`Profile identity does not match repository ${repository}: ${profilePath}`);
+    }
+  }
+}
+
 export function createResult(options) {
   const prompt = typeof options.prompt === "string" ? options.prompt : "";
   const promptHash = prompt ? createHash("sha256").update(prompt, "utf8").digest("hex") : null;
@@ -247,6 +290,7 @@ export function createResult(options) {
     model_verified: null,
     effort_requested: options.effort,
     effort_verified: null,
+    transaction_started: false,
     submission_attempted: false,
     submission: "not_started",
     dispatch_state: "not_dispatched",
@@ -358,12 +402,17 @@ export async function readBatchReviews(batchFile) {
 export function summarizeBatchResults(results, requestedCount = results.length) {
   const completedCount = results.filter((result) => result.status === "completed").length;
   const skippedCount = results.filter((result) => result.status === "skipped").length;
-  const attemptedCount = results.filter((result) => result.status !== "skipped").length;
+  const transactionStartedCount = results.filter((result) => result.transaction_started === true).length;
+  const submissionAttemptedCount = results.filter((result) => result.submission_attempted === true).length;
+  const acknowledgedCount = results.filter((result) => result.submission === "acknowledged").length;
   return {
     status: completedCount === requestedCount ? "completed" : "incomplete",
     review_count: requestedCount,
     requested_count: requestedCount,
-    attempted_count: attemptedCount,
+    attempted_count: transactionStartedCount,
+    transaction_started_count: transactionStartedCount,
+    submission_attempted_count: submissionAttemptedCount,
+    acknowledged_count: acknowledgedCount,
     completed_count: completedCount,
     failed_count: results.filter((result) => result.status !== "completed" && result.status !== "skipped").length,
     skipped_count: skippedCount,
@@ -512,6 +561,7 @@ export async function openContext(chromium, options) {
     throw new Error(`Project key does not match repository-derived key: expected ${derivedProjectKey}`);
   }
   const profilePath = validateProjectProfilePath(options.userDataDir, derivedProjectKey);
+  await bindProfileIdentity(profilePath, options.repository, derivedProjectKey);
   const profileLease = await acquireProfileLease(profilePath);
   try {
     const context = await chromium.launchPersistentContext(profilePath, { headless: false });
@@ -525,7 +575,12 @@ export async function openContext(chromium, options) {
       repository: options.repository,
     };
   } catch (error) {
-    await releaseProfileLease(profileLease).catch(() => {});
+    try {
+      await releaseProfileLease(profileLease);
+    } catch (cleanupError) {
+      error.cleanupError = cleanupError;
+      error.message = `${errorMessage(error)}; profile lease cleanup failed: ${errorMessage(cleanupError)}`;
+    }
     const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`Could not launch the Playwright browser profile${detail}`);
   }
@@ -538,7 +593,12 @@ export async function openReviewContext(options) {
     await preflightAuthenticatedContext(attached.context);
     return attached;
   } catch (error) {
-    await closeContext(attached).catch(() => {});
+    try {
+      await closeContext(attached);
+    } catch (cleanupError) {
+      error.cleanupError = cleanupError;
+      error.message = `${errorMessage(error)}; setup cleanup failed: ${errorMessage(cleanupError)}`;
+    }
     throw error;
   }
 }
@@ -612,7 +672,7 @@ async function isContextHealthy(context) {
 async function classifyFailureScope(stage, error, context) {
   if (error?.failureScope) return error.failureScope;
   if (!(await isContextHealthy(context))) return "shared_context";
-  if (typeof context?.pages !== "function" && /(?:browser|context|target).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target)/i.test(errorMessage(error))) {
+  if (/(?:browser|context|target).*(?:closed|close|disconnect)|(?:closed|close|disconnect).*(?:browser|context|target)/i.test(errorMessage(error))) {
     return "shared_context";
   }
   if (stage === "selection") return error?.code === "MODEL_UNAVAILABLE" ? "shared_context" : "review";
@@ -628,7 +688,7 @@ function markCleanupFailure(result, cleanupReason) {
   result.cleanup_status = "failed";
   result.cleanup_warning = cleanupReason;
   result.failure_scope = "shared_context";
-  if (result.status === "completed") {
+  if (result.status === "completed" || !result.failure_stage) {
     result.status = "incomplete";
     result.failure_stage = "cleanup";
     result.failure_reason = cleanupReason;
@@ -648,6 +708,7 @@ export async function runReviewTransaction(context, options) {
   let outputDir;
   let runId;
   let page;
+  let reviewBaseline;
   let dispatchState = "not_dispatched";
   let stage = "artifacts";
   let resultPersisted = false;
@@ -666,6 +727,7 @@ export async function runReviewTransaction(context, options) {
       ({ outputDir, runId } = await createRunOutputDirectory(options.outputDir));
     }
     result = createResult({ ...options, runId });
+    result.transaction_started = true;
     result.response_path = relative(process.cwd(), join(outputDir, "response.md"));
     await persist();
 
@@ -687,6 +749,7 @@ export async function runReviewTransaction(context, options) {
       },
     });
     page = review.page;
+    reviewBaseline = review;
     if (review.promptSubmitted !== true) {
       stage = "submission";
       throw new Error("Review prompt submission was not confirmed by the helper");
@@ -712,9 +775,7 @@ export async function runReviewTransaction(context, options) {
       stage = "artifacts";
       await writeResponse(join(outputDir, "response.md"), `${completion.response}\n`);
     }
-    if (completion.status === "confirmed") {
-      result.status = "completed";
-    } else {
+    if (completion.status !== "confirmed") {
       result.status = "incomplete";
       result.failure_scope = "review";
       result.failure_stage = "completion";
@@ -728,7 +789,10 @@ export async function runReviewTransaction(context, options) {
     if (error.visibleEvidence) result.visible_evidence = error.visibleEvidence;
     if (error?.reviewPage) {
       page = error.reviewPage;
-      const baseline = error.reviewBaseline;
+      reviewBaseline = error.reviewBaseline;
+    }
+    if (page) {
+      const baseline = error.reviewBaseline || reviewBaseline;
       let currentUrl = null;
       try {
         currentUrl = typeof page.url === "function" ? page.url() : null;
@@ -742,7 +806,12 @@ export async function runReviewTransaction(context, options) {
           const timeoutMs = dispatchState === "possibly_dispatched" && result.submission !== "acknowledged"
             ? AMBIGUOUS_DISPATCH_TIMEOUT_MS
             : undefined;
-          const completion = await waitForCompletion(page, { baseline, timeoutMs });
+          const completion = await waitForCompletion(page, {
+            baseline,
+            timeoutMs,
+            initialTimeoutMs: timeoutMs,
+            completionTimeoutMs: COMPLETION_TIMEOUT_MS,
+          });
           result.completion = completion.status;
           result.conversation_url = completion.currentUrl || result.conversation_url;
           result.conversation_id = completion.conversationId || result.conversation_id;
@@ -788,6 +857,7 @@ export async function runReviewTransaction(context, options) {
       if (page) {
         await closePage(page);
         result.cleanup_status = "completed";
+        if (result.completion === "confirmed" && !result.failure_stage) result.status = "completed";
       }
     } catch (error) {
       markCleanupFailure(result, errorMessage(error));
@@ -817,12 +887,14 @@ export async function runReviewTransaction(context, options) {
 export async function runReviewBatch({ attached, outputDir, reviews, projectKey, repository, runTransaction = runReviewTransaction }) {
   const results = [];
   let cleanupError;
+  let requestedCount = reviews?.length || 0;
   try {
     if (!attached?.context) throw new Error("attached authenticated context is required");
     const validatedReviews = validateReviewBatch(reviews, {
       projectKey: projectKey || attached.projectKey,
       repository: repository || attached.repository,
     });
+    requestedCount = validatedReviews.length;
 
     for (let index = 0; index < validatedReviews.length; index += 1) {
       const review = validatedReviews[index];
@@ -871,6 +943,14 @@ export async function runReviewBatch({ attached, outputDir, reviews, projectKey,
     const batchError = new Error(`Batch context cleanup failed: ${errorMessage(cleanupError)}`);
     batchError.cause = cleanupError;
     batchError.results = results;
+    batchError.summary = {
+      ...summarizeBatchResults(results, requestedCount),
+      status: "incomplete",
+      cleanup_status: "failed",
+      cleanup_warning: errorMessage(cleanupError),
+      failure_stage: "cleanup",
+      failure_reason: errorMessage(cleanupError),
+    };
     throw batchError;
   }
   return results;
@@ -972,22 +1052,20 @@ export async function main(argv, dependencies = {}) {
   let removeTerminationCleanup = () => {};
 
   try {
-    if (options.batchFile) {
-      try {
-        reviews = await allocateReviewArtifacts(reviews, options.outputDir, {
-          createDirectory: dependencies.createRunOutputDirectory,
-          persistResult: dependencies.writeResult,
-        });
-      } catch (error) {
-        const allocationResults = await settleArtifactAllocationFailure(
-          reviews,
-          error.allocatedReviews || [],
-          errorMessage(error),
-        );
-        error.artifactAllocation = true;
-        error.results = allocationResults;
-        throw error;
-      }
+    try {
+      reviews = await allocateReviewArtifacts(reviews, options.outputDir, {
+        createDirectory: dependencies.createRunOutputDirectory,
+        persistResult: dependencies.writeResult,
+      });
+    } catch (error) {
+      const allocationResults = await settleArtifactAllocationFailure(
+        reviews,
+        error.allocatedReviews || [],
+        errorMessage(error),
+      );
+      error.artifactAllocation = true;
+      error.results = allocationResults;
+      throw error;
     }
     attached = await openContextForReview(contextOptions);
     removeTerminationCleanup = installCleanup(attached, closeAttachedContext);
@@ -1035,16 +1113,19 @@ export async function main(argv, dependencies = {}) {
         failure_reason: errorMessage(error),
       };
       await persistBatchSummary(options.outputDir, result).catch(() => {});
+    } else if (!options.batchFile && error.artifactAllocation && Array.isArray(error.results)) {
+      result = error.results[0];
     } else if (options.batchFile && Array.isArray(error.results)) {
       const cleanupReason = errorMessage(error.cause || error);
       result = {
-        ...summarizeBatchResults(error.results),
+        ...(error.summary || summarizeBatchResults(error.results)),
         status: "incomplete",
         cleanup_status: "failed",
         cleanup_warning: cleanupReason,
         failure_stage: "cleanup",
         failure_reason: cleanupReason,
       };
+      await persistBatchSummary(options.outputDir, result).catch(() => {});
     } else if (options.batchFile) {
       const reason = errorMessage(error);
       const skipped = await Promise.all(reviews.map(async (review, index) => {
