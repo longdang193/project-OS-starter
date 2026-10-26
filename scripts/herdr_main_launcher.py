@@ -559,11 +559,20 @@ def _codex_mcp_selection(
         selection = normalize_mcp_selection(values, capabilities, allow_tools=False)
     except McpSelectionError as exc:
         raise LaunchBlocked(str(exc)) from exc
+    selected_runtime_only = set(selection["effective_servers"]) & runtime_only_servers
     return {
         **selection,
         "server_names": tuple(capabilities),
         "runtime_only_servers": tuple(sorted(runtime_only_servers)),
-        "server_configuration_digest": mcp_server_configuration_digest(*configs),
+        "server_configuration_digest": (
+            None
+            if selected_runtime_only
+            else mcp_server_configuration_digest(
+                *configs,
+                selected_server_names=selection["effective_servers"],
+            )
+        ),
+        "server_configuration_complete": not selected_runtime_only,
     }
 
 
@@ -2700,6 +2709,13 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
     return requested if isinstance(requested, int) else None
 
 
+def _reuse_capability_digest(registry_launcher: Mapping[str, Any]) -> str | None:
+    if registry_launcher.get("capability_reuse_allowed", True) is False:
+        return None
+    digest = registry_launcher.get("capability_binding_digest")
+    return digest if isinstance(digest, str) and digest else None
+
+
 def _shell_process_names(executor: str) -> set[str]:
     return _DEEPAGENTS_SHELL_PROCESS_NAMES if executor == "deepagents" else _SHELL_PROCESS_NAMES
 
@@ -3899,6 +3915,7 @@ def resolve_launch(
     dcode = _managed_deepagents_executable() if executor == "deepagents" else None
     codex_mcp_selection: dict[str, tuple[str, ...]] | None = None
     effective_capability_binding_digest: str | None = None
+    reuse_capability_binding_digest: str | None = None
     if executor == "codex":
         runtime_mcp_servers = _codex_runtime_mcp_servers(
             str(codex),
@@ -3916,6 +3933,8 @@ def resolve_launch(
                 effective_local_capabilities,
                 codex_mcp_selection,
             )
+            if codex_mcp_selection.get("server_configuration_complete", True):
+                reuse_capability_binding_digest = effective_capability_binding_digest
         except AttemptContractError as exc:
             raise LaunchBlocked(str(exc)) from exc
     git = _git_identity(cwd, expected_base)
@@ -3931,7 +3950,7 @@ def resolve_launch(
         env=environment,
         expected_profile=selected,
         context_identity=context_identity,
-        expected_capability_digest=effective_capability_binding_digest,
+        expected_capability_digest=reuse_capability_binding_digest,
         dry_run=dry_run,
     )
     _record_performance_phase(performance, "target_discovery", target_started)
@@ -3948,7 +3967,7 @@ def resolve_launch(
                 env=environment,
                 expected_profile=selected,
                 context_identity=context_identity,
-                expected_capability_digest=effective_capability_binding_digest,
+                expected_capability_digest=reuse_capability_binding_digest,
                 dry_run=dry_run,
             )
     elif not dry_run:
@@ -4080,6 +4099,7 @@ def resolve_launch(
             "mcp_selection_requested": list(mcp_select or []),
             "mcp_selection": dict(codex_mcp_selection or {}) if executor == "codex" else None,
             "capability_binding_digest": effective_capability_binding_digest,
+            "capability_reuse_allowed": reuse_capability_binding_digest is not None,
             "local_capabilities": {
                 "requested": requested_local_capabilities,
                 "effective": effective_local_capabilities,
@@ -4953,6 +4973,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         execute_command=False,
                         expected_profile=dispatch_profile,
                         context_identity=dispatch_context_identity,
+                        expected_capability_digest=_reuse_capability_digest(registry_launcher),
                         callback=dispatch_verified,
                     )
                     if (
@@ -5243,9 +5264,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     execute_command=False,
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
-                        expected_capability_digest=registry_launcher.get(
-                            "capability_binding_digest"
-                        ),
+                        expected_capability_digest=_reuse_capability_digest(registry_launcher),
                     callback=lambda _pane_state: submit_prompt(),
                 )
             elif not codex_prompt_submitted:

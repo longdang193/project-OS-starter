@@ -135,6 +135,8 @@ def test_live_cli_mode_does_not_claim_contract_probe_as_architecture_measurement
     assert len(rows) == len(SCENARIOS) * 2
     assert all(row["live"] is True for row in rows)
     assert all(row["measurement_status"] == "unavailable" for row in rows)
+    assert all(row["outcome"] == "measurement_unavailable" for row in rows)
+    assert all(row["evidence_provenance"] == "unavailable" for row in rows)
     assert all(row["subprocess_count"] is None for row in rows)
     assert all(row["allocation_reuse"] == "unavailable" for row in rows)
     assert all(row["reconciliation_count"] is None for row in rows)

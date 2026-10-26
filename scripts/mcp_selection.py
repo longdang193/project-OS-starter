@@ -12,7 +12,11 @@ class McpSelectionError(ValueError):
     """Raised when MCP configuration or selection is invalid."""
 
 
-def mcp_server_configuration_digest(*configs: Mapping[str, Any]) -> str:
+def mcp_server_configuration_digest(
+    *configs: Mapping[str, Any],
+    selected_server_names: tuple[str, ...] | list[str] | None = None,
+) -> str:
+    selected = set(selected_server_names) if selected_server_names is not None else None
     effective_servers: dict[str, Mapping[str, Any]] = {}
     for config in configs:
         raw_servers = config.get("mcp_servers", {})
@@ -31,6 +35,7 @@ def mcp_server_configuration_digest(*configs: Mapping[str, Any]) -> str:
         "mcp_servers": {
             name: effective_servers[name]
             for name in sorted(effective_servers)
+            if selected is None or name in selected
         }
     }
     return hashlib.sha256(

@@ -378,7 +378,14 @@ def _owned_result_artifact_directory(
     return candidate, None
 
 
-def _write_recovery_marker(directory: Path, *, attempt_id: str, reason: str, now: float) -> None:
+def _write_recovery_marker(
+    directory: Path,
+    *,
+    attempt_id: str,
+    reason: str,
+    now: float,
+    prunable: bool = False,
+) -> None:
     marker = directory / RESULT_ARTIFACT_RECOVERY_MARKER
     payload = {
         "schema": "herdr-result-artifact-recovery.v1",
@@ -386,6 +393,7 @@ def _write_recovery_marker(directory: Path, *, attempt_id: str, reason: str, now
         "directory_name": directory.name,
         "attempt_id": attempt_id,
         "reason": reason,
+        "prunable": prunable,
         "recorded_at": now,
     }
     temporary = marker.with_name(f".{marker.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
@@ -439,6 +447,7 @@ def prune_result_artifact_recovery(
                 or payload.get("owner") != "herdr-result-artifact"
                 or payload.get("directory_name") != directory.name
                 or not isinstance(recorded_at, (int, float))
+                or payload.get("prunable") is not True
             ):
                 continue
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -504,7 +513,12 @@ def settle_result_artifacts(
         for path in (receipt_file, task_result_file)
     ):
         reason = "result evidence missing or linked"
-        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        _write_recovery_marker(
+            owned,
+            attempt_id=attempt_id,
+            reason=reason,
+            now=current_time,
+        )
         prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
         return {"state": "preserved", "reason": reason, "path": str(owned)}
     expected = {
@@ -541,14 +555,25 @@ def settle_result_artifacts(
             if not identity_matches
             else "lifecycle settlement unresolved"
         )
-        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        _write_recovery_marker(
+            owned,
+            attempt_id=attempt_id,
+            reason=reason,
+            now=current_time,
+        )
         prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
         return {"state": "preserved", "reason": reason, "path": str(owned)}
     try:
         shutil.rmtree(owned)
     except OSError as exc:
         reason = f"settled result directory removal failed: {exc}"
-        _write_recovery_marker(owned, attempt_id=attempt_id, reason=reason, now=current_time)
+        _write_recovery_marker(
+            owned,
+            attempt_id=attempt_id,
+            reason=reason,
+            now=current_time,
+            prunable=True,
+        )
         prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
         return {"state": "preserved", "reason": reason, "path": str(owned)}
     return {"state": "removed", "reason": "durable publication and settlement proven"}

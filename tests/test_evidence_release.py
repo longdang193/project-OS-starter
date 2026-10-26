@@ -232,6 +232,11 @@ def test_recovery_pruning_is_bounded_to_marked_result_directories(tmp_path: Path
     )
     _settle_result_artifact(first, None, tmp_path=tmp_path, lifecycle_settled=False)
     _settle_result_artifact(second, None, tmp_path=tmp_path, lifecycle_settled=False)
+    for directory in (first, second):
+        marker = directory / ".herdr-recovery.json"
+        payload = __import__("json").loads(marker.read_text(encoding="utf-8"))
+        payload["prunable"] = True
+        marker.write_text(__import__("json").dumps(payload), encoding="utf-8")
     foreign = tmp_path / "herdr-result-foreign-unmarked"
     foreign.mkdir()
     (foreign / "keep.txt").write_text("keep", encoding="utf-8")
@@ -249,6 +254,24 @@ def test_recovery_pruning_is_bounded_to_marked_result_directories(tmp_path: Path
     assert first.exists() != second.exists()
     assert first_result["state"] == "confirmed"
     assert second_result["state"] == "confirmed"
+
+
+def test_recovery_pruning_preserves_unresolved_markers(tmp_path: Path) -> None:
+    first, _, _ = _result_artifact(tmp_path, directory_name="herdr-result-attempt-1-unresolved")
+    second, _, _ = _result_artifact(tmp_path, directory_name="herdr-result-attempt-1-unresolved-2")
+    _settle_result_artifact(first, None, tmp_path=tmp_path, lifecycle_settled=False)
+    _settle_result_artifact(second, None, tmp_path=tmp_path, lifecycle_settled=False)
+
+    result = prune_result_artifact_recovery(
+        temp_root=tmp_path,
+        max_age_seconds=0,
+        max_count=1,
+        now=100.0,
+    )
+
+    assert result["removed"] == 0
+    assert first.exists()
+    assert second.exists()
 
 
 def test_recovery_pruning_skips_non_object_markers_without_aborting(tmp_path: Path) -> None:

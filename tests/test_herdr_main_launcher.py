@@ -533,6 +533,42 @@ def test_codex_mcp_selection_includes_runtime_servers(tmp_path: Path) -> None:
     assert selection["effective_servers"] == ()
 
 
+def test_selected_runtime_only_mcp_server_disables_reuse_without_configuration(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+
+    selection = LAUNCHER._codex_mcp_selection(
+        tmp_path,
+        codex_home,
+        ["cua_repl"],
+        runtime_servers={"cua_repl": True},
+    )
+
+    assert selection["effective_servers"] == ("cua_repl",)
+    assert selection["server_configuration_complete"] is False
+    assert selection["server_configuration_digest"] is None
+
+
+def test_mcp_digest_ignores_unselected_server_definition_changes(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    config = codex_home / "config.toml"
+    config.write_text(
+        '[mcp_servers.selected]\ncommand = "selected"\n\n'
+        '[mcp_servers.other]\ncommand = "other-v1"\n',
+        encoding="utf-8",
+    )
+    first = LAUNCHER._codex_mcp_selection(tmp_path, codex_home, ["selected"])
+    config.write_text(
+        '[mcp_servers.selected]\ncommand = "selected"\n\n'
+        '[mcp_servers.other]\ncommand = "other-v2"\n',
+        encoding="utf-8",
+    )
+    second = LAUNCHER._codex_mcp_selection(tmp_path, codex_home, ["selected"])
+
+    assert first["server_configuration_digest"] == second["server_configuration_digest"]
+
+
 def test_codex_runtime_mcp_servers_reads_codex_listing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -6064,6 +6100,18 @@ def test_unique_agent_name_preserves_combined_binding_marker(
 
     assert name.endswith("-bnd-1234567890abcdef")
     assert len(name) <= LAUNCHER._HERDR_AGENT_NAME_MAX_LENGTH
+
+
+def test_reuse_capability_digest_is_not_forwarded_when_binding_is_incomplete() -> None:
+    digest = "a" * 64
+
+    assert LAUNCHER._reuse_capability_digest({"capability_binding_digest": digest}) == digest
+    assert LAUNCHER._reuse_capability_digest(
+        {
+            "capability_binding_digest": digest,
+            "capability_reuse_allowed": False,
+        }
+    ) is None
 
 
 def test_deepagents_classification_does_not_preserve_command_exit_over_terminal_result() -> None:

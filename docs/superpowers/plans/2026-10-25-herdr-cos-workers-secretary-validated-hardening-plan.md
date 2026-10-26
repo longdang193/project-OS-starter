@@ -380,7 +380,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 **Steps:**
 - [x] Step 1: Define settled, unresolved, and ambiguous artifact states and the owner of each directory. Publication is durable only after `publish_task_result()` in `scripts/project_os_runtime/results.py` succeeds and the assignment/attempt evidence binds that result to the task; preserve unresolved directories under explicit recovery retention.
-- [x] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate and settlement proof succeed; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. All publication, ownership, and identity gates must complete before deletion. Add bounded age/count cleanup for retained recovery artifacts without touching unrelated temp files.
+- [x] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate and settlement proof succeed; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. All publication, ownership, and identity gates must complete before deletion. Add bounded age/count cleanup only for explicitly prunable post-settlement cleanup failures; unresolved publication or lifecycle evidence remains retained without automatic eviction.
 - [x] Step 3: Keep `contract` mode unchanged and add a distinct live/trace mode that records real latency, subprocess count, pane allocation/reuse, and reconciliation frequency only when an observed launcher/test-double runner is supplied; the default CLI path reports unavailable rather than measuring an identical contract subprocess for both architectures.
 - [x] Step 4: Feed only real samples into the existing operational-comparison schema; mark missing metrics unavailable and document that the target owner must set any pass threshold after baseline capture.
 
@@ -493,6 +493,18 @@ proof for each:
   failure kind when the receipt is unavailable;
 - MCP capability binding includes a digest of effective server definitions;
 - recovery pruning skips valid-JSON non-object markers without aborting.
+
+The follow-up review of the corrective head also found and closed two
+integration gaps and one provenance ambiguity:
+
+- locked pane revalidation now forwards the same capability digest used during
+  target discovery; selected runtime-only MCP servers fail closed for reuse
+  when their effective definition cannot be fingerprinted;
+- the MCP configuration digest is scoped to selected file-backed servers, so
+  unrelated unselected server edits do not recreate otherwise compatible
+  panes;
+- default live/trace placeholder rows are labelled `measurement_unavailable`
+  with `unavailable` provenance instead of resembling observed samples.
 
 ## Completion Criteria
 
