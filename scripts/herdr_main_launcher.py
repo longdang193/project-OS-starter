@@ -789,22 +789,28 @@ def _herdr_pane(
             raise TargetCandidateRejected(f"Pane agent is active: {pane}")
         if context_identity is None:
             raise TargetCandidateRejected(f"Pane context is required for agent reuse: {pane}")
-        if not _agent_profile_matches(agent_info.get("name"), expected_profile):
+        if not _agent_profile_matches(
+            agent_info.get("name"),
+            expected_profile,
+            context_identity=context_identity,
+            capability_digest_value=expected_capability_digest,
+        ):
             raise TargetCandidateRejected(f"Pane profile identity mismatch: {pane}")
         expected_marker = _context_marker(context_identity)
         actual_marker = _agent_context_marker(agent_info.get("name"))
-        if expected_capability_digest is not None:
+        expected_binding_marker = _binding_marker(
+            context_identity,
+            expected_capability_digest,
+            expected_profile.name,
+        )
+        actual_binding_marker = _agent_binding_marker(agent_info.get("name"))
+        if actual_binding_marker is not None:
+            if actual_binding_marker != expected_binding_marker:
+                raise TargetCandidateRejected(f"Pane capability binding mismatch: {pane}")
+        elif expected_capability_digest is not None:
             expected_capability_marker = _capability_marker(expected_capability_digest)
             actual_capability_marker = _agent_capability_marker(agent_info.get("name"))
-            expected_binding_marker = _binding_marker(
-                context_identity,
-                expected_capability_digest,
-            )
-            actual_binding_marker = _agent_binding_marker(agent_info.get("name"))
-            if actual_binding_marker is not None:
-                if actual_binding_marker != expected_binding_marker:
-                    raise TargetCandidateRejected(f"Pane capability binding mismatch: {pane}")
-            elif (
+            if (
                 expected_marker != actual_marker
                 or actual_capability_marker != expected_capability_marker
             ):
@@ -1379,6 +1385,7 @@ def _resolve_target_selector(
                             ],
                             "allocation": {
                                 "status": "rejected",
+                                "session": control_session,
                                 "source_pane": str(source_pane["pane_id"]),
                                 "pane": allocated_pane,
                             },
@@ -1396,6 +1403,7 @@ def _resolve_target_selector(
                             "rejections": rejections,
                             "allocation": {
                                 "status": "created_unverified",
+                                "session": control_session,
                                 "source_pane": str(source_pane["pane_id"]),
                                 "pane": allocated_pane,
                             },
@@ -1413,6 +1421,7 @@ def _resolve_target_selector(
                             "rejections": rejections,
                             "allocation": {
                                 "status": "created_unverified",
+                                "session": control_session,
                                 "source_pane": str(source_pane["pane_id"]),
                                 "pane": allocated_pane,
                             },
@@ -2711,15 +2720,15 @@ def _stable_context_identity(
     assignment_id: str | None = None,
 ) -> str | None:
     """Build the strongest available composite identity for pane reuse."""
-    values = tuple(
-        f"{label}:{value.strip()}"
-        for label, value in (
-            ("task", secretary_task_id),
-            ("plan", plan_identity),
-            ("assignment", assignment_id),
-        )
-        if isinstance(value, str) and value.strip()
-    )
+    values = []
+    for label, value in (
+        ("task", secretary_task_id),
+        ("plan", plan_identity),
+        ("assignment", assignment_id),
+    ):
+        if isinstance(value, str) and value.strip():
+            escaped = value.strip().replace("\\", "\\\\").replace("|", "\\|")
+            values.append(f"{label}:{escaped}")
     return "|".join(values) if values else None
 
 
@@ -2740,12 +2749,24 @@ def _capability_marker(capability_digest_value: str | None) -> str | None:
 def _binding_marker(
     context_identity: str | None,
     capability_digest_value: str | None,
+    profile_name: str | None = None,
 ) -> str | None:
     context_marker = _context_marker(context_identity)
-    capability_marker = _capability_marker(capability_digest_value)
-    if context_marker is None or capability_marker is None:
+    if context_marker is None:
         return None
-    return f"bnd-{_sha256_text(f'{capability_marker}|{context_marker}')[:16]}"
+    capability_marker = _capability_marker(capability_digest_value) or "cap-none"
+    profile_marker = profile_name.strip() if isinstance(profile_name, str) else "profile-none"
+    binding = json.dumps(
+        {
+            "capability": capability_marker,
+            "context": context_marker,
+            "profile": profile_marker,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return f"bnd-{_sha256_text(binding)[:16]}"
 
 
 def _agent_capability_marker(agent_name: str | None) -> str | None:
@@ -2769,9 +2790,22 @@ def _agent_binding_marker(agent_name: str | None) -> str | None:
     return match.group(0)[1:] if match else None
 
 
-def _agent_profile_matches(agent_name: str | None, expected_profile: AgentProfile) -> bool:
+def _agent_profile_matches(
+    agent_name: str | None,
+    expected_profile: AgentProfile,
+    *,
+    context_identity: str | None = None,
+    capability_digest_value: str | None = None,
+) -> bool:
     if not isinstance(agent_name, str) or not agent_name.strip():
         return False
+    actual_binding_marker = _agent_binding_marker(agent_name)
+    if actual_binding_marker is not None and context_identity is not None:
+        return actual_binding_marker == _binding_marker(
+            context_identity,
+            capability_digest_value,
+            expected_profile.name,
+        )
     prefix = f"{expected_profile.name}-main"
     return agent_name == prefix or agent_name.startswith(f"{prefix}-")
 
@@ -2782,15 +2816,10 @@ def _contextual_agent_name(
     capability_digest_value: str | None = None,
 ) -> str:
     marker = _context_marker(context_identity)
-    capability_marker = _capability_marker(capability_digest_value)
     if marker is None:
         return _unique_agent_name(f"{profile_name}-main")
-    binding_marker = _binding_marker(context_identity, capability_digest_value)
-    suffix = (
-        f"-{binding_marker}"
-        if binding_marker is not None
-        else "".join(f"-{value}" for value in (capability_marker, marker) if value is not None)
-    )
+    binding_marker = _binding_marker(context_identity, capability_digest_value, profile_name)
+    suffix = f"-{binding_marker}" if binding_marker is not None else ""
     base = f"{profile_name}-main"
     candidate = f"{base[:max(0, _HERDR_AGENT_NAME_MAX_LENGTH - len(suffix))]}{suffix}"
     _validate_agent_name(candidate)

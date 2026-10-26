@@ -3722,6 +3722,7 @@ def test_target_selector_marks_created_pane_unverified_when_post_split_proof_fai
     assert error.value.resolution["failure_kind"] == "created_unverified"
     assert error.value.resolution["allocation"] == {
         "status": "created_unverified",
+        "session": "default",
         "source_pane": "w1:p1",
         "pane": "w1:p2",
     }
@@ -6249,6 +6250,47 @@ def test_context_identity_composes_available_task_plan_and_assignment() -> None:
     assert LAUNCHER._stable_context_identity() is None
 
 
+def test_context_identity_escapes_delimiters_without_collisions() -> None:
+    first = LAUNCHER._stable_context_identity(
+        secretary_task_id="a|plan:b",
+        plan_identity="c",
+    )
+    second = LAUNCHER._stable_context_identity(
+        secretary_task_id="a",
+        plan_identity="b|plan:c",
+    )
+
+    assert first != second
+
+
+def test_bound_agent_name_preserves_long_profile_identity_after_retry() -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("long-profile-name.toml"),
+        "long-profile-name",
+        "9router",
+        "combo-high",
+        None,
+        "test",
+        "test",
+    )
+    context = "task:subject-1"
+    name = LAUNCHER._contextual_agent_name(profile.name, context)
+    retried = LAUNCHER._unique_agent_name(name)
+
+    assert len(name) <= LAUNCHER._HERDR_AGENT_NAME_MAX_LENGTH
+    assert len(retried) <= LAUNCHER._HERDR_AGENT_NAME_MAX_LENGTH
+    assert LAUNCHER._agent_profile_matches(
+        name,
+        profile,
+        context_identity=context,
+    )
+    assert LAUNCHER._agent_profile_matches(
+        retried,
+        profile,
+        context_identity=context,
+    )
+
+
 @pytest.mark.parametrize(
     ("profile_name", "model"),
     [("high", "combo-high"), ("normal", "combo-normal")],
@@ -6259,8 +6301,8 @@ def test_contextual_agent_name_is_stable_for_web_profiles(profile_name: str, mod
     second = LAUNCHER._contextual_agent_name(profile_name, context)
 
     assert first == second
-    assert first.startswith(f"{profile_name}-main-ctx-")
-    assert LAUNCHER._agent_context_marker(first) == LAUNCHER._context_marker(context)
+    assert first.startswith(f"{profile_name}-main-bnd-")
+    assert LAUNCHER._agent_binding_marker(first) == LAUNCHER._binding_marker(context, None, profile_name)
     assert model.startswith("combo-")
 
 
@@ -6579,7 +6621,7 @@ def test_pane_safety_rejects_different_or_missing_context(
         model="combo-high",
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
-    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="context mismatch"):
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="profile identity mismatch"):
         LAUNCHER._herdr_pane(
             tmp_path, "session", "p1", "herdr",
             expected_profile=profile, context_identity="task:subject-2",

@@ -656,6 +656,33 @@ canonical context identity now composes all available task, plan, and
 assignment fields; reused agents must also carry the expected profile-name
 prefix. Agents lacking either identity remain ineligible for reuse.
 
+## Final Review Hardening — 2026-10-26 — successor `535ee9340184a46e07dc222517c8f84dc16a0400`
+
+The final sequential GPT-5.6-Sol High and GPT-6 High review was verified
+against the same immutable PR #179 head. Both models confirmed the requested
+four corrections; the following remaining defects were source-validated and
+patched:
+
+- composite context identity now escapes backslashes and delimiters, so valid
+  task/plan/assignment tuples cannot serialize to the same reuse identity;
+- profile identity is included in the canonical bound agent marker, allowing
+  long profile names and collision-retry names to remain exactly reusable
+  without trusting a truncated textual prefix;
+- auto-target pane splits are marked as Secretary-owned, retired with
+  cwd-verified `herdr pane close`, included in resource inventory, and
+  recoverable from quarantined receipts;
+- Secretary validates the canonical profile before resolving its model or
+  claiming the durable submission gate, preventing missing-profile attempts
+  from poisoning a later retry.
+
+Focused proof:
+
+- `python -m pytest -q tests/test_herdr_main_launcher.py tests/test_secretary_live_runtime.py tests/test_submission_gate.py`
+
+The final review artifacts remain read-only under
+`review-output/github-pr-179-535ee93-20261026/`; the plan remains `active`
+until fresh full verification, push, PR checks, and merge are complete.
+
 ## Completion Criteria
 
 The plan is ready for completion verification when:

@@ -5716,6 +5716,97 @@ def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_c
     assert commands == [["herdr", "status", "server"]]
 
 
+def test_prepare_herdr_target_marks_split_pane_as_secretary_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_herdr_run", lambda *args, **kwargs: subprocess.CompletedProcess([], 0, "status: running\n", ""))
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: (
+            "default",
+            "default:p2",
+            {
+                "status": "selected",
+                "mode": "auto",
+                "allocation": {"status": "allocated", "pane": "default:p2"},
+            },
+        ),
+    )
+    monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "_launcher_profile", lambda *args, **kwargs: "expected-profile")
+
+    launch_request, preflight, workspace_id = runtime._prepare_herdr_target(
+        request(session="auto", pane="auto"),
+        herdr="herdr",
+        env={},
+    )
+
+    assert launch_request.pane == "default:p2"
+    assert preflight["pane_created"] is True
+    assert preflight["session"] == "default"
+    assert preflight["pane"] == "default:p2"
+    assert workspace_id is None
+
+
+def test_run_probe_rejects_missing_profile_before_submission_gate_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_configured_provider", lambda _: SECRETARY_PROVIDER)
+    monkeypatch.setattr(
+        runtime,
+        "_launcher_profile",
+        lambda *args, **kwargs: (_ for _ in ()).throw(runtime.LaunchBlocked("missing profile")),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "claim_submission",
+        lambda *args, **kwargs: pytest.fail("submission gate must not be claimed"),
+    )
+
+    result = runtime.run_probe(request(worktree=tmp_path), output=tmp_path / "probe.json")
+
+    assert result["failure_kind"] == "LaunchBlocked"
+    assert not runtime.gate_path(runtime._probe_operation_id(request(worktree=tmp_path))).exists()
+
+
+def test_close_herdr_pane_verifies_identity_and_retirement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    pane = {"pane_id": "default:p2", "cwd": str(tmp_path)}
+    responses = iter([
+        subprocess.CompletedProcess([], 0, json.dumps({"result": {"panes": [pane]}}), ""),
+        subprocess.CompletedProcess([], 0, "{}", ""),
+        subprocess.CompletedProcess([], 0, json.dumps({"result": {"panes": []}}), ""),
+    ])
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return next(responses)
+
+    monkeypatch.setattr(runtime, "_herdr_run", fake_run)
+
+    result = runtime._close_herdr_pane(
+        "herdr",
+        "default",
+        "default:p2",
+        cwd=tmp_path,
+        env={},
+    )
+
+    assert result["verified"] is True
+    assert commands[1] == ["herdr", "--session", "default", "pane", "close", "default:p2"]
+
+
 def test_prepare_herdr_target_propagates_profile_failure_before_server_allocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

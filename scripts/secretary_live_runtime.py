@@ -740,6 +740,7 @@ def _prepare_herdr_target(
             "pane": request.pane,
             "pane_cwd_verified": False,
             "workspace_created": False,
+            "pane_created": False,
         }, None
     try:
         resolved_session, resolved_pane, resolution = _resolve_target_selector(
@@ -760,6 +761,8 @@ def _prepare_herdr_target(
         resolved_pane = None
         resolution = None
     if isinstance(resolved_pane, str) and resolved_pane.strip():
+        allocation = resolution.get("allocation") if isinstance(resolution, Mapping) else None
+        pane_created = isinstance(allocation, Mapping) and allocation.get("status") == "allocated"
         resolved_request = replace(
             request,
             session=resolved_session,
@@ -783,6 +786,7 @@ def _prepare_herdr_target(
             "pane": resolved_pane,
             "pane_cwd_verified": True,
             "workspace_created": False,
+            "pane_created": pane_created,
             "target_resolution": resolution,
         }, None
     workspace_id, pane = _create_herdr_workspace(
@@ -817,6 +821,7 @@ def _prepare_herdr_target(
         "pane": pane,
         "pane_cwd_verified": True,
         "workspace_created": True,
+        "pane_created": False,
         "workspace_id": workspace_id,
     }, workspace_id
 
@@ -865,6 +870,78 @@ def _close_herdr_workspace(herdr: str, workspace_id: str, *, env: dict[str, str]
                 return {"state": "closed", "verified": True, "authority": "herdr.workspace.get"}
         return {"state": "closed", "verified": False, "reason": "workspace_retirement_not_proven"}
     return {"state": "closed", "verified": False, "reason": "workspace_still_present"}
+
+
+def _pane_resource_identity(session: str, pane: str, cwd: Path) -> str:
+    return json.dumps(
+        {"cwd": str(cwd.resolve()), "pane": pane, "session": session},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _close_herdr_pane(
+    herdr: str,
+    session: str,
+    pane: str,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    def list_panes() -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        try:
+            result = _herdr_run(
+                [herdr, "--session", session, "pane", "list"],
+                env=env,
+                timeout=5.0,
+            )
+        except (CommandTransportTimeout, OSError):
+            return None, {"state": "unknown", "verified": False, "reason": "transport_timeout"}
+        if result is None or not isinstance(getattr(result, "returncode", None), int):
+            return None, {"state": "unknown", "verified": False, "reason": "malformed_list_response"}
+        if result.returncode:
+            return None, {"state": "unknown", "verified": False, "reason": "pane_list_failed"}
+        for output in (getattr(result, "stdout", ""), getattr(result, "stderr", "")):
+            try:
+                payload = json.loads(output)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            panes = payload.get("result", {}).get("panes") if isinstance(payload, Mapping) else None
+            if not isinstance(panes, list):
+                continue
+            selected = next(
+                (item for item in panes if isinstance(item, Mapping) and item.get("pane_id") == pane),
+                None,
+            )
+            return dict(selected) if isinstance(selected, Mapping) else None, None
+        return None, {"state": "unknown", "verified": False, "reason": "invalid_pane_list"}
+
+    selected, error = list_panes()
+    if error is not None:
+        return error
+    if selected is None:
+        return {"state": "already_absent", "verified": True, "authority": "herdr.pane.list"}
+    selected_cwd = selected.get("cwd")
+    if not isinstance(selected_cwd, str) or Path(selected_cwd).resolve() != cwd.resolve():
+        return {"state": "preserved", "verified": False, "reason": "pane_cwd_mismatch"}
+    try:
+        result = _herdr_run(
+            [herdr, "--session", session, "pane", "close", pane],
+            env=env,
+            timeout=30.0,
+        )
+    except (CommandTransportTimeout, OSError):
+        return {"state": "unknown", "verified": False, "reason": "transport_timeout"}
+    if result is None or not isinstance(getattr(result, "returncode", None), int):
+        return {"state": "unknown", "verified": False, "reason": "malformed_close_response"}
+    if result.returncode:
+        return {"state": "preserved", "verified": False, "reason": "close_failed"}
+    remaining, error = list_panes()
+    if error is not None:
+        return {"state": "closed", "verified": False, "reason": "pane_retirement_not_proven"}
+    if remaining is None:
+        return {"state": "closed", "verified": True, "authority": "herdr.pane.close"}
+    return {"state": "closed", "verified": False, "reason": "pane_still_present"}
 
 
 def _release_codex_agent(
@@ -1922,13 +1999,8 @@ def _configured_provider(codex_home: Path) -> str:
 
 
 def _configured_model(request: SecretaryLaunchRequest) -> str:
-    profile_path = request.worktree / "agents" / f"{request.profile}.toml"
-    if not profile_path.is_file():
-        return "unknown"
-    profile = tomllib.loads(profile_path.read_text(encoding="utf-8"))
-    if profile.get("model_provider") != SECRETARY_PROVIDER:
-        raise RuntimeError(f"Secretary profile must use {SECRETARY_PROVIDER}")
-    model = profile.get("model")
+    profile = _launcher_profile(request.worktree.resolve() / "agents", request.profile)
+    model = getattr(profile, "model", None)
     return model.strip() if isinstance(model, str) and model.strip() else "unknown"
 
 
@@ -2418,6 +2490,8 @@ def _owned_resources(
     cleanup_state: str | None = None,
     workspace_id: str | None = None,
     workspace_close: Mapping[str, Any] | None = None,
+    owned_pane_identity: str | None = None,
+    pane_close: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     herdr = payload.get("herdr") if isinstance(payload, Mapping) else None
     herdr = herdr if isinstance(herdr, Mapping) else {}
@@ -2441,6 +2515,13 @@ def _owned_resources(
             "identity": pane_identity,
             "state": "settled" if effective_cleanup_state == "removed" else "quarantined",
             "authority": "herdr.workspace.close",
+        })
+    if owned_pane_identity:
+        resources.append({
+            "kind": "pane",
+            "identity": owned_pane_identity,
+            "state": "settled" if pane_close and pane_close.get("verified") is True else "quarantined",
+            "authority": "herdr.pane.close",
         })
     agent_identity = _safe_text(herdr.get("agent_name"))
     agent_owned = (
@@ -2598,7 +2679,32 @@ def recover_quarantined_receipt(receipt: Path, *, herdr: str = "herdr") -> dict[
         if resource.get("state") in {"removed", "already_absent", "settled"}:
             cleanup.append({"kind": resource["kind"], "identity": resource["identity"], "verified": True, "state": "already_absent"})
             continue
-        if resource["kind"] not in {"workspace", "herdr.workspace"}:
+        if resource["kind"] in {"pane", "herdr.pane"}:
+            try:
+                pane_identity = json.loads(resource["identity"])
+                pane_session = pane_identity["session"]
+                pane = pane_identity["pane"]
+                pane_cwd = Path(pane_identity["cwd"])
+                if not all(isinstance(value, str) and value.strip() for value in (pane_session, pane, pane_cwd.as_posix())):
+                    raise ValueError
+            except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+                result = {
+                    "kind": resource["kind"],
+                    "identity": resource["identity"],
+                    "verified": False,
+                    "state": "quarantined",
+                    "reason": "invalid pane identity",
+                }
+            else:
+                cleanup_result = _close_herdr_pane(
+                    herdr,
+                    pane_session,
+                    pane,
+                    cwd=pane_cwd,
+                    env=environment,
+                )
+                result = {"kind": resource["kind"], "identity": resource["identity"], **cleanup_result}
+        elif resource["kind"] not in {"workspace", "herdr.workspace"}:
             result = {"kind": resource["kind"], "identity": resource["identity"], "verified": False, "state": "quarantined", "reason": "no canonical cleanup owner"}
         else:
             result = _close_herdr_workspace(herdr, resource["identity"], env=environment)
@@ -3790,6 +3896,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     preflight: dict[str, Any] = {}
     workspace_id: str | None = None
     workspace_close: Mapping[str, Any] | None = None
+    owned_pane_identity: str | None = None
+    owned_pane_session: str | None = None
+    owned_pane: str | None = None
+    pane_close: Mapping[str, Any] | None = None
     configured_model = "unknown"
     result: dict[str, Any] | None = None
     payload: Mapping[str, Any] | None = None
@@ -3803,6 +3913,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
     submission_prepared = False
     try:
         _configured_provider(request.codex_home)
+        _launcher_profile(request.worktree.resolve() / "agents", request.profile)
         configured_model = _configured_model(request)
         submission_binding = _probe_submission_binding(
             request,
@@ -3828,6 +3939,11 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             herdr=herdr,
             env=environment,
         )
+        if preflight.get("pane_created") is True:
+            owned_pane_session = preflight.get("session")
+            owned_pane = preflight.get("pane")
+            if isinstance(owned_pane_session, str) and isinstance(owned_pane, str):
+                owned_pane_identity = _pane_resource_identity(owned_pane_session, owned_pane, request.worktree)
         submission_anchor = _capture_submission_anchor(
             herdr,
             launch_request.session,
@@ -3957,6 +4073,19 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
         workspace_close = getattr(exc, "workspace_close", None)
         if isinstance(workspace_close, Mapping):
             preflight["workspace_close"] = dict(workspace_close)
+        resolution = getattr(exc, "resolution", None)
+        allocation = resolution.get("allocation") if isinstance(resolution, Mapping) else None
+        if isinstance(allocation, Mapping) and allocation.get("status") in {
+            "allocated",
+            "created_unverified",
+            "rejected",
+        }:
+            candidate_session = allocation.get("session")
+            candidate_pane = allocation.get("pane")
+            if isinstance(candidate_session, str) and isinstance(candidate_pane, str):
+                owned_pane_session = candidate_session
+                owned_pane = candidate_pane
+                owned_pane_identity = _pane_resource_identity(candidate_session, candidate_pane, request.worktree)
         result = {
             "disposition": "BLOCKED_CAPABILITY",
             "evidence_provenance": "capability-probe",
@@ -3964,10 +4093,25 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             "missing_capabilities": ["secretary_runtime_receipt"],
         }
     finally:
-        if workspace_id is not None and herdr:
-            if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
-                workspace_close = _close_herdr_workspace(herdr, workspace_id, env=environment)
-                preflight["workspace_close"] = dict(workspace_close)
+        owns_pane = owned_pane_session is not None and owned_pane is not None
+        if herdr and (workspace_id is not None or owns_pane):
+            if workspace_id is not None:
+                if not isinstance(workspace_close, Mapping) or workspace_close.get("verified") is not True:
+                    workspace_close = _close_herdr_workspace(herdr, workspace_id, env=environment)
+                    preflight["workspace_close"] = dict(workspace_close)
+                close_evidence = workspace_close
+                cleanup_failure_kind = "runtime_workspace_cleanup_evidence_missing"
+            else:
+                pane_close = _close_herdr_pane(
+                    herdr,
+                    owned_pane_session,
+                    owned_pane,
+                    cwd=request.worktree,
+                    env=environment,
+                )
+                preflight["pane_close"] = dict(pane_close)
+                close_evidence = pane_close
+                cleanup_failure_kind = "runtime_pane_cleanup_evidence_missing"
             if result is not None:
                 result["preflight"] = preflight
                 post_submit = result.get("post_submit_observation")
@@ -3975,7 +4119,7 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 cleanup_state = cleanup.get("state") if isinstance(cleanup, Mapping) else None
                 herdr_identity = payload.get("herdr") if isinstance(payload, Mapping) else None
                 cleanup_verified = cleanup_state == "removed" or not isinstance(herdr_identity, Mapping)
-                close_verified = preflight["workspace_close"].get("verified") is True
+                close_verified = close_evidence.get("verified") is True
                 resource = (
                     {"state": "settled", "reuse_blocked": False, "recovery_required": False}
                     if cleanup_verified and close_verified
@@ -3986,7 +4130,9 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     post_submit if isinstance(post_submit, Mapping) else {},
                     cleanup_state=cleanup_state,
                     workspace_id=workspace_id,
-                    workspace_close=preflight["workspace_close"],
+                    workspace_close=workspace_close,
+                    owned_pane_identity=owned_pane_identity if workspace_id is None else None,
+                    pane_close=pane_close,
                 )
                 assignment_payload = payload.get("assignment") if isinstance(payload, Mapping) else None
                 attempt_id = assignment_payload.get("attempt_id") if isinstance(assignment_payload, Mapping) else None
@@ -4005,13 +4151,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                 result["resource"] = {key: resource[key] for key in ("state", "reuse_blocked")}
                 result["resource_inventory"] = resource_inventory
                 result["recovery_required"] = resource["recovery_required"]
-                if (
-                    result.get("disposition") == "READY"
-                    and preflight["workspace_close"].get("verified") is not True
-                ):
+                if result.get("disposition") == "READY" and not close_verified:
                     result["disposition"] = "BLOCKED_CAPABILITY"
                     result["evidence_provenance"] = "capability-probe"
-                    result["failure_kind"] = "runtime_workspace_cleanup_evidence_missing"
+                    result["failure_kind"] = cleanup_failure_kind
                     result.update(_classify_capabilities("BLOCKED_CAPABILITY", result.get("post_submit_observation")))
         if submission_claimed and submission_path is not None:
             settlement = _submission_settlement_state(
