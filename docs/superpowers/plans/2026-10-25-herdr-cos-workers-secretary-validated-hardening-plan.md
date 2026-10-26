@@ -36,7 +36,7 @@ Correct only the source-validated operational bottlenecks and lifecycle
 classification defects identified by the completed sequential `GPT-5.6-Sol`
 High and `GPT-6` High GitHub reviews of
 `longdang193/project-OS-starter` at immutable commit
-`9a90cba3498d1290601bb0702c4c8671b0dfe6a5`.
+`a25bd263828c59853be3fd36ff2e53b6ecfa09f0`.
 
 The implementation must preserve the personal-use architecture and its safety
 boundaries: CoS remains the acceptance authority, Herdr remains the target and
@@ -57,6 +57,9 @@ Review evidence is preserved read-only at:
 - `review-output/github-review-9a90cba-20261025-rerun/run-WbH38S/response.md`
 - `review-output/github-review-8cb8a92-20261025-plan-review/run-5PA6Qp/response.md`
 - `review-output/github-review-8cb8a92-20261025-plan-review/run-5PA6Qp/result.json`
+- `review-output/github-pr-179-a25bd26-20261026/batch-result.json`
+- `review-output/github-pr-179-a25bd26-20261026/run-HV0Zxs/response.md`
+- `review-output/github-pr-179-a25bd26-20261026/run-1NTu94/response.md`
 
 Both reviews report `status=completed`, `submission_attempted=true`, verified
 requested model and `High` effort, and the same pinned commit SHA.
@@ -578,6 +581,38 @@ Focused proof:
 The plan remains `active` until fresh full verification and post-push PR review
 complete; only then may `skill-verification-before-completion` set it to
 `completed`.
+
+## Post-Review Validation — 2026-10-26 — head `a25bd263828c59853be3fd36ff2e53b6ecfa09f0`
+
+The sequential GPT-5.6-Sol High and GPT-6 High review of PR #179 was
+independently verified against the same immutable head. Systematic tracing and
+red/green focused regressions validated two additional defects and one safe
+reuse optimization:
+
+- `scripts/secretary_live_runtime.py:_prepare_herdr_target` previously treated
+  every `TargetResolutionBlocked`/`LaunchBlocked` result as “no pane” and
+  bootstrapped a workspace. It now bootstraps only for explicit
+  `resolution.status == "not_found"`; blocked, incomplete, timeout, deadline,
+  global-snapshot, and identity-uncertain results propagate for reconciliation.
+- Secretary preflight now uses the launcher’s canonical profile and context
+  identity helpers when resolving auto targets, preserving compatible reuse
+  instead of rejecting existing Codex agents because those guards were absent.
+- `capability_binding_digest` now filters `server_names` and
+  `runtime_only_servers` to selected MCP servers/tools. Unselected inventory
+  changes no longer invalidate compatible reuse; selected capability and
+  configuration changes remain binding inputs.
+
+Focused proof:
+
+- `pytest -q tests/test_secretary_live_runtime.py -k "prepare_herdr_target"`
+- `pytest -q tests/test_herdr_attempt_contract.py -k "capability_binding_digest"`
+
+The reported shell-expansion concern was not source-validated: repository
+configuration documents support `${VAR}` references, while `%VAR%` and `$VAR`
+forms are not established supported inputs. No compatibility behavior was
+changed without a confirmed contract. The duplicate-lock observation remains
+an optimization candidate, not a defect: the final ownership-locked
+verification is safety-critical and was preserved.
 
 ## Completion Criteria
 

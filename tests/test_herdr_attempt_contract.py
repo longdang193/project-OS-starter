@@ -393,6 +393,25 @@ def test_capability_binding_digest_is_stable_and_includes_mcp_selection() -> Non
     )
 
 
+def test_capability_binding_digest_ignores_unselected_mcp_inventory() -> None:
+    selection = {
+        "requested": ("context7",),
+        "effective_servers": ("context7",),
+        "effective_tools": (),
+        "server_names": ("context7", "playwright"),
+        "runtime_only_servers": ("playwright",),
+    }
+
+    assert contract.capability_binding_digest(["node"], selection) == contract.capability_binding_digest(
+        ["node"],
+        {
+            **selection,
+            "server_names": ("context7", "playwright", "unselected"),
+            "runtime_only_servers": ("playwright", "unselected"),
+        },
+    )
+
+
 def test_capability_binding_digest_changes_when_mcp_server_definition_changes() -> None:
     selection = {
         "requested": ("context7",),

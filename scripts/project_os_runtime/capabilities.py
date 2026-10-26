@@ -72,6 +72,18 @@ def capability_binding_digest(
                 f"MCP capability evidence field `{field}` must be a sequence of strings"
             )
         normalized_mcp[field] = sorted(set(item.strip() for item in raw_value))
+    selected_mcp_servers = set(normalized_mcp["effective_servers"])
+    selected_mcp_servers.update(
+        item.split(".", 1)[0]
+        for item in normalized_mcp["effective_tools"]
+        if "." in item
+    )
+    normalized_mcp["server_names"] = sorted(
+        set(normalized_mcp["server_names"]) & selected_mcp_servers
+    )
+    normalized_mcp["runtime_only_servers"] = sorted(
+        set(normalized_mcp["runtime_only_servers"]) & selected_mcp_servers
+    )
     configuration_digest = mcp_selection.get("server_configuration_digest")
     if configuration_digest is not None:
         if not isinstance(configuration_digest, str) or not re.fullmatch(

@@ -5509,7 +5509,7 @@ def test_prepare_herdr_target_bootstraps_server_workspace_and_rechecks_pane(
         runtime,
         "_resolve_target_selector",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            runtime.TargetResolutionBlocked("no reusable target", {"status": "blocked"})
+            runtime.TargetResolutionBlocked("no reusable target", {"status": "not_found"})
         ),
     )
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
@@ -5531,6 +5531,51 @@ def test_prepare_herdr_target_bootstraps_server_workspace_and_rechecks_pane(
     assert preflight["pane_cwd_verified"] is True
     assert pane_checks == 2
     assert started == [["herdr", "server"]]
+
+
+@pytest.mark.parametrize(
+    "resolution",
+    [
+        {"status": "blocked", "failure_kind": "candidate_rejected"},
+        {"status": "incomplete", "failure_kind": "transport_timeout"},
+    ],
+)
+def test_prepare_herdr_target_does_not_bootstrap_after_uncertain_target_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    resolution: dict[str, str],
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_herdr_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            "status: running\n",
+            "",
+        ),
+    )
+    error = runtime.TargetResolutionBlocked("target resolution incomplete", resolution)
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        lambda *args, **kwargs: (_ for _ in ()).throw(error),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_create_herdr_workspace",
+        lambda *args, **kwargs: pytest.fail("uncertain target resolution must not create a workspace"),
+    )
+
+    with pytest.raises(runtime.TargetResolutionBlocked) as raised:
+        runtime._prepare_herdr_target(
+            request(session="auto", pane="auto"),
+            herdr="herdr",
+            env={},
+        )
+
+    assert raised.value.resolution == resolution
 
 
 def test_prepare_herdr_target_preserves_exact_selector_without_workspace_creation(
@@ -5606,15 +5651,23 @@ def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_c
         raise AssertionError(command)
 
     monkeypatch.setattr(runtime, "_herdr_run", fake_run)
-    monkeypatch.setattr(
-        runtime,
-        "_resolve_target_selector",
-        lambda *args, **kwargs: (
+    captured: dict[str, object] = {}
+
+    def resolve_target(*args, **kwargs):
+        captured.update(kwargs)
+        return (
             "default",
             "w1:p1",
             {"status": "selected", "mode": "auto", "candidate_count": 1},
-        ),
+        )
+
+    monkeypatch.setattr(
+        runtime,
+        "_resolve_target_selector",
+        resolve_target,
     )
+    monkeypatch.setattr(runtime, "_launcher_profile", lambda *args, **kwargs: "expected-profile")
+    monkeypatch.setattr(runtime, "_launcher_context_identity", lambda **kwargs: "task:task-1")
     monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: None)
     monkeypatch.setattr(runtime, "_create_herdr_workspace", lambda *args, **kwargs: pytest.fail("workspace should not be created"))
 
@@ -5630,6 +5683,9 @@ def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_c
     assert preflight["selector_mode"] == "reused-verified"
     assert preflight["workspace_created"] is False
     assert workspace_id is None
+    assert captured["expected_profile"] == "expected-profile"
+    assert captured["context_identity"] == "task:task-1"
+    assert captured["reuse_allowed"] is True
     assert commands == [["herdr", "status", "server"]]
 
 
@@ -5864,7 +5920,7 @@ def test_prepare_herdr_target_preserves_workspace_after_pane_oserror(
         runtime,
         "_resolve_target_selector",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            runtime.TargetResolutionBlocked("no reusable target", {"status": "blocked"})
+            runtime.TargetResolutionBlocked("no reusable target", {"status": "not_found"})
         ),
     )
     monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("pane read failed")))

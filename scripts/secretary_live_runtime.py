@@ -26,8 +26,10 @@ from typing import Any, Mapping
 try:
     from scripts.herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
+        _profile as _launcher_profile,
         _herdr_pane,
         _resolve_target_selector,
+        _stable_context_identity as _launcher_context_identity,
         CommandTransportTimeout,
         LaunchBlocked,
         TargetResolutionBlocked,
@@ -38,8 +40,10 @@ try:
 except ModuleNotFoundError:
     from herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
+        _profile as _launcher_profile,
         _herdr_pane,
         _resolve_target_selector,
+        _stable_context_identity as _launcher_context_identity,
         CommandTransportTimeout,
         LaunchBlocked,
         TargetResolutionBlocked,
@@ -696,6 +700,17 @@ def _prepare_herdr_target(
             "workspace_created": False,
         }, None
     try:
+        try:
+            expected_profile = _launcher_profile(
+                request.worktree.resolve() / "agents",
+                request.profile,
+            )
+        except LaunchBlocked:
+            expected_profile = None
+        context_identity = _launcher_context_identity(
+            secretary_task_id=getattr(request, "task_id", None),
+            plan_identity=getattr(request, "plan_identity", None),
+        )
         resolved_session, resolved_pane, resolution = _resolve_target_selector(
             request.worktree,
             request.session,
@@ -703,8 +718,13 @@ def _prepare_herdr_target(
             herdr,
             executor="codex",
             env=env,
+            expected_profile=expected_profile,
+            context_identity=context_identity,
+            reuse_allowed=True,
         )
-    except (LaunchBlocked, TargetResolutionBlocked):
+    except TargetResolutionBlocked as exc:
+        if exc.resolution.get("status") != "not_found":
+            raise
         resolved_pane = None
         resolution = None
     if isinstance(resolved_pane, str) and resolved_pane.strip():

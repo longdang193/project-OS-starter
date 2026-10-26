@@ -59,6 +59,15 @@ lock acquisition have separate bounded budgets; a pane created without a
 verified post-split identity is reported as `created_unverified` and is not
 silently reused.
 
+Secretary target preparation bootstraps a workspace only after target
+resolution explicitly reports `not_found`. Transport timeouts, deadline
+expiry, identity uncertainty, and candidate rejection remain blocked so a
+side-effecting allocation is not layered on top of unresolved state.
+
+Codex reuse fingerprints selected MCP capability state. Changes to unrelated,
+unselected MCP inventory do not force a new window or pane when the selected
+servers, tools, configuration, profile, and context remain compatible.
+
 MCP servers that use environment-backed fields such as
 `bearer_token_env_var`, `env_http_headers`, structured `env_vars`, or
 `*_env_var` OAuth references are treated as incompatible with existing Codex
