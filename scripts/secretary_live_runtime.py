@@ -508,7 +508,12 @@ def _bound_task(request: SecretaryLaunchRequest) -> str:
     return request.task
 
 
-def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = False) -> list[str]:
+def build_launcher_command(
+    request: SecretaryLaunchRequest,
+    *,
+    dry_run: bool = False,
+    submission_gate_parent_attempt_id: str | None = None,
+) -> list[str]:
     launcher = Path(__file__).with_name("herdr_main_launcher.py")
     command = [
         sys.executable,
@@ -544,6 +549,11 @@ def build_launcher_command(request: SecretaryLaunchRequest, *, dry_run: bool = F
         command.append("--dry-run")
     if request.logical_operation_id is not None:
         command.extend(["--logical-operation-id", request.logical_operation_id])
+    if submission_gate_parent_attempt_id is not None:
+        command.extend([
+            "--submission-gate-parent-attempt-id",
+            submission_gate_parent_attempt_id,
+        ])
     return command
 
 
@@ -3829,7 +3839,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
             attempt_id=submission_attempt_id,
         )
         submission_prepared = True
-        launcher_command = build_launcher_command(launch_request)
+        launcher_command = build_launcher_command(
+            launch_request,
+            submission_gate_parent_attempt_id=submission_attempt_id,
+        )
         try:
             completed = subprocess.run(
                 launcher_command,

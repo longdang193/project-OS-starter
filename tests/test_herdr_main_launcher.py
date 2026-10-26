@@ -6238,12 +6238,12 @@ def test_pane_safety_rejects_existing_agent(monkeypatch: pytest.MonkeyPatch, tmp
         LAUNCHER._herdr_pane(tmp_path, "session", "p1", "herdr")
 
 
-def test_context_identity_prefers_existing_task_then_plan_then_assignment() -> None:
+def test_context_identity_composes_available_task_plan_and_assignment() -> None:
     assert LAUNCHER._stable_context_identity(
         secretary_task_id="task-1",
         plan_identity="plan-1",
         assignment_id="assignment-1",
-    ) == "task:task-1"
+    ) == "task:task-1|plan:plan-1|assignment:assignment-1"
     assert LAUNCHER._stable_context_identity(plan_identity="plan-1") == "plan:plan-1"
     assert LAUNCHER._stable_context_identity(assignment_id="assignment-1") == "assignment:assignment-1"
     assert LAUNCHER._stable_context_identity() is None
@@ -6622,6 +6622,18 @@ def test_pane_safety_rejects_active_or_profile_mismatched_pane(
     ))
     monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
     with pytest.raises(LAUNCHER.TargetCandidateRejected, match="profile mismatch"):
+        LAUNCHER._herdr_pane(
+            tmp_path, "session", "p1", "herdr",
+            expected_profile=profile, context_identity="task:subject-1",
+        )
+
+    responses = iter(_reusable_codex_pane_responses(
+        tmp_path=tmp_path,
+        agent_name=LAUNCHER._contextual_agent_name("high", "task:subject-1"),
+        model="combo-normal",
+    ))
+    monkeypatch.setattr(LAUNCHER, "_json_command", lambda command, **kwargs: next(responses))
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="profile identity mismatch"):
         LAUNCHER._herdr_pane(
             tmp_path, "session", "p1", "herdr",
             expected_profile=profile, context_identity="task:subject-1",
@@ -8298,3 +8310,64 @@ def test_submission_gate_does_not_reauthorize_after_submission(tmp_path: Path, m
     )
     assert second["state"] == "blocked"
     assert second["reason"] == "submission already recorded"
+
+
+def test_main_inherits_secretary_submission_gate_without_reclaiming(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry = {
+        "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+        "repository_identity": "repo/example",
+        "plan_identity": "plan/example",
+        "profile": "xhigh",
+        "model_provider": "9router",
+        "model": "combo-xhigh",
+        "grant_digest": "grant-digest",
+    }
+    binding = LAUNCHER._submission_gate_binding(registry)
+    operation_id = "operation-secretary-parent"
+    path = LAUNCHER._submission_gate_path(binding, logical_operation_id=operation_id)
+    LAUNCHER.claim_submission(
+        path,
+        operation_id=operation_id,
+        attempt_id="parent-attempt",
+        binding=binding,
+    )
+    LAUNCHER.prepare_submission(path, attempt_id="parent-attempt")
+    evidence = {
+        "registry_launcher": registry,
+        "codex": {"codex_home": str(tmp_path)},
+        "herdr": {
+            "executable": "herdr.exe",
+            "agent_name": "xhigh-main",
+            "session": "codex-probe",
+            "pane": "w1:p5",
+        },
+    }
+
+    def fake_resolve(**kwargs):
+        kwargs["submission_gate_callback"](binding)
+        return ["herdr", "start"], evidence
+
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", fake_resolve)
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 7, "", "start failed"),
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "xhigh", "--session", "codex-probe", "--pane", "w1:p5",
+            "--cwd", str(ROOT), "--expected-base", "HEAD", "--task", "assign lane",
+            "--logical-operation-id", operation_id,
+            "--submission-gate-parent-attempt-id", "parent-attempt",
+        ]
+    ) == 7
+    capsys.readouterr()
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["state"] == "prepared"
+    assert record["phase"] == "delivery"

@@ -639,6 +639,23 @@ between target selection and final pane verification, and reused-pane timeout
 settlement. The launcher, Secretary, and submission-gate suites pass before
 the full repository verification and post-push review.
 
+The post-push review of successor `2b0e2835939779532c3ced5421fb0b5c1bf2559a`
+also found a nested submission-gate ownership defect. Secretary had already
+claimed and prepared the logical operation, while its child launcher attempted
+to claim the same gate again with a new attempt ID. The child now receives an
+explicit parent attempt ID, validates the existing delivery-phase lease and
+binding through `inherit_submission`, and leaves settlement to Secretary.
+Focused proof exercises the real launcher entry point and confirms the parent
+gate remains owned in the delivery phase rather than self-blocking.
+
+The same review exposed two identity collisions that source and regression
+tests confirmed: context identity previously discarded plan and assignment
+fields when a task ID existed, and reused-pane checks inferred profile
+compatibility from model/process evidence without exact profile identity. The
+canonical context identity now composes all available task, plan, and
+assignment fields; reused agents must also carry the expected profile-name
+prefix. Agents lacking either identity remain ineligible for reuse.
+
 ## Completion Criteria
 
 The plan is ready for completion verification when:

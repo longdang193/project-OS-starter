@@ -93,6 +93,7 @@ try:
         derive_logical_operation_id,
         gate_path,
         prepare_submission,
+        inherit_submission,
         settle_submission,
     )
 except ModuleNotFoundError:
@@ -102,6 +103,7 @@ except ModuleNotFoundError:
         derive_logical_operation_id,
         gate_path,
         prepare_submission,
+        inherit_submission,
         settle_submission,
     )
 class LaunchBlocked(RuntimeError):
@@ -356,6 +358,24 @@ def _claim_submission_gate(
     logical_operation_id: str | None = None,
 ) -> dict[str, Any]:
     return claim_submission(
+        path,
+        operation_id=_submission_gate_operation_id(
+            binding,
+            logical_operation_id=logical_operation_id,
+        ),
+        attempt_id=attempt_id,
+        binding=binding,
+    )
+
+
+def _inherit_submission_gate(
+    path: Path,
+    binding: Mapping[str, str],
+    attempt_id: str,
+    *,
+    logical_operation_id: str | None = None,
+) -> dict[str, Any]:
+    return inherit_submission(
         path,
         operation_id=_submission_gate_operation_id(
             binding,
@@ -769,6 +789,8 @@ def _herdr_pane(
             raise TargetCandidateRejected(f"Pane agent is active: {pane}")
         if context_identity is None:
             raise TargetCandidateRejected(f"Pane context is required for agent reuse: {pane}")
+        if not _agent_profile_matches(agent_info.get("name"), expected_profile):
+            raise TargetCandidateRejected(f"Pane profile identity mismatch: {pane}")
         expected_marker = _context_marker(context_identity)
         actual_marker = _agent_context_marker(agent_info.get("name"))
         if expected_capability_digest is not None:
@@ -2688,15 +2710,17 @@ def _stable_context_identity(
     plan_identity: str | None = None,
     assignment_id: str | None = None,
 ) -> str | None:
-    """Select the strongest existing identity that can bind pane reuse."""
-    for label, value in (
-        ("task", secretary_task_id),
-        ("plan", plan_identity),
-        ("assignment", assignment_id),
-    ):
-        if isinstance(value, str) and value.strip():
-            return f"{label}:{value.strip()}"
-    return None
+    """Build the strongest available composite identity for pane reuse."""
+    values = tuple(
+        f"{label}:{value.strip()}"
+        for label, value in (
+            ("task", secretary_task_id),
+            ("plan", plan_identity),
+            ("assignment", assignment_id),
+        )
+        if isinstance(value, str) and value.strip()
+    )
+    return "|".join(values) if values else None
 
 
 def _context_marker(context_identity: str | None) -> str | None:
@@ -2743,6 +2767,13 @@ def _agent_binding_marker(agent_name: str | None) -> str | None:
         return None
     match = _HERDR_BINDING_MARKER_PATTERN.search(agent_name)
     return match.group(0)[1:] if match else None
+
+
+def _agent_profile_matches(agent_name: str | None, expected_profile: AgentProfile) -> bool:
+    if not isinstance(agent_name, str) or not agent_name.strip():
+        return False
+    prefix = f"{expected_profile.name}-main"
+    return agent_name == prefix or agent_name.startswith(f"{prefix}-")
 
 
 def _contextual_agent_name(
@@ -4282,6 +4313,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--secretary-plan-revision")
     parser.add_argument("--secretary-run-id")
     parser.add_argument("--logical-operation-id")
+    parser.add_argument("--submission-gate-parent-attempt-id")
     parser.add_argument("--task-sha256")
     parser.add_argument("--grant-digest")
     parser.add_argument("--prior-attempt-known", choices=["true", "false"], default="false")
@@ -4361,6 +4393,7 @@ def _main_body(args: argparse.Namespace) -> int:
             isinstance(gate_path_value, Path)
             and isinstance(gate_attempt_id, str)
             and gate_state == "prepared"
+            and args.submission_gate_parent_attempt_id is None
         ):
             fallback_state = (
                 "not_delivered"
@@ -4443,12 +4476,23 @@ def _main_body(args: argparse.Namespace) -> int:
         if not operation_id:
             raise LaunchBlocked("Coordinated launch requires a logical operation identity.")
         path = gate_path(operation_id)
-        gate_result = _claim_submission_gate(
-            path,
-            binding,
-            str(attempt_context["submission_gate_attempt_id"]),
-            logical_operation_id=operation_id,
-        )
+        parent_attempt_id = args.submission_gate_parent_attempt_id
+        if parent_attempt_id is not None:
+            gate_result = _inherit_submission_gate(
+                path,
+                binding,
+                parent_attempt_id,
+                logical_operation_id=operation_id,
+            )
+            attempt_context["submission_gate_attempt_id"] = parent_attempt_id
+            attempt_context["submission_gate_owned_by_parent"] = True
+        else:
+            gate_result = _claim_submission_gate(
+                path,
+                binding,
+                str(attempt_context["submission_gate_attempt_id"]),
+                logical_operation_id=operation_id,
+            )
         if gate_result.get("state") == "blocked":
             record = gate_result.get("record")
             prior_attempt = record.get("attempt_id") if isinstance(record, dict) else None
@@ -4461,9 +4505,13 @@ def _main_body(args: argparse.Namespace) -> int:
         submission_gate_file = path
         attempt_context["submission_gate_path"] = path
         attempt_context["submission_gate_state"] = "prepared"
-        attempt_context["submission_gate_phase"] = "admission"
+        attempt_context["submission_gate_phase"] = (
+            "delivery" if parent_attempt_id is not None else "admission"
+        )
 
     def prepare_model_submission() -> None:
+        if args.submission_gate_parent_attempt_id is not None:
+            return
         if attempt_context.get("submission_gate_state") != "prepared":
             return
         if submission_gate_file is None:
@@ -4478,6 +4526,8 @@ def _main_body(args: argparse.Namespace) -> int:
             gate_evidence.update({"phase": "delivery", "state": "prepared"})
 
     def settle_model_submission(state: str) -> None:
+        if args.submission_gate_parent_attempt_id is not None:
+            return
         if attempt_context.get("submission_gate_state") != "prepared":
             return
         if submission_gate_file is None:
@@ -4531,7 +4581,11 @@ def _main_body(args: argparse.Namespace) -> int:
                 else None
             ),
         )
-        attempt_id = str(attempt_context["submission_gate_attempt_id"])
+        attempt_id = (
+            uuid.uuid4().hex
+            if args.submission_gate_parent_attempt_id is not None
+            else str(attempt_context["submission_gate_attempt_id"])
+        )
         attempt_context["attempt_id"] = attempt_id
         if args.executor == "deepagents" and time.monotonic() >= attempt_deadline:
             raise LaunchBlocked("DeepAgents whole-attempt deadline expired during setup.")

@@ -2705,6 +2705,10 @@ def test_launch_request_does_not_require_caller_attempt_id() -> None:
 
 def test_launcher_command_keeps_machine_binding_out_of_worker_task() -> None:
     command = build_launcher_command(request())
+    inherited_command = build_launcher_command(
+        request(),
+        submission_gate_parent_attempt_id="parent-attempt",
+    )
 
     assert "--executor" in command
     assert command[command.index("--executor") + 1] == "codex"
@@ -2720,6 +2724,7 @@ def test_launcher_command_keeps_machine_binding_out_of_worker_task() -> None:
         assert command[command.index(option) + 1] == value
     assert "--secretary-attempt-id" not in command
     assert "--assignment-id" not in command
+    assert inherited_command[inherited_command.index("--submission-gate-parent-attempt-id") + 1] == "parent-attempt"
 
 
 def test_observe_submitted_codex_waits_for_idle_and_releases_owned_agent(

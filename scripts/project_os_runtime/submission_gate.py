@@ -208,6 +208,33 @@ def claim_submission(
         return {"state": "claimed", "record": record}
 
 
+def inherit_submission(
+    path: Path,
+    *,
+    operation_id: str,
+    attempt_id: str,
+    binding: Mapping[str, object],
+) -> dict[str, Any]:
+    operation_id = _text(operation_id, "logical_operation_id")
+    attempt_id = _text(attempt_id, "attempt_id")
+    normalized_binding = _binding(binding)
+    with _gate_lock(path):
+        existing = _read(path)
+        if existing is None:
+            raise SubmissionGateConflict("submission gate intent is missing")
+        if existing.get("logical_operation_id") != operation_id:
+            raise SubmissionGateConflict("submission gate logical operation mismatch")
+        if existing.get("binding") != normalized_binding:
+            raise SubmissionGateConflict("submission gate binding mismatch")
+        if existing.get("attempt_id") != attempt_id:
+            raise SubmissionGateConflict("submission gate parent attempt mismatch")
+        if existing.get("state") != "prepared" or _phase(existing) != "delivery":
+            raise SubmissionGateConflict("submission gate is not in the delivery phase")
+        if _lease_expired(existing):
+            raise SubmissionGateConflict("submission gate delivery lease expired")
+        return {"state": "inherited", "record": existing}
+
+
 def prepare_submission(
     path: Path,
     *,
