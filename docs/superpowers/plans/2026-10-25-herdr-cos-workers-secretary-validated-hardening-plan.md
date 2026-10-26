@@ -2,17 +2,19 @@
 artifact_type: plan
 template_id: implementation-plan
 contract_version: "1"
-status: completed
+status: active
 layer: change
 distribution_tier: project
 name: herdr-cos-workers-secretary-validated-hardening
 targets:
   - scripts/herdr_main_launcher.py
+  - scripts/mcp_selection.py
   - scripts/project_os_runtime/capabilities.py
   - scripts/project_os_runtime/results.py
   - scripts/benchmark_secretary_architecture.py
   - tests/test_herdr_main_launcher.py
   - tests/test_herdr_attempt_contract.py
+  - tests/test_mcp_selection.py
   - tests/test_evidence_release.py
   - tests/test_secretary_benchmark.py
   - tests/test_benchmark_operational_comparison.py
@@ -510,6 +512,22 @@ integration gaps and one provenance ambiguity:
   panes;
 - default live/trace placeholder rows are labelled `measurement_unavailable`
   with `unavailable` provenance instead of resembling observed samples.
+
+The final PR review at immutable head
+`1d522a2d42bb262479d0492a75cb03866cd70080` identified two additional reuse
+binding gaps. The corrective patch closes both without introducing a new
+runtime owner or configuration store:
+
+- selected MCP servers containing `${VAR}` references or non-empty `env_vars`
+  are classified as environment-dependent; their configuration digest is
+  withheld and Codex reuse is disabled unless equivalent runtime evidence is
+  available;
+- the Codex developer-instructions SHA-256 is included in the capability
+  binding digest, so profile instruction changes produce a new binding and
+  cannot reuse an agent started with stale instructions.
+
+Focused proof covers static versus environment-dependent MCP selection and
+binding changes caused only by developer-instruction changes.
 
 ## Completion Criteria
 

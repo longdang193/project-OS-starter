@@ -549,6 +549,24 @@ def test_selected_runtime_only_mcp_server_disables_reuse_without_configuration(t
     assert selection["server_configuration_digest"] is None
 
 
+def test_selected_environment_dependent_mcp_server_disables_reuse(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.selected]\n'
+        'url = "https://example.test/${MCP_ENDPOINT}"\n'
+        'headers = { Authorization = "${MCP_AUTH}" }\n'
+        'env_vars = ["MCP_TOKEN"]\n',
+        encoding="utf-8",
+    )
+
+    selection = LAUNCHER._codex_mcp_selection(tmp_path, codex_home, ["selected"])
+
+    assert selection["environment_dependent_servers"] == ("selected",)
+    assert selection["server_configuration_complete"] is False
+    assert selection["server_configuration_digest"] is None
+
+
 def test_mcp_digest_ignores_unselected_server_definition_changes(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()

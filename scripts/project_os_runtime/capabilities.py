@@ -48,6 +48,8 @@ def capability_digest(value: object) -> str:
 def capability_binding_digest(
     local_capabilities: object,
     mcp_selection: object,
+    *,
+    developer_instructions_sha256: str | None = None,
 ) -> str:
     if not isinstance(mcp_selection, Mapping):
         raise AttemptContractError("MCP capability evidence must be a mapping")
@@ -79,9 +81,17 @@ def capability_binding_digest(
                 "MCP capability evidence field `server_configuration_digest` must be a lowercase SHA-256 value"
             )
         normalized_mcp["server_configuration_digest"] = configuration_digest
+    if developer_instructions_sha256 is not None:
+        if not isinstance(developer_instructions_sha256, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", developer_instructions_sha256
+        ):
+            raise AttemptContractError(
+                "developer_instructions_sha256 must be a lowercase SHA-256 value"
+            )
     payload = {
         "local_capabilities": effective_local_capabilities(local_capabilities),
         "mcp_selection": normalized_mcp,
+        "developer_instructions_sha256": developer_instructions_sha256,
     }
     return hashlib.sha256(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")

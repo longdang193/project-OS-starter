@@ -31,6 +31,7 @@ try:
         McpSelectionError,
         load_mcp_capabilities,
         mcp_server_configuration_digest,
+        mcp_server_configuration_environment_dependencies,
         normalize_mcp_selection,
     )
 except ModuleNotFoundError:
@@ -38,6 +39,7 @@ except ModuleNotFoundError:
         McpSelectionError,
         load_mcp_capabilities,
         mcp_server_configuration_digest,
+        mcp_server_configuration_environment_dependencies,
         normalize_mcp_selection,
     )
 try:
@@ -560,19 +562,26 @@ def _codex_mcp_selection(
     except McpSelectionError as exc:
         raise LaunchBlocked(str(exc)) from exc
     selected_runtime_only = set(selection["effective_servers"]) & runtime_only_servers
+    environment_dependent_servers = mcp_server_configuration_environment_dependencies(
+        *configs,
+        selected_server_names=selection["effective_servers"],
+    )
     return {
         **selection,
         "server_names": tuple(capabilities),
         "runtime_only_servers": tuple(sorted(runtime_only_servers)),
+        "environment_dependent_servers": environment_dependent_servers,
         "server_configuration_digest": (
             None
-            if selected_runtime_only
+            if selected_runtime_only or environment_dependent_servers
             else mcp_server_configuration_digest(
                 *configs,
                 selected_server_names=selection["effective_servers"],
             )
         ),
-        "server_configuration_complete": not selected_runtime_only,
+        "server_configuration_complete": not (
+            selected_runtime_only or environment_dependent_servers
+        ),
     }
 
 
@@ -3954,6 +3963,9 @@ def resolve_launch(
             effective_capability_binding_digest = capability_binding_digest(
                 effective_local_capabilities,
                 codex_mcp_selection,
+                developer_instructions_sha256=_sha256_text(
+                    selected.developer_instructions
+                ),
             )
             capability_reuse_allowed = bool(
                 codex_mcp_selection.get("server_configuration_complete", True)
