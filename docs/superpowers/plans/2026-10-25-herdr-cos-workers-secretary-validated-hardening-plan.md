@@ -139,6 +139,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 | P1 | Confirmed DeepAgents task results are downgraded when the lifecycle receipt is missing. | `_classify_deepagents_outcome()` initializes `unknown` and promotes success/failure only inside the confirmed-receipt branch. A valid structured task result can therefore become `unknown` and wait through receipt grace. | Separate semantic task-result classification from receipt/cleanup settlement; retain reconciliation when lifecycle proof is incomplete. | `GPT-5.6-Sol`, `GPT-6` |
 | P1 | Codex asynchronous submission reports `reconciliation_required=false` without observing execution or task result. | The active prompt-submit branch sets `status=submitted`, unknown execution/result/cleanup, exit `0`, and an explicit false override; completion helpers are not assigned in that path. | Mark submitted-only results as reconciliation-required; remove or explicitly isolate unreachable completion handling. | `GPT-5.6-Sol`, independently confirmed by `GPT-6` |
 | P1 | Reused Codex agents do not prove effective MCP capability compatibility. | Reuse checks identity/profile/provider/model and idle state, but the existing process keeps its startup MCP configuration while the next assignment may request a different selection. | Add a stable capability/configuration fingerprint to reuse eligibility; preserve compatible reuse and allocate a replacement otherwise. | `GPT-6` |
+| P1 | Settled DeepAgents result artifacts can be deleted before the final assignment handoff is durable. | `emit_assignment()` settles and removes the raw result directory before the caller successfully writes the final structured assignment to stdout, leaving a loss window if output publication fails. | Split validation from deletion; preserve validated artifacts until the assignment handoff succeeds, then perform the removal in an outer finalizer. | `GPT-6` |
 | P1 | A nonzero DeepAgents pane command exit can be classified as `not_delivered` before worker evidence is inspected. | `_main_body()` returns on command nonzero before receipt/task-result observation, conflating transport/start failure with worker execution failure. | Inspect existing evidence first and distinguish transport, start, execution, and uncertain delivery states. | `GPT-6` |
 | P2 | Auto-pane lock acquisition consumes the same one-second reserve needed for protected allocation. | The allocation deadline starts before `_allocation_lock()` and all post-lock snapshot/split/validation calls use the remaining time. Contention can leave no allocation budget. | Give lock acquisition and post-lock allocation separate bounded budgets and represent `created_unverified` explicitly. | `GPT-5.6-Sol`, `GPT-6` |
 | P2 | Candidate discovery and Codex reuse perform redundant pane checks and subprocess calls. | Discovery inspects every candidate before preference ordering; launch preparation and the locked dispatch path re-inspect the selected pane, with an extra locked callback on reuse. | Order candidates first, carry the inspected state forward, and retain exactly one authoritative ownership-locked verification/submission boundary. | `GPT-5.6-Sol`, `GPT-6` |
@@ -258,6 +259,9 @@ latency and resource evidence without claiming an improvement absent a baseline.
   evidence and the selected MCP capability/configuration evidence; it must not
   hash local capabilities alone. If either side lacks stable evidence, reuse
   is ineligible and the diagnostics must report the missing-evidence reason.
+  Carry that eligibility as an explicit boolean through discovery, allocation,
+  and the ownership-locked dispatch check; a missing digest must never
+  silently fall back to context-only reuse.
 
 **Authority:**
 - Preauthorized local actions: edit the listed Codex reuse/submission helpers and their focused contract tests/docs; remove only demonstrably unreachable dispatch code.
@@ -266,14 +270,15 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 **Steps:**
 - [x] Step 1: Trace the active Codex dispatch path and record which completion helpers have external tests/callers before deleting or relocating branches.
-- [x] Step 2: Define the canonical combined effective capability fingerprint in `scripts/project_os_runtime/capabilities.py`, including normalized local capabilities, selected MCP configuration, and fail-closed behavior when stable evidence is unavailable; expose the digest in stable reusable-agent evidence, then include it in pane reuse eligibility and diagnostics.
+- [x] Step 2: Define the canonical combined effective capability fingerprint in `scripts/project_os_runtime/capabilities.py`, including normalized local capabilities, selected MCP configuration, and fail-closed behavior when stable evidence is unavailable; expose the digest and explicit reuse eligibility in stable reusable-agent evidence, then carry both through pane discovery, allocation, ownership-locked dispatch, and diagnostics.
 - [x] Step 3: Set `reconciliation_required=true`, unknown execution/task/cleanup, and a non-success lifecycle state for submitted-only asynchronous results; keep confirmed completion classification separate.
 - [x] Step 4: Remove unreachable completion assignments/branches only after preserving helper APIs used by tests or the Secretary observer path; add mismatch, compatible-reuse, and submitted-only regression tests.
 
 **Verification:**
 - [x] `py -m pytest -q tests/test_herdr_main_launcher.py -k "codex_completion or codex_prompt_result or pane_safety or reused_codex or mcp_selection"`
 - [x] `py -m pytest -q tests/test_secretary_live_runtime.py -k "observe_submitted_codex or runtime_snapshot"`
-- Expected: same-capability idle agents reuse; mismatched capability fingerprints do not; submitted-only responses require reconciliation; observer helpers remain testable.
+ - Expected: same-capability idle agents reuse; mismatched capability fingerprints do not; submitted-only responses require reconciliation; observer helpers remain testable.
+ - Expected: runtime-only or otherwise unfingerprintable MCP selections reject every existing Codex agent during discovery and the ownership-locked check, forcing replacement allocation instead of context-only reuse.
 
 **Exit Criteria:**
 - Codex lifecycle state and effective capability state are truthful at the active dispatch boundary without adding a new process or coordinator.
@@ -357,7 +362,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
   can validate provenance and unavailable-metric handling.
 
 **Specification Coverage:**
-- Evidence is retained until durable settlement; unresolved evidence remains
+- Evidence is retained until durable downstream handoff and settlement; unresolved evidence remains
   recoverable; deterministic fixtures do not masquerade as latency measurements.
 
 **Required Skills:**
@@ -380,7 +385,7 @@ latency and resource evidence without claiming an improvement absent a baseline.
 
 **Steps:**
 - [x] Step 1: Define settled, unresolved, and ambiguous artifact states and the owner of each directory. Publication is durable only after `publish_task_result()` in `scripts/project_os_runtime/results.py` succeeds and the assignment/attempt evidence binds that result to the task; preserve unresolved directories under explicit recovery retention.
-- [x] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate and settlement proof succeed; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. All publication, ownership, and identity gates must complete before deletion. Add bounded age/count cleanup only for explicitly prunable post-settlement cleanup failures; unresolved publication or lifecycle evidence remains retained without automatic eviction.
+- [x] Step 2: Remove or archive only task-owned `herdr-result-*` directories after the canonical publication predicate, settlement proof, and successful downstream assignment handoff; already absent is idempotent success, foreign or identity-mismatched directories are preserved, ambiguous publication is preserved, and no deletion rollback is assumed. Keep pre-handoff validation separate from deletion, and run deletion only from an outer finalizer after stdout publication succeeds. Add bounded age/count cleanup only for explicitly prunable post-settlement cleanup failures; unresolved publication, lifecycle, or handoff evidence remains retained without automatic eviction.
 - [x] Step 3: Keep `contract` mode unchanged and add a distinct live/trace mode that records real latency, subprocess count, pane allocation/reuse, and reconciliation frequency only when an observed launcher/test-double runner is supplied; the default CLI path reports unavailable rather than measuring an identical contract subprocess for both architectures.
 - [x] Step 4: Feed only real samples into the existing operational-comparison schema; mark missing metrics unavailable and document that the target owner must set any pass threshold after baseline capture.
 

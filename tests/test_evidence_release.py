@@ -173,6 +173,46 @@ def test_settled_result_artifacts_are_removed_after_identity_and_lifecycle_proof
     assert not directory.exists()
 
 
+def test_settled_result_artifacts_wait_for_downstream_handoff(tmp_path: Path) -> None:
+    directory, _, task_result = _result_artifact(tmp_path)
+
+    pending = settle_result_artifacts(
+        directory,
+        attempt_id="attempt-1",
+        assignment_id="assignment-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+        receipt={"state": "confirmed"},
+        task_result=task_result,
+        lifecycle_settled=True,
+        no_continuation=True,
+        temp_root=tmp_path,
+        now=100.0,
+        handoff_confirmed=False,
+    )
+
+    assert pending["state"] == "pending_handoff"
+    assert directory.exists()
+
+    settled = settle_result_artifacts(
+        directory,
+        attempt_id="attempt-1",
+        assignment_id="assignment-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+        receipt={"state": "confirmed"},
+        task_result=task_result,
+        lifecycle_settled=True,
+        no_continuation=True,
+        temp_root=tmp_path,
+        now=100.0,
+        handoff_confirmed=True,
+    )
+
+    assert settled["state"] == "removed"
+    assert not directory.exists()
+
+
 def test_absent_result_artifacts_are_idempotently_settled(tmp_path: Path) -> None:
     directory = tmp_path / "herdr-result-attempt-1-already-absent"
 

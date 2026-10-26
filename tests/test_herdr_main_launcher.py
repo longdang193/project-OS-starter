@@ -3108,6 +3108,35 @@ def test_pane_ownership_callback_receives_verified_pane_state(
     assert observed == [pane_state]
 
 
+def test_pane_ownership_forwards_reuse_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_herdr_pane(*args: object, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"reuse": False}
+
+    monkeypatch.setattr(LAUNCHER, "_herdr_pane", fake_herdr_pane)
+
+    LAUNCHER._run_with_pane_ownership(
+        tmp_path,
+        "session",
+        "pane",
+        "herdr.exe",
+        "codex",
+        ["herdr.exe"],
+        {},
+        1.0,
+        expected_capability_digest=None,
+        reuse_allowed=False,
+        execute_command=False,
+    )
+
+    assert captured["reuse_allowed"] is False
+
+
 def test_target_selector_uses_default_session_for_workspace_qualified_pane(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6114,6 +6143,13 @@ def test_reuse_capability_digest_is_not_forwarded_when_binding_is_incomplete() -
     ) is None
 
 
+def test_capability_reuse_allowed_fails_closed_for_malformed_registry_values() -> None:
+    assert LAUNCHER._capability_reuse_allowed({}) is True
+    assert LAUNCHER._capability_reuse_allowed({"capability_reuse_allowed": True}) is True
+    assert LAUNCHER._capability_reuse_allowed({"capability_reuse_allowed": False}) is False
+    assert LAUNCHER._capability_reuse_allowed({"capability_reuse_allowed": "false"}) is False
+
+
 def test_deepagents_classification_does_not_preserve_command_exit_over_terminal_result() -> None:
     result = LAUNCHER._classify_deepagents_outcome(
         delivery={"state": "delivery_failed", "certainty": "not_delivered"},
@@ -6276,6 +6312,41 @@ def test_pane_safety_reuses_same_capability_binding(
     )
 
     assert result["reuse"] is True
+
+
+def test_pane_safety_rejects_reuse_without_complete_capability_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile = LAUNCHER.AgentProfile(
+        Path("high.toml"), "high", "9router", "combo-high", None, "test", "test",
+    )
+    panes = [{
+        "pane_id": "p1",
+        "cwd": str(tmp_path),
+        "agent": "codex",
+        "agent_status": "idle",
+    }]
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_json_command",
+        lambda command, **kwargs: commands.append(command) or {"result": {}},
+    )
+
+    with pytest.raises(LAUNCHER.TargetCandidateRejected, match="complete capability evidence"):
+        LAUNCHER._herdr_pane(
+            tmp_path,
+            "session",
+            "p1",
+            "herdr",
+            panes=panes,
+            expected_profile=profile,
+            context_identity="task:subject-1",
+            reuse_allowed=False,
+        )
+
+    assert commands == []
 
 
 @pytest.mark.parametrize(

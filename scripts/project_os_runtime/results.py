@@ -490,6 +490,7 @@ def settle_result_artifacts(
     no_continuation: bool,
     temp_root: Path | None = None,
     now: float | None = None,
+    handoff_confirmed: bool = True,
 ) -> dict[str, Any]:
     if directory is None:
         return {"state": "not_applicable", "reason": "result directory unavailable"}
@@ -563,6 +564,12 @@ def settle_result_artifacts(
         )
         prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
         return {"state": "preserved", "reason": reason, "path": str(owned)}
+    if not handoff_confirmed:
+        return {
+            "state": "pending_handoff",
+            "reason": "durable publication and settlement proven; downstream handoff pending",
+            "path": str(owned),
+        }
     try:
         shutil.rmtree(owned)
     except OSError as exc:

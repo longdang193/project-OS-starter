@@ -661,6 +661,7 @@ def _herdr_pane(
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
     expected_capability_digest: str | None = None,
+    reuse_allowed: bool = True,
     candidate_local: bool = False,
     candidate_deadline: float | None = None,
     agent_cache: dict[str, list[Any]] | None = None,
@@ -699,6 +700,10 @@ def _herdr_pane(
     if existing_agent:
         if executor != "codex" or expected_profile is None:
             raise TargetCandidateRejected(f"Pane already has agent state: {pane}")
+        if not reuse_allowed:
+            raise TargetCandidateRejected(
+                f"Pane reuse is not allowed without complete capability evidence: {pane}"
+            )
         agent_info = _agent_for_pane(
             herdr,
             session,
@@ -829,6 +834,7 @@ def _inspect_auto_candidate(
     expected_profile: AgentProfile | None,
     context_identity: str | None,
     expected_capability_digest: str | None = None,
+    reuse_allowed: bool = True,
     candidate_deadline: float | None,
     agent_cache: dict[str, list[Any]] | None,
     dry_run: bool = False,
@@ -845,6 +851,7 @@ def _inspect_auto_candidate(
         expected_profile=expected_profile,
         context_identity=context_identity,
         expected_capability_digest=expected_capability_digest,
+        reuse_allowed=reuse_allowed,
         candidate_local=True,
         candidate_deadline=candidate_deadline,
         agent_cache=agent_cache,
@@ -952,6 +959,7 @@ def _run_with_pane_ownership(
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
     expected_capability_digest: str | None = None,
+    reuse_allowed: bool = True,
     callback: Callable[[dict[str, Any] | None], Any] | None = None,
 ) -> Any:
     with _pane_ownership_lock(cwd, session, pane):
@@ -967,6 +975,7 @@ def _run_with_pane_ownership(
                 expected_profile=expected_profile,
                 context_identity=context_identity,
                 expected_capability_digest=expected_capability_digest,
+                reuse_allowed=reuse_allowed,
             )
         if callback is not None:
             return callback(pane_state)
@@ -1009,6 +1018,7 @@ def _resolve_target_selector(
     expected_profile: AgentProfile | None = None,
     context_identity: str | None = None,
     expected_capability_digest: str | None = None,
+    reuse_allowed: bool = True,
     dry_run: bool = False,
 ) -> tuple[str, str | None, dict[str, Any]]:
     if session == "auto" and pane != "auto":
@@ -1165,6 +1175,7 @@ def _resolve_target_selector(
                 expected_profile=expected_profile,
                 context_identity=context_identity,
                 expected_capability_digest=expected_capability_digest,
+                reuse_allowed=reuse_allowed,
                 candidate_deadline=deadline - _TARGET_ALLOCATION_RESERVE_SECONDS,
                 agent_cache=candidate_agents,
                 dry_run=dry_run,
@@ -1272,6 +1283,7 @@ def _resolve_target_selector(
                                 expected_profile=expected_profile,
                                 context_identity=context_identity,
                                 expected_capability_digest=expected_capability_digest,
+                                reuse_allowed=reuse_allowed,
                             )
                             break
                         except PaneProcessInfoIncomplete:
@@ -1441,6 +1453,7 @@ def _resolve_target_selector(
                             expected_profile=expected_profile,
                             context_identity=context_identity,
                             expected_capability_digest=expected_capability_digest,
+                            reuse_allowed=reuse_allowed,
                             candidate_deadline=allocation_deadline,
                             agent_cache=refresh_agent_cache,
                             dry_run=dry_run,
@@ -2122,6 +2135,7 @@ def _settle_deepagents_artifacts(
     task_result_evidence: Mapping[str, Any] | None,
     lifecycle_settled: bool,
     no_continuation: bool,
+    handoff_confirmed: bool = True,
 ) -> dict[str, Any]:
     return settle_result_artifacts(
         directory,
@@ -2133,6 +2147,7 @@ def _settle_deepagents_artifacts(
         task_result=task_result_evidence,
         lifecycle_settled=lifecycle_settled,
         no_continuation=no_continuation,
+        handoff_confirmed=handoff_confirmed,
     )
 
 
@@ -2710,10 +2725,16 @@ def _codex_watchdog_seconds(evidence: dict[str, Any]) -> int | None:
 
 
 def _reuse_capability_digest(registry_launcher: Mapping[str, Any]) -> str | None:
-    if registry_launcher.get("capability_reuse_allowed", True) is False:
+    if not _capability_reuse_allowed(registry_launcher):
         return None
     digest = registry_launcher.get("capability_binding_digest")
     return digest if isinstance(digest, str) and digest else None
+
+
+def _capability_reuse_allowed(registry_launcher: Mapping[str, Any]) -> bool:
+    if "capability_reuse_allowed" not in registry_launcher:
+        return True
+    return registry_launcher.get("capability_reuse_allowed") is True
 
 
 def _shell_process_names(executor: str) -> set[str]:
@@ -3916,6 +3937,7 @@ def resolve_launch(
     codex_mcp_selection: dict[str, tuple[str, ...]] | None = None
     effective_capability_binding_digest: str | None = None
     reuse_capability_binding_digest: str | None = None
+    capability_reuse_allowed = True
     if executor == "codex":
         runtime_mcp_servers = _codex_runtime_mcp_servers(
             str(codex),
@@ -3933,7 +3955,10 @@ def resolve_launch(
                 effective_local_capabilities,
                 codex_mcp_selection,
             )
-            if codex_mcp_selection.get("server_configuration_complete", True):
+            capability_reuse_allowed = bool(
+                codex_mcp_selection.get("server_configuration_complete", True)
+            )
+            if capability_reuse_allowed:
                 reuse_capability_binding_digest = effective_capability_binding_digest
         except AttemptContractError as exc:
             raise LaunchBlocked(str(exc)) from exc
@@ -3951,6 +3976,7 @@ def resolve_launch(
         expected_profile=selected,
         context_identity=context_identity,
         expected_capability_digest=reuse_capability_binding_digest,
+        reuse_allowed=capability_reuse_allowed,
         dry_run=dry_run,
     )
     _record_performance_phase(performance, "target_discovery", target_started)
@@ -3968,6 +3994,7 @@ def resolve_launch(
                 expected_profile=selected,
                 context_identity=context_identity,
                 expected_capability_digest=reuse_capability_binding_digest,
+                reuse_allowed=capability_reuse_allowed,
                 dry_run=dry_run,
             )
     elif not dry_run:
@@ -4099,7 +4126,7 @@ def resolve_launch(
             "mcp_selection_requested": list(mcp_select or []),
             "mcp_selection": dict(codex_mcp_selection or {}) if executor == "codex" else None,
             "capability_binding_digest": effective_capability_binding_digest,
-            "capability_reuse_allowed": reuse_capability_binding_digest is not None,
+            "capability_reuse_allowed": capability_reuse_allowed,
             "local_capabilities": {
                 "requested": requested_local_capabilities,
                 "effective": effective_local_capabilities,
@@ -4424,6 +4451,8 @@ def _main_body(args: argparse.Namespace) -> int:
             gate_evidence.update({"phase": "settled", "state": state})
 
     attempt_id: str | None = None
+    pending_result_artifact_settlement: dict[str, Any] | None = None
+    handoff_published = False
     try:
         command, evidence = resolve_launch(
             profile_name=args.profile,
@@ -4560,6 +4589,7 @@ def _main_body(args: argparse.Namespace) -> int:
             )
 
         def emit_assignment(payload: dict[str, Any]) -> dict[str, Any]:
+            nonlocal pending_result_artifact_settlement
             assignment = payload.get("assignment", payload)
             if not isinstance(assignment, dict):
                 raise LaunchBlocked("Assignment evidence must be an object.")
@@ -4700,28 +4730,32 @@ def _main_body(args: argparse.Namespace) -> int:
                         not isinstance(assignment.get("retirement"), Mapping)
                         or assignment["retirement"].get("state") == "removed"
                     )
-                    assignment["result_artifacts"] = _settle_deepagents_artifacts(
-                        result_artifact_dir,
-                        attempt_id=str(assignment.get("attempt_id", attempt_id)),
-                        assignment_id=(
+                    pending_result_artifact_settlement = {
+                        "directory": result_artifact_dir,
+                        "attempt_id": str(assignment.get("attempt_id", attempt_id)),
+                        "assignment_id": (
                             str(assignment.get("assignment_id", args.assignment_id))
                             if assignment.get("assignment_id", args.assignment_id) is not None
                             else None
                         ),
-                        task_sha256=(
+                        "task_sha256": (
                             str(assignment.get("task_sha256", args.task_sha256))
                             if assignment.get("task_sha256", args.task_sha256) is not None
                             else None
                         ),
-                        grant_digest_value=(
+                        "grant_digest_value": (
                             str(assignment.get("grant_digest", args.grant_digest))
                             if assignment.get("grant_digest", args.grant_digest) is not None
                             else None
                         ),
-                        receipt=receipt,
-                        task_result_evidence=task_result_evidence,
-                        lifecycle_settled=lifecycle_settled and retirement_settled,
-                        no_continuation=task_result.get("continuation_eligible") is False,
+                        "receipt": receipt,
+                        "task_result_evidence": task_result_evidence,
+                        "lifecycle_settled": lifecycle_settled and retirement_settled,
+                        "no_continuation": task_result.get("continuation_eligible") is False,
+                    }
+                    assignment["result_artifacts"] = _settle_deepagents_artifacts(
+                        handoff_confirmed=False,
+                        **pending_result_artifact_settlement,
                     )
             legacy = {
                 key: value
@@ -4776,6 +4810,12 @@ def _main_body(args: argparse.Namespace) -> int:
                 }
             )
             return result
+
+        def publish_assignment(assignment: dict[str, Any]) -> dict[str, Any]:
+            nonlocal handoff_published
+            print(json.dumps(assignment, sort_keys=True), flush=True)
+            handoff_published = True
+            return assignment
 
         registry_evidence["attempt_id"] = attempt_id
         observation_evidence["attempt_id"] = attempt_id
@@ -4974,6 +5014,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         expected_profile=dispatch_profile,
                         context_identity=dispatch_context_identity,
                         expected_capability_digest=_reuse_capability_digest(registry_launcher),
+                        reuse_allowed=_capability_reuse_allowed(registry_launcher),
                         callback=dispatch_verified,
                     )
                     if (
@@ -4992,7 +5033,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 if attempt_context.get("submission_gate_state") == "prepared":
                     settle_model_submission("delivery_uncertain")
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
                         "attempt_id": attempt_id,
@@ -5009,7 +5050,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }), sort_keys=True))
+                }))
                 return 2
             attempt_context.update(
                 {
@@ -5043,7 +5084,7 @@ def _main_body(args: argparse.Namespace) -> int:
             record_phase("retirement", retirement_started, attempt_id=attempt_id)
             registry_launcher["failed_start_reconciliation"] = reconciliation
             if reconciliation["state"] == "uncertain":
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": evidence["herdr"]["agent_name"],
                         "attempt_id": attempt_id,
@@ -5061,7 +5102,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }), sort_keys=True))
+                }))
                 return 2
             if reconciliation["state"] == "retired":
                 resolved_session, resolved_pane, target_resolution = _resolve_target_selector(
@@ -5076,6 +5117,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_capability_digest=registry_launcher.get(
                         "capability_binding_digest"
                     ),
+                    reuse_allowed=_capability_reuse_allowed(registry_launcher),
                 )
                 pane_state = _herdr_pane(
                     args.cwd,
@@ -5089,6 +5131,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_capability_digest=registry_launcher.get(
                         "capability_binding_digest"
                     ),
+                    reuse_allowed=_capability_reuse_allowed(registry_launcher),
                 )
                 evidence["herdr"].update(
                     {
@@ -5169,7 +5212,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "task_sha256": assignment_task_sha256,
                 }
             })
-            print(json.dumps(assignment_result, sort_keys=True))
+            publish_assignment(assignment_result)
             if args.executor == "deepagents":
                 assignment = assignment_result["assignment"]
                 if assignment.get("failure_kind") != "command_exit":
@@ -5265,6 +5308,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     expected_profile=dispatch_profile,
                     context_identity=dispatch_context_identity,
                         expected_capability_digest=_reuse_capability_digest(registry_launcher),
+                        reuse_allowed=_capability_reuse_allowed(registry_launcher),
                     callback=lambda _pane_state: submit_prompt(),
                 )
             elif not codex_prompt_submitted:
@@ -5278,7 +5322,7 @@ def _main_body(args: argparse.Namespace) -> int:
             if transport_timeout is not None:
                 settle_model_submission("delivery_uncertain")
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
@@ -5296,7 +5340,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "status": "uncertain",
                         "task_sha256": assignment_task_sha256,
                     }
-                }), sort_keys=True))
+                }))
                 return 2
             if assignment_result is None:
                 raise LaunchBlocked("Codex assignment produced no result.")
@@ -5317,7 +5361,7 @@ def _main_body(args: argparse.Namespace) -> int:
             if completion_snapshot is not None and completion_classification is not None:
                 if completion_classification["status"] == "unverified":
                     record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                    print(json.dumps(emit_assignment({
+                    publish_assignment(emit_assignment({
                         "assignment": {
                             "agent_name": agent_name,
                             "attempt_id": attempt_id,
@@ -5343,10 +5387,10 @@ def _main_body(args: argparse.Namespace) -> int:
                             "task_sha256": assignment_task_sha256,
                             "exit_code": completion_classification["launcher_exit_code"],
                         }
-                    }), sort_keys=True))
+                    }))
                     return int(completion_classification["launcher_exit_code"])
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "attempt_id": attempt_id,
@@ -5372,11 +5416,11 @@ def _main_body(args: argparse.Namespace) -> int:
                         "task_sha256": assignment_task_sha256,
                         "exit_code": completion_classification["launcher_exit_code"],
                     }
-                }), sort_keys=True))
+                }))
                 return int(completion_classification["launcher_exit_code"])
             if prompt_result["submission"] == "unknown":
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
@@ -5395,11 +5439,11 @@ def _main_body(args: argparse.Namespace) -> int:
                         "submission": "unknown",
                         "task_sha256": assignment_task_sha256,
                     }
-                }), sort_keys=True))
+                }))
                 return assignment_result.returncode
             if prompt_result["submission"] == "rejected":
                 record_phase("delivery", attempt_started, attempt_id=attempt_id)
-                print(json.dumps(emit_assignment({
+                publish_assignment(emit_assignment({
                     "assignment": {
                         "agent_name": agent_name,
                         "pre_submit_completion_seq": evidence["herdr"].get("pre_submit_completion_seq"),
@@ -5418,7 +5462,7 @@ def _main_body(args: argparse.Namespace) -> int:
                         "submission": "rejected",
                         "task_sha256": assignment_task_sha256,
                     }
-                }), sort_keys=True))
+                }))
                 return assignment_result.returncode
             execution = {
                 "state": "unknown",
@@ -5431,7 +5475,7 @@ def _main_body(args: argparse.Namespace) -> int:
             observation["pane"] = resolved_pane
             observation["agent_name"] = agent_name
             record_phase("delivery", attempt_started, attempt_id=attempt_id)
-            print(json.dumps(emit_assignment({
+            publish_assignment(emit_assignment({
                 "assignment": {
                     "agent_name": agent_name,
                     "attempt_id": attempt_id,
@@ -5455,7 +5499,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "submission": "acknowledged",
                     "task_sha256": assignment_task_sha256,
                 }
-            }), sort_keys=True))
+            }))
             return 0
         if args.executor == "deepagents":
             settle_model_submission("submitted")
@@ -5478,7 +5522,7 @@ def _main_body(args: argparse.Namespace) -> int:
                     "task_sha256": assignment_task_sha256,
                 }
             })
-            print(json.dumps(assignment_result, sort_keys=True))
+            publish_assignment(assignment_result)
             assignment = assignment_result["assignment"]
             if assignment.get("failure_kind") == "command_exit":
                 return result.returncode
@@ -5538,7 +5582,7 @@ def _main_body(args: argparse.Namespace) -> int:
                 "task_sha256": assignment_task_sha256,
             }
         })
-        print(json.dumps(assignment_result, sort_keys=True))
+        publish_assignment(assignment_result)
         return int(assignment_result["assignment"]["launcher_exit_code"])
     except TargetResolutionBlocked as exc:
         print(f"TARGET_RESOLUTION: {exc}", file=sys.stderr)
@@ -5546,6 +5590,12 @@ def _main_body(args: argparse.Namespace) -> int:
     except LaunchBlocked as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return emit_failure(str(exc))
+    finally:
+        if handoff_published and pending_result_artifact_settlement is not None:
+            _settle_deepagents_artifacts(
+                handoff_confirmed=True,
+                **pending_result_artifact_settlement,
+            )
 
 
 
