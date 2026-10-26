@@ -614,6 +614,31 @@ changed without a confirmed contract. The duplicate-lock observation remains
 an optimization candidate, not a defect: the final ownership-locked
 verification is safety-critical and was preserved.
 
+## Post-Review Hardening — 2026-10-26 — implementation successor
+
+The final model review identified three confirmed Secretary defects and one
+shared-ownership correction. The fixes stay within the existing launcher and
+Secretary ownership boundaries:
+
+- `_prepare_herdr_target` now propagates `_launcher_profile` failures before
+  Herdr server startup or target allocation. Invalid or missing profiles can
+  no longer trigger workspace discovery or bootstrapping.
+- The canonical launcher capability-binding computation is shared through
+  `_codex_capability_binding`. Secretary passes its digest and reuse decision
+  into both `_resolve_target_selector` and `_verify_herdr_pane`, so compatible
+  capability-bound agents survive final verification while mismatches remain
+  rejected.
+- Submission settlement now uses the delivery phase as the authority. Once
+  `prepare_submission` succeeds, an unsuccessful launcher attempt settles as
+  `delivery_uncertain` even when an existing pane was reused and no new
+  workspace ID exists; only an unprepared submission settles as
+  `not_delivered`.
+
+Focused regressions cover profile-failure ordering, identity/digest parity
+between target selection and final pane verification, and reused-pane timeout
+settlement. The launcher, Secretary, and submission-gate suites pass before
+the full repository verification and post-push review.
+
 ## Completion Criteria
 
 The plan is ready for completion verification when:

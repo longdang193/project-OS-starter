@@ -21,6 +21,7 @@ from scripts.secretary_live_runtime import (
     _redact_semantic_content,
     _release_codex_agent,
     _snapshot_result_content,
+    _submission_settlement_state,
     _smoke_receipt,
     build_launcher_command,
     _reconcile_native_artifacts,
@@ -36,6 +37,17 @@ from scripts.secretary_live_runtime import (
 @pytest.fixture(autouse=True)
 def isolate_submission_gate_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PROJECT_OS_SUBMISSION_GATE_ROOT", str(tmp_path / "submission-gates"))
+    import scripts.secretary_live_runtime as runtime
+
+    monkeypatch.setattr(runtime, "_launcher_profile", lambda *args, **kwargs: "expected-profile")
+    monkeypatch.setattr(
+        runtime,
+        "_launcher_codex_capability_binding",
+        lambda *args, **kwargs: {
+            "reuse_capability_binding_digest": "a" * 64,
+            "capability_reuse_allowed": True,
+        },
+    )
 
 
 def request(**overrides: object) -> SecretaryLaunchRequest:
@@ -5668,7 +5680,12 @@ def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_c
     )
     monkeypatch.setattr(runtime, "_launcher_profile", lambda *args, **kwargs: "expected-profile")
     monkeypatch.setattr(runtime, "_launcher_context_identity", lambda **kwargs: "task:task-1")
-    monkeypatch.setattr(runtime, "_verify_herdr_pane", lambda *args, **kwargs: None)
+    verification: dict[str, object] = {}
+
+    def verify_pane(*args, **kwargs):
+        verification.update(kwargs)
+
+    monkeypatch.setattr(runtime, "_verify_herdr_pane", verify_pane)
     monkeypatch.setattr(runtime, "_create_herdr_workspace", lambda *args, **kwargs: pytest.fail("workspace should not be created"))
 
     original = request(session="auto", pane="auto")
@@ -5685,8 +5702,52 @@ def test_prepare_herdr_target_reuses_verified_auto_candidate_without_workspace_c
     assert workspace_id is None
     assert captured["expected_profile"] == "expected-profile"
     assert captured["context_identity"] == "task:task-1"
+    assert captured["expected_capability_digest"] == "a" * 64
     assert captured["reuse_allowed"] is True
+    assert verification["expected_profile"] == "expected-profile"
+    assert verification["context_identity"] == "task:task-1"
+    assert verification["expected_capability_digest"] == "a" * 64
+    assert verification["reuse_allowed"] is True
     assert commands == [["herdr", "status", "server"]]
+
+
+def test_prepare_herdr_target_propagates_profile_failure_before_server_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.secretary_live_runtime as runtime
+
+    calls: list[str] = []
+
+    def reject_profile(*args, **kwargs):
+        calls.append("profile")
+        raise runtime.LaunchBlocked("invalid profile")
+
+    monkeypatch.setattr(runtime, "_launcher_profile", reject_profile)
+    monkeypatch.setattr(
+        runtime,
+        "_ensure_herdr_server",
+        lambda *args, **kwargs: calls.append("server") or pytest.fail("server must not start"),
+    )
+
+    with pytest.raises(runtime.LaunchBlocked, match="invalid profile"):
+        runtime._prepare_herdr_target(
+            request(session="auto", pane="auto"),
+            herdr="herdr",
+            env={},
+        )
+
+    assert calls == ["profile"]
+
+
+def test_submission_settlement_keeps_reused_pane_timeout_uncertain() -> None:
+    assert _submission_settlement_state(
+        {"disposition": "BLOCKED_CAPABILITY"},
+        submission_prepared=True,
+    ) == "delivery_uncertain"
+    assert _submission_settlement_state(
+        {"disposition": "BLOCKED_CAPABILITY"},
+        submission_prepared=False,
+    ) == "not_delivered"
 
 
 def test_create_herdr_workspace_closes_workspace_when_cwd_validation_fails(

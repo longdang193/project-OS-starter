@@ -26,6 +26,7 @@ from typing import Any, Mapping
 try:
     from scripts.herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
+        _codex_capability_binding as _launcher_codex_capability_binding,
         _profile as _launcher_profile,
         _herdr_pane,
         _resolve_target_selector,
@@ -40,6 +41,7 @@ try:
 except ModuleNotFoundError:
     from herdr_main_launcher import (
         _HERDR_DEFAULT_SESSION,
+        _codex_capability_binding as _launcher_codex_capability_binding,
         _profile as _launcher_profile,
         _herdr_pane,
         _resolve_target_selector,
@@ -660,6 +662,10 @@ def _verify_herdr_pane(
     pane: str,
     *,
     env: dict[str, str],
+    expected_profile: Any | None = None,
+    context_identity: str | None = None,
+    expected_capability_digest: str | None = None,
+    reuse_allowed: bool = True,
 ) -> None:
     last_error: Exception | None = None
     for attempt in range(2):
@@ -670,6 +676,10 @@ def _verify_herdr_pane(
                 pane,
                 herdr,
                 env=env,
+                expected_profile=expected_profile,
+                context_identity=context_identity,
+                expected_capability_digest=expected_capability_digest,
+                reuse_allowed=reuse_allowed,
             )
             return
         except (CommandTransportTimeout, TargetCandidateRejected) as exc:
@@ -688,6 +698,28 @@ def _prepare_herdr_target(
 ) -> tuple[SecretaryLaunchRequest | SecretaryNormalRequest, dict[str, Any], str | None]:
     if request.session == "auto" and request.pane != "auto":
         raise LaunchBlocked("`--session auto` and `--pane auto` must be used together.")
+    expected_profile = _launcher_profile(
+        request.worktree.resolve() / "agents",
+        request.profile,
+    )
+    expected_capability_digest = None
+    reuse_allowed = True
+    context_identity = None
+    if request.session == "auto":
+        capability_binding = _launcher_codex_capability_binding(
+            request.worktree.resolve(),
+            expected_profile,
+            request.codex_home.resolve(),
+            env=env,
+            local_capabilities=[],
+            mcp_select=[],
+        )
+        expected_capability_digest = capability_binding["reuse_capability_binding_digest"]
+        reuse_allowed = capability_binding["capability_reuse_allowed"]
+        context_identity = _launcher_context_identity(
+            secretary_task_id=getattr(request, "task_id", None),
+            plan_identity=getattr(request, "plan_identity", None),
+        )
     server = _ensure_herdr_server(herdr, env=env)
     if request.session != "auto":
         return request, {
@@ -700,17 +732,6 @@ def _prepare_herdr_target(
             "workspace_created": False,
         }, None
     try:
-        try:
-            expected_profile = _launcher_profile(
-                request.worktree.resolve() / "agents",
-                request.profile,
-            )
-        except LaunchBlocked:
-            expected_profile = None
-        context_identity = _launcher_context_identity(
-            secretary_task_id=getattr(request, "task_id", None),
-            plan_identity=getattr(request, "plan_identity", None),
-        )
         resolved_session, resolved_pane, resolution = _resolve_target_selector(
             request.worktree,
             request.session,
@@ -720,7 +741,8 @@ def _prepare_herdr_target(
             env=env,
             expected_profile=expected_profile,
             context_identity=context_identity,
-            reuse_allowed=True,
+            expected_capability_digest=expected_capability_digest,
+            reuse_allowed=reuse_allowed,
         )
     except TargetResolutionBlocked as exc:
         if exc.resolution.get("status") != "not_found":
@@ -733,7 +755,16 @@ def _prepare_herdr_target(
             session=resolved_session,
             pane=resolved_pane,
         )
-        _verify_herdr_pane(resolved_request, herdr, resolved_pane, env=env)
+        _verify_herdr_pane(
+            resolved_request,
+            herdr,
+            resolved_pane,
+            env=env,
+            expected_profile=expected_profile,
+            context_identity=context_identity,
+            expected_capability_digest=expected_capability_digest,
+            reuse_allowed=reuse_allowed,
+        )
         return resolved_request, {
             "server": server["state"],
             "server_started": server["started"],
@@ -751,7 +782,16 @@ def _prepare_herdr_target(
         invocation_id=invocation_id,
     )
     try:
-        _verify_herdr_pane(request, herdr, pane, env=env)
+        _verify_herdr_pane(
+            request,
+            herdr,
+            pane,
+            env=env,
+            expected_profile=expected_profile,
+            context_identity=context_identity,
+            expected_capability_digest=expected_capability_digest,
+            reuse_allowed=reuse_allowed,
+        )
     except Exception as exc:
         workspace_close = _close_herdr_workspace(herdr, workspace_id, env=env)
         raise WorkspaceProvisioningError(
@@ -1302,6 +1342,20 @@ def _classify_capabilities(
         "transport_evidence": "proven" if transport_proven else "unproven",
         "missing_capabilities": missing,
     }
+
+
+def _submission_settlement_state(
+    result: Mapping[str, Any] | None,
+    *,
+    submission_prepared: bool,
+) -> str:
+    if result is not None and result.get("disposition") == "READY":
+        return "settled"
+    if not submission_prepared:
+        return "not_delivered"
+    return "delivery_uncertain"
+
+
 def _json_payloads(output: str) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     for line in output.splitlines():
@@ -3947,12 +4001,10 @@ def run_probe(request: SecretaryLaunchRequest, *, output: Path) -> dict[str, Any
                     result["failure_kind"] = "runtime_workspace_cleanup_evidence_missing"
                     result.update(_classify_capabilities("BLOCKED_CAPABILITY", result.get("post_submit_observation")))
         if submission_claimed and submission_path is not None:
-            if result is not None and result.get("disposition") == "READY":
-                settlement = "settled"
-            elif not submission_prepared or workspace_id is None:
-                settlement = "not_delivered"
-            else:
-                settlement = "delivery_uncertain"
+            settlement = _submission_settlement_state(
+                result,
+                submission_prepared=submission_prepared,
+            )
             settle_submission(
                 submission_path,
                 attempt_id=submission_attempt_id,

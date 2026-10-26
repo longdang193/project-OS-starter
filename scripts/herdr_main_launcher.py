@@ -585,6 +585,47 @@ def _codex_mcp_selection(
     }
 
 
+def _codex_capability_binding(
+    cwd: Path,
+    selected_profile: AgentProfile,
+    codex_home: Path,
+    *,
+    env: dict[str, str],
+    codex: str | None = None,
+    local_capabilities: list[str] | None = None,
+    mcp_select: list[str] | None = None,
+) -> dict[str, Any]:
+    codex_executable = codex or _executable("codex")
+    runtime_mcp_servers = _codex_runtime_mcp_servers(
+        codex_executable,
+        cwd,
+        env=env,
+    )
+    codex_mcp_selection = _codex_mcp_selection(
+        cwd,
+        codex_home,
+        list(mcp_select or []),
+        runtime_servers=runtime_mcp_servers,
+    )
+    try:
+        binding_digest = capability_binding_digest(
+            local_capabilities or [],
+            codex_mcp_selection,
+            developer_instructions_sha256=_sha256_text(
+                selected_profile.developer_instructions
+            ),
+        )
+    except AttemptContractError as exc:
+        raise LaunchBlocked(str(exc)) from exc
+    reuse_allowed = bool(codex_mcp_selection.get("server_configuration_complete", True))
+    return {
+        "mcp_selection": codex_mcp_selection,
+        "capability_binding_digest": binding_digest,
+        "reuse_capability_binding_digest": binding_digest if reuse_allowed else None,
+        "capability_reuse_allowed": reuse_allowed,
+    }
+
+
 def _git_identity(cwd: Path, expected_base: str) -> dict[str, str]:
     worktree = cwd.resolve()
     identity_output = _run_checked(
@@ -3948,32 +3989,19 @@ def resolve_launch(
     reuse_capability_binding_digest: str | None = None
     capability_reuse_allowed = True
     if executor == "codex":
-        runtime_mcp_servers = _codex_runtime_mcp_servers(
-            str(codex),
+        capability_binding = _codex_capability_binding(
             cwd,
-            env=environment,
-        )
-        codex_mcp_selection = _codex_mcp_selection(
-            cwd,
+            selected,
             Path(str(runtime["codex_home"])),
-            list(mcp_select or []),
-            runtime_servers=runtime_mcp_servers,
+            env=environment,
+            codex=str(codex),
+            local_capabilities=effective_local_capabilities,
+            mcp_select=mcp_select,
         )
-        try:
-            effective_capability_binding_digest = capability_binding_digest(
-                effective_local_capabilities,
-                codex_mcp_selection,
-                developer_instructions_sha256=_sha256_text(
-                    selected.developer_instructions
-                ),
-            )
-            capability_reuse_allowed = bool(
-                codex_mcp_selection.get("server_configuration_complete", True)
-            )
-            if capability_reuse_allowed:
-                reuse_capability_binding_digest = effective_capability_binding_digest
-        except AttemptContractError as exc:
-            raise LaunchBlocked(str(exc)) from exc
+        codex_mcp_selection = capability_binding["mcp_selection"]
+        effective_capability_binding_digest = capability_binding["capability_binding_digest"]
+        reuse_capability_binding_digest = capability_binding["reuse_capability_binding_digest"]
+        capability_reuse_allowed = capability_binding["capability_reuse_allowed"]
     git = _git_identity(cwd, expected_base)
     performance = _new_performance_evidence()
     _record_performance_phase(performance, "preflight", launch_started)
