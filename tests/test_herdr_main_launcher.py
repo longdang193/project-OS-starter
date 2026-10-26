@@ -581,6 +581,130 @@ def test_selected_environment_dependent_mcp_server_disables_reuse(tmp_path: Path
     assert selection["server_configuration_digest"] is None
 
 
+def test_reuse_disabled_context_bound_codex_names_are_unique(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_profile(tmp_path, "normal", None)
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    monkeypatch.setattr(LAUNCHER, "_executable", lambda name: f"{name}.exe")
+    monkeypatch.setattr(LAUNCHER, "_version", lambda *args, **kwargs: "test")
+    monkeypatch.setattr(LAUNCHER, "_git_identity", lambda *args: {"head": "head"})
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_codex_runtime_mcp_servers",
+        lambda *args, **kwargs: {"runtime": True},
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_herdr_pane",
+        lambda *args, **kwargs: {
+            "pane": {"cwd": str(tmp_path)},
+            "process_info": {"foreground_processes": []},
+        },
+    )
+    generated: list[str] = []
+
+    def unique(value: str) -> str:
+        generated.append(value)
+        return f"{value[:20]}-{len(generated)}"
+
+    monkeypatch.setattr(LAUNCHER, "_unique_agent_name", unique)
+
+    first, _ = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="session",
+        pane="pane",
+        cwd=tmp_path,
+        expected_base="HEAD",
+        executor="codex",
+        mcp_select=["runtime"],
+        secretary_task_id="task-1",
+        task="assign lane",
+        codex_home=codex_home,
+    )
+    second, _ = LAUNCHER.resolve_launch(
+        profile_name="normal",
+        session="session",
+        pane="pane",
+        cwd=tmp_path,
+        expected_base="HEAD",
+        executor="codex",
+        mcp_select=["runtime"],
+        secretary_task_id="task-1",
+        task="assign lane",
+        codex_home=codex_home,
+    )
+
+    first_name = first[first.index("start") + 1]
+    second_name = second[second.index("start") + 1]
+    assert first_name != second_name
+    assert len(generated) == 2
+
+
+def test_direct_deepagents_launch_does_not_create_unsettleable_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    evidence = {
+        "registry_launcher": {
+            "assignment_task_sha256": LAUNCHER._sha256_text("assign lane"),
+            "completion_marker": "EXPECTED_MARKER",
+        },
+        "herdr": {
+            "agent_name": "normal-main",
+            "session": "session",
+            "pane": "pane",
+            "executable": "herdr.exe",
+        },
+    }
+    created: list[Path] = []
+    monkeypatch.setattr(LAUNCHER, "resolve_launch", lambda **kwargs: (["herdr"], evidence))
+    monkeypatch.setattr(
+        LAUNCHER.tempfile,
+        "mkdtemp",
+        lambda **kwargs: created.append(tmp_path / "unexpected") or str(tmp_path / "unexpected"),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
+    )
+    monkeypatch.setattr(
+        LAUNCHER,
+        "_deepagents_completion_evidence",
+        lambda *args, **kwargs: {
+            "state": "completed",
+            "marker_present": True,
+            "report_present": True,
+            "report_sha256": "report",
+            "report_chars": 1,
+            "foreground_processes": ["powershell.exe"],
+            "observation_error": None,
+            "lifecycle_receipt": {
+                "state": "confirmed",
+                "worker_state": "exited",
+                "worker_exit_code": 0,
+                "descendant_state": "terminated",
+                "cleanup_state": "removed",
+                "recovery_required": False,
+            },
+        },
+    )
+
+    assert LAUNCHER.main(
+        [
+            "--profile", "normal", "--session", "session", "--pane", "pane",
+            "--cwd", str(tmp_path), "--expected-base", "HEAD", "--executor", "deepagents",
+            "--task", "assign lane",
+        ]
+    ) == 2
+    assert created == []
+    capsys.readouterr()
+
+
 def test_mcp_digest_ignores_unselected_server_definition_changes(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()

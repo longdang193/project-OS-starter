@@ -59,6 +59,15 @@ lock acquisition have separate bounded budgets; a pane created without a
 verified post-split identity is reported as `created_unverified` and is not
 silently reused.
 
+MCP servers that use environment-backed fields such as
+`bearer_token_env_var`, `env_http_headers`, structured `env_vars`, or
+`*_env_var` OAuth references are treated as incompatible with existing Codex
+agents because their effective runtime values cannot be fingerprinted safely.
+Those launches receive a unique replacement agent name rather than incurring a
+deterministic name collision. Direct, uncoordinated DeepAgents launches do not
+create structured result artifacts because they lack the assignment bindings
+required for safe settlement.
+
 DeepAgents result directories are launcher-owned temporary artifacts. They are
 removed only after durable task-result publication, identity correlation,
 terminal lifecycle settlement, and no-continuation proof. Missing, foreign,

@@ -565,9 +565,16 @@ def settle_result_artifacts(
         prune_result_artifact_recovery(temp_root=temp_root, now=current_time)
         return {"state": "preserved", "reason": reason, "path": str(owned)}
     if not handoff_confirmed:
+        reason = "durable publication and settlement proven; downstream handoff pending"
+        _write_recovery_marker(
+            owned,
+            attempt_id=attempt_id,
+            reason=reason,
+            now=current_time,
+        )
         return {
             "state": "pending_handoff",
-            "reason": "durable publication and settlement proven; downstream handoff pending",
+            "reason": reason,
             "path": str(owned),
         }
     try:

@@ -547,6 +547,38 @@ issues, all corrected in the next patch:
 describe the default live/trace benchmark behavior without implying that the
 CLI executes a workload.
 
+## Post-Review Validation — 2026-10-26
+
+The sequential review of PR #179 at immutable head
+`452def3e7f2bb6032cc9c7faa03a82b53649ee8b` confirmed four additional defects.
+Systematic tracing followed each finding through its shared caller and focused
+regression proof was added before implementation:
+
+- reuse-disabled, context-bound Codex launches used deterministic replacement
+  names and could collide before the existing randomized retry; fresh names
+  now receive a unique suffix while preserving binding markers;
+- fully settled artifacts awaiting stdout handoff were physically retained but
+  lacked a recovery marker; the `pending_handoff` path now writes a
+  non-prunable marker before returning;
+- direct DeepAgents launches could create artifacts without assignment/task/
+  grant identity and therefore never satisfy settlement; launcher-owned
+  structured artifacts are now created only for coordinated launches;
+- the MCP environment-dependency detector missed `bearer_token_env_var`,
+  `env_http_headers`, structured `env_vars`, and `*_env_var` OAuth references;
+  those forms now disable reuse without hashing secret values.
+
+The direct-launch change preserves existing fail-closed semantics: an
+uncoordinated run can still report pane/receipt observations, but cannot claim
+structured task-result settlement without the coordinated identity binding.
+
+Focused proof:
+
+- `python -m pytest -q tests/test_mcp_selection.py tests/test_evidence_release.py tests/test_herdr_main_launcher.py -k "environment_backed_mcp or selected_environment_dependent_mcp or reuse_disabled_context_bound or direct_deepagents_launch or settled_result_artifacts_wait or artifact_settlement"`
+
+The plan remains `active` until fresh full verification and post-push PR review
+complete; only then may `skill-verification-before-completion` set it to
+`completed`.
+
 ## Completion Criteria
 
 The plan is ready for completion verification when:

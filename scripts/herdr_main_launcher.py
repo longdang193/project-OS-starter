@@ -4031,19 +4031,21 @@ def resolve_launch(
     completion_marker = None
     reuse_existing = bool(pane_state and pane_state.get("reuse"))
     existing_agent = pane_state.get("agent") if reuse_existing and pane_state else None
+    generated_agent_name = (
+        _contextual_agent_name(
+            selected.name,
+            context_identity,
+            effective_capability_binding_digest,
+        )
+        if executor == "codex"
+        else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
+    )
+    if executor == "codex" and not capability_reuse_allowed and name is None:
+        generated_agent_name = _unique_agent_name(generated_agent_name)
     agent_name = (
         str(existing_agent.get("name"))
         if isinstance(existing_agent, dict) and isinstance(existing_agent.get("name"), str)
-        else name
-        or (
-            _contextual_agent_name(
-                selected.name,
-                context_identity,
-                effective_capability_binding_digest,
-            )
-            if executor == "codex"
-            else f"{selected.name}-main"[:_HERDR_AGENT_NAME_MAX_LENGTH]
-        )
+        else name or generated_agent_name
     )
     if executor == "codex":
         if codex_mcp_selection is None or effective_capability_binding_digest is None:
@@ -4563,7 +4565,12 @@ def _main_body(args: argparse.Namespace) -> int:
         receipt_file: Path | None = None
         task_result_file: Path | None = None
         task_option = _task_transport_option(command)
-        if args.executor == "deepagents" and not args.dry_run and task_option is not None:
+        if (
+            args.executor == "deepagents"
+            and not args.dry_run
+            and task_option is not None
+            and args.assignment_id is not None
+        ):
             result_artifact_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
             pending_result_artifact_settlement = {
                 "directory": result_artifact_dir,

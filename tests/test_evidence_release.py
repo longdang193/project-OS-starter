@@ -193,6 +193,9 @@ def test_settled_result_artifacts_wait_for_downstream_handoff(tmp_path: Path) ->
 
     assert pending["state"] == "pending_handoff"
     assert directory.exists()
+    marker = directory / ".herdr-recovery.json"
+    assert marker.is_file()
+    assert __import__("json").loads(marker.read_text(encoding="utf-8"))["prunable"] is False
 
     settled = settle_result_artifacts(
         directory,

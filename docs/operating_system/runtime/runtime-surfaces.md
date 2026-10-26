@@ -237,7 +237,10 @@ resources remain caller-owned through `runtime.json`.
   MCP configs remain untouched and untrusted. MCP `headers` values must be
   `${VAR}` references. MCP `env` values may be `${VAR}` references or
   non-sensitive literals. Raw credentials and config secrets stay out of task
-  text, logs, and tracked files.
+  text, logs, and tracked files. Environment-backed Codex forms such as
+  `bearer_token_env_var`, `env_http_headers`, structured `env_vars`, and
+  `*_env_var` OAuth references disable Codex agent reuse because their effective
+  values cannot be fingerprinted safely.
 - Codex controller owns handoff facts and writes `codex.mcp.handoff.v1` under
   `%USERPROFILE%\.local\share\dcode-project\handoffs`; `dcode-project` validates
   handoff path, age, schema, source IDs, capability digest, and sensitive-field

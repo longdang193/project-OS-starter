@@ -113,7 +113,10 @@ MCP `headers` values must be `${VAR}` references. MCP `env` values may be
 `${VAR}` references or non-sensitive literals. Raw credentials,
 config secrets, and tool configuration never enter task text, logs, or tracked
 files. `codex.mcp.handoff.v1` carries validated facts and provenance only; it
-does not grant MCP tool access.
+does not grant MCP tool access. Environment-backed Codex forms such as
+`bearer_token_env_var`, `env_http_headers`, structured `env_vars`, and
+`*_env_var` OAuth references disable Codex agent reuse because their effective
+values cannot be fingerprinted safely.
 
 ## Herdr Observation
 

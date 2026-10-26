@@ -16,6 +16,28 @@ class McpSelectionError(ValueError):
 _ENVIRONMENT_REFERENCE_PATTERN = re.compile(
     r"\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}"
 )
+_ENVIRONMENT_DEPENDENT_KEYS = {
+    "env_http_headers",
+    "env_vars",
+    "bearer_token_env_var",
+    "oauth_client_id_env_var",
+    "oauth_client_secret_env_var",
+}
+
+
+def _key_has_environment_dependency(key: object, value: object) -> bool:
+    if not isinstance(key, str) or not key.strip():
+        return False
+    normalized = key.strip().casefold().replace("-", "_")
+    if normalized.endswith("_env_var") or normalized in _ENVIRONMENT_DEPENDENT_KEYS:
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, Mapping):
+            return bool(value)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return bool(value)
+        return value is not None
+    return False
 
 
 def _effective_mcp_server_configurations(
@@ -43,13 +65,8 @@ def _contains_environment_dependency(value: object) -> bool:
         return bool(_ENVIRONMENT_REFERENCE_PATTERN.search(value))
     if isinstance(value, Mapping):
         for child_key, child_value in value.items():
-            if child_key == "env_vars":
-                if isinstance(child_value, Sequence) and not isinstance(
-                    child_value, (str, bytes, bytearray)
-                ) and any(isinstance(item, str) and item.strip() for item in child_value):
-                    return True
-                if isinstance(child_value, str) and child_value.strip():
-                    return True
+            if _key_has_environment_dependency(child_key, child_value):
+                return True
             if _contains_environment_dependency(child_value):
                 return True
         return False
