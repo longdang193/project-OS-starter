@@ -207,7 +207,10 @@ used. MCP `headers` values must be `${VAR}` references. MCP `env` values may be
 `${VAR}` references or non-sensitive literals. Never pass
 credentials, config secrets, raw headers, cookies, or approval authority through
 task text. `codex.mcp.handoff.v1` stays validated facts and provenance, not tool
-access; controller deletes handoff after use.
+access; controller deletes handoff after use. Environment-backed Codex forms
+such as `bearer_token_env_var`, `env_http_headers`, structured `env_vars`, and
+`*_env_var` OAuth references disable Codex agent reuse because their effective
+values cannot be fingerprinted safely.
 
 Direct `dcode-project` launches apply a `420`-second wrapper safety ceiling when callers omit
 `--timeout`; explicit `--timeout N` remains authoritative. Herdr retains one

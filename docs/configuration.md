@@ -29,6 +29,8 @@ Herdr reuses a live Codex pane only when all of these facts match:
 - the pane is idle and has no conflicting live process;
 - the incoming task has the same existing task, plan, or assignment identity;
 - the executor, provider, and model profile are compatible.
+- the effective local-capability and MCP-selection digest matches the incoming
+  assignment.
 
 Different or missing context selects a new pane when a validated source pane
 can be split. Candidate-local inspection failures, including incompatible
@@ -49,3 +51,34 @@ repositories.
 
 Idle panes with no live process are released through the existing Herdr
 lifecycle mechanism.
+
+Reuse is preferred over recreating a browser window or pane. A mismatch in
+capability selection, identity, or lifecycle state allocates a replacement
+instead of mutating an incompatible live process. Allocation discovery and
+lock acquisition have separate bounded budgets; a pane created without a
+verified post-split identity is reported as `created_unverified` and is not
+silently reused.
+
+Secretary target preparation bootstraps a workspace only after target
+resolution explicitly reports `not_found`. Transport timeouts, deadline
+expiry, identity uncertainty, and candidate rejection remain blocked so a
+side-effecting allocation is not layered on top of unresolved state.
+
+Codex reuse fingerprints selected MCP capability state. Changes to unrelated,
+unselected MCP inventory do not force a new window or pane when the selected
+servers, tools, configuration, profile, and context remain compatible.
+
+MCP servers that use environment-backed fields such as
+`bearer_token_env_var`, `env_http_headers`, structured `env_vars`, or
+`*_env_var` OAuth references are treated as incompatible with existing Codex
+agents because their effective runtime values cannot be fingerprinted safely.
+Those launches receive a unique replacement agent name rather than incurring a
+deterministic name collision. Direct, uncoordinated DeepAgents launches do not
+create structured result artifacts because they lack the assignment bindings
+required for safe settlement.
+
+DeepAgents result directories are launcher-owned temporary artifacts. They are
+removed only after durable task-result publication, identity correlation,
+terminal lifecycle settlement, and no-continuation proof. Missing, foreign,
+identity-mismatched, or ambiguous evidence is retained with a recovery marker;
+the bounded recovery cleanup touches only marked `herdr-result-*` directories.

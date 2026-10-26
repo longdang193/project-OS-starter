@@ -42,6 +42,11 @@ function withFailureScope(error, failureScope) {
 function normalizeComposerText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
+
+function normalizePromptText(value) {
+  return normalizeComposerText(value).replace(/\s*`n\s*/g, "`n");
+}
+
 function assertPrompt(prompt) {
   if (typeof prompt !== "string" || prompt.trim() === "") {
     throw new Error("prompt must be a non-empty string");
@@ -210,15 +215,15 @@ async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
 }
 
 export async function isPromptVisibleInComposer(composer, prompt) {
-  const expectedPrompt = normalizeComposerText(prompt);
+  const expectedPrompt = normalizePromptText(prompt);
 
   try {
-    if (normalizeComposerText(await composer.inputValue()) === expectedPrompt) return true;
+    if (normalizePromptText(await composer.inputValue()) === expectedPrompt) return true;
   } catch {
     // Contenteditable composers do not expose inputValue.
   }
 
-  return normalizeComposerText(await composer.innerText()) === expectedPrompt;
+  return normalizePromptText(await composer.innerText()) === expectedPrompt;
 }
 
 async function readCompletionSnapshot(page, { includeText } = {}) {

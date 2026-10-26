@@ -1543,6 +1543,20 @@ test("prompt entry validation tolerates rich-link whitespace in contenteditable 
   assert.equal(await isPromptVisibleInComposer(composer, prompt), true);
 });
 
+test("prompt entry validation tolerates formatting whitespace around escaped newlines", async () => {
+  const prompt = "@GitHub Review this exact file revision set:`nhttps://github.com/longdang193/project-OS-starter/blob/abc123/README.md";
+  const composer = {
+    async inputValue() {
+      throw new Error("not an input element");
+    },
+    async innerText() {
+      return "@GitHub Review this exact file revision set:`n\nhttps://github.com/longdang193/project-OS-starter/blob/abc123/README.md\n";
+    },
+  };
+
+  assert.equal(await isPromptVisibleInComposer(composer, prompt), true);
+});
+
 test("completion polling avoids full assistant text reads while generating", async () => {
   let stopChecks = 0;
   let innerTextReads = 0;

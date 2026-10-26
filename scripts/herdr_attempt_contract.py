@@ -4,6 +4,7 @@ try:
         AttemptContractError,
         normalize_local_capabilities,
         effective_local_capabilities,
+        capability_binding_digest,
         capability_digest,
         capability_evidence_matches,
         normalize_runtime_grant,
@@ -35,6 +36,7 @@ except ModuleNotFoundError:
         AttemptContractError,
         normalize_local_capabilities,
         effective_local_capabilities,
+        capability_binding_digest,
         capability_digest,
         capability_evidence_matches,
         normalize_runtime_grant,
@@ -62,4 +64,4 @@ except ModuleNotFoundError:
         ADMISSION_RESULTS,
     )
 
-__all__ = ['AttemptContractError', 'normalize_local_capabilities', 'effective_local_capabilities', 'capability_digest', 'capability_evidence_matches', 'normalize_runtime_grant', 'default_runtime_grant', 'grant_digest', 'assignment_id', 'normalize_attempt', 'terminal_settlement_proven', 'derive_lifecycle_state', 'eligibility_action', 'attempt_decision', 'continuation_decision', 'same_attempt_binding', 'settlement_decision', 'remaining_attempt_seconds', 'resolve_attempt_budget', 'WHOLE_ATTEMPT_WALL_CLOCK_SECONDS', 'NATIVE_WORKER_WALL_CLOCK_SECONDS', 'SETTLEMENT_RESERVE_SECONDS', 'NATIVE_GRANT_VALUE', 'CHILD_AGENT_GRANT_VALUES', 'DEFAULT_LOCAL_CAPABILITIES', 'LIFECYCLE_STATES', 'ELIGIBILITY_ACTIONS', 'ADMISSION_RESULTS']
+__all__ = ['AttemptContractError', 'normalize_local_capabilities', 'effective_local_capabilities', 'capability_binding_digest', 'capability_digest', 'capability_evidence_matches', 'normalize_runtime_grant', 'default_runtime_grant', 'grant_digest', 'assignment_id', 'normalize_attempt', 'terminal_settlement_proven', 'derive_lifecycle_state', 'eligibility_action', 'attempt_decision', 'continuation_decision', 'same_attempt_binding', 'settlement_decision', 'remaining_attempt_seconds', 'resolve_attempt_budget', 'WHOLE_ATTEMPT_WALL_CLOCK_SECONDS', 'NATIVE_WORKER_WALL_CLOCK_SECONDS', 'SETTLEMENT_RESERVE_SECONDS', 'NATIVE_GRANT_VALUE', 'CHILD_AGENT_GRANT_VALUES', 'DEFAULT_LOCAL_CAPABILITIES', 'LIFECYCLE_STATES', 'ELIGIBILITY_ACTIONS', 'ADMISSION_RESULTS']

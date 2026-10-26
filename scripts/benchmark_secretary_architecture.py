@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from collections.abc import Callable, Mapping
 
 
 if __package__ in {None, ""}:
@@ -28,7 +30,7 @@ class ContractMetric:
     evidence_provenance: str
     evidence_kind: str
     live: bool
-    correct: bool
+    correct: bool | None
     outcome: str
     semantic_result: str
     failure_classification: str
@@ -46,6 +48,9 @@ class ContractMetric:
     sample_count: int = 0
     percentile_status: str = "unavailable"
     percentile_reason: str = "not_attempted"
+    subprocess_count: int | None = None
+    allocation_reuse: str = "unavailable"
+    reconciliation_count: int | None = None
 
 
 def _measurement_fields(
@@ -80,7 +85,7 @@ def _metric(
     run_id: int,
     architecture: str,
     *,
-    correct: bool,
+    correct: bool | None,
     outcome: str,
     semantic_result: str,
     failure_classification: str = "none",
@@ -94,9 +99,13 @@ def _metric(
     evidence_kind: str = "deterministic_contract",
     live: bool = False,
     latency_ms: float | None = None,
+    time_to_first_result_ms: float | None = None,
     measurement_status: str = "not_attempted",
     measurement_source: str | None = None,
     sample_count: int = 0,
+    subprocess_count: int | None = None,
+    allocation_reuse: str = "unavailable",
+    reconciliation_count: int | None = None,
 ) -> ContractMetric:
     measurement = _measurement_fields(
         status=measurement_status,
@@ -120,8 +129,12 @@ def _metric(
         provider_queries=provider_queries,
         messages=messages,
         duplicate_effects=duplicate_effects,
+        time_to_first_result_ms=time_to_first_result_ms,
         latency_ms=latency_ms,
         **measurement,
+        subprocess_count=subprocess_count,
+        allocation_reuse=allocation_reuse,
+        reconciliation_count=reconciliation_count,
     )
 
 
@@ -232,11 +245,106 @@ def run_contract_benchmark(iterations: int = 1) -> list[ContractMetric]:
     return results
 
 
+def _default_live_runner(scenario_id: str, architecture: str) -> dict[str, object]:
+    del scenario_id, architecture
+    return {
+        "correct": None,
+        "latency_ms": None,
+        "time_to_first_result_ms": None,
+        "subprocess_count": None,
+        "allocation_reuse": "unavailable",
+        "reconciliation_count": None,
+    }
+
+
+def run_live_benchmark(
+    iterations: int = 1,
+    *,
+    runner: Callable[[str, str], Mapping[str, object]] | None = None,
+) -> list[ContractMetric]:
+    if iterations < 1:
+        raise ValueError("iterations must be positive")
+    sample_runner = runner or _default_live_runner
+    injected_runner = runner is not None
+    results: list[ContractMetric] = []
+    for run_id in range(1, iterations + 1):
+        for scenario_id in SCENARIOS:
+            for architecture in ("baseline", "target"):
+                observed = sample_runner(scenario_id, architecture)
+                latency = observed.get("latency_ms")
+                first_result = observed.get("time_to_first_result_ms")
+                measured = (
+                    isinstance(latency, (int, float))
+                    and not isinstance(latency, bool)
+                    and math.isfinite(float(latency))
+                    and float(latency) >= 0
+                )
+                subprocess_count = observed.get("subprocess_count")
+                if subprocess_count is not None and (
+                    not isinstance(subprocess_count, int)
+                    or isinstance(subprocess_count, bool)
+                    or subprocess_count < 0
+                ):
+                    raise ValueError("live subprocess_count must be a non-negative integer")
+                reconciliation_count = observed.get("reconciliation_count")
+                if reconciliation_count is not None and (
+                    not isinstance(reconciliation_count, int)
+                    or isinstance(reconciliation_count, bool)
+                    or reconciliation_count < 0
+                ):
+                    raise ValueError("live reconciliation_count must be a non-negative integer")
+                allocation_reuse = observed.get("allocation_reuse", "unavailable")
+                if allocation_reuse not in {"reused", "recreated", "unavailable"}:
+                    raise ValueError("live allocation_reuse must be reused, recreated, or unavailable")
+                results.append(
+                    _metric(
+                        scenario_id,
+                        run_id,
+                        architecture,
+                        correct=observed.get("correct"),
+                        outcome="observed_live_sample" if measured else "measurement_unavailable",
+                        semantic_result="not_captured",
+                        failure_classification="not_classified",
+                        blocker="measurement_only",
+                        evidence_provenance=(
+                            "injected-runner" if injected_runner and measured else "unavailable"
+                        ),
+                        evidence_kind=(
+                            "injected_measurement" if injected_runner and measured else "unavailable"
+                        ),
+                        live=True,
+                        latency_ms=float(latency) if measured else None,
+                        time_to_first_result_ms=(
+                            float(first_result)
+                            if isinstance(first_result, (int, float))
+                            and not isinstance(first_result, bool)
+                            and math.isfinite(float(first_result))
+                            and float(first_result) >= 0
+                            else None
+                        ),
+                        measurement_status="measured" if measured else "unavailable",
+                        measurement_source=(
+                            str(observed["measurement_source"])
+                            if measured and observed.get("measurement_source")
+                            else None
+                        ),
+                        sample_count=1 if measured else 0,
+                        subprocess_count=subprocess_count,
+                        allocation_reuse=str(allocation_reuse),
+                        reconciliation_count=reconciliation_count,
+                    )
+                )
+    return results
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="mode")
     contract = subparsers.add_parser("contract")
     contract.add_argument("iterations", nargs="?", type=int, default=1)
+    for name in ("live", "trace"):
+        live = subparsers.add_parser(name)
+        live.add_argument("iterations", nargs="?", type=int, default=1)
     return parser
 
 
@@ -247,7 +355,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(raw_argv)
     mode = args.mode or "contract"
     iterations = getattr(args, "iterations", 1)
-    results = run_contract_benchmark(iterations)
+    if mode in {"live", "trace"}:
+        results = run_live_benchmark(iterations)
+    else:
+        results = run_contract_benchmark(iterations)
     print(json.dumps([asdict(item) for item in results], sort_keys=True))
     return 0
 
