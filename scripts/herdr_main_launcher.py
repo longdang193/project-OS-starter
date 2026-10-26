@@ -2711,7 +2711,7 @@ def _contextual_agent_name(
 ) -> str:
     marker = _context_marker(context_identity)
     capability_marker = _capability_marker(capability_digest_value)
-    if marker is None and capability_marker is None:
+    if marker is None:
         return _unique_agent_name(f"{profile_name}-main")
     binding_marker = _binding_marker(context_identity, capability_digest_value)
     suffix = (
@@ -4463,6 +4463,7 @@ def _main_body(args: argparse.Namespace) -> int:
             gate_evidence.update({"phase": "settled", "state": state})
 
     attempt_id: str | None = None
+    result_artifact_dir: Path | None = None
     pending_result_artifact_settlement: dict[str, Any] | None = None
     handoff_published = False
     try:
@@ -4561,10 +4562,20 @@ def _main_body(args: argparse.Namespace) -> int:
             }
         receipt_file: Path | None = None
         task_result_file: Path | None = None
-        result_artifact_dir: Path | None = None
         task_option = _task_transport_option(command)
         if args.executor == "deepagents" and not args.dry_run and task_option is not None:
             result_artifact_dir = Path(tempfile.mkdtemp(prefix=f"herdr-result-{attempt_id}-"))
+            pending_result_artifact_settlement = {
+                "directory": result_artifact_dir,
+                "attempt_id": attempt_id,
+                "assignment_id": args.assignment_id,
+                "task_sha256": args.task_sha256,
+                "grant_digest_value": args.grant_digest,
+                "receipt": None,
+                "task_result_evidence": None,
+                "lifecycle_settled": False,
+                "no_continuation": False,
+            }
             receipt_file = result_artifact_dir / "result.json"
             task_result_file = result_artifact_dir / "task-result.json"
             command = command.copy()
@@ -5603,9 +5614,9 @@ def _main_body(args: argparse.Namespace) -> int:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return emit_failure(str(exc))
     finally:
-        if handoff_published and pending_result_artifact_settlement is not None:
+        if pending_result_artifact_settlement is not None:
             _settle_deepagents_artifacts(
-                handoff_confirmed=True,
+                handoff_confirmed=handoff_published,
                 **pending_result_artifact_settlement,
             )
 

@@ -332,11 +332,11 @@ resources remain caller-owned through `runtime.json`.
   consumes controller-owned records; it never launches work, dispatches
   Workers, owns retries, accepts outcomes, or mutates Plan state.
 - `scripts/benchmark_secretary_architecture.py contract` remains deterministic
-  contract evidence. Its separate `live`/`trace` mode runs bounded command
-  samples and reports actual measured latency and subprocess count. Allocation
-  reuse and reconciliation frequency are explicitly unavailable when the runner
-  cannot observe them; deterministic rows never claim latency or resource
-  improvements.
+  contract evidence. Its separate `live`/`trace` mode reports measurements only
+  when an explicit runner is injected; the default CLI runner returns
+  `measurement_unavailable` without executing a workload. Injected measurements
+  are labelled `injected-runner`; allocation reuse and reconciliation frequency
+  remain explicitly unavailable when the runner cannot observe them.
 - A missing protocol-conforming producer, attribution, or accepted-outcome
   evidence is recorded as `BLOCKED_CAPABILITY`, `INCONCLUSIVE`, or
   `unavailable`; it is never converted to a zero or synthetic success. A

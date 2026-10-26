@@ -17,11 +17,13 @@ targets:
   - tests/test_mcp_selection.py
   - tests/test_evidence_release.py
   - tests/test_secretary_benchmark.py
+  - tests/test_secretary_benchmark.py
   - tests/test_benchmark_operational_comparison.py
   - tests/test_secretary_live_runtime.py
   - docs/usage.md
   - docs/configuration.md
   - docs/operating_system/procedures/runtime-adapter-procedure.md
+  - docs/operating_system/runtime/runtime-surfaces.md
   - docs/operating_system/runtime/runtime-surfaces.md
   - README.md
 ---
@@ -528,6 +530,22 @@ runtime owner or configuration store:
 
 Focused proof covers static versus environment-dependent MCP selection and
 binding changes caused only by developer-instruction changes.
+
+The follow-up review at immutable head
+`1d805dc9172497c288e6b23fd46ba8f36e821b2e` identified three further confirmed
+issues, all corrected in the next patch:
+
+- context-free Codex launches retain unique randomized agent names even when a
+  capability digest exists, avoiding deterministic name collisions;
+- DeepAgents result directories are registered for recovery immediately after
+  creation, so pre-dispatch failures write a non-prunable recovery marker
+  instead of orphaning the directory;
+- injected benchmark runners label measured rows `injected-runner` /
+  `injected_measurement`; the default CLI remains `measurement_unavailable`.
+
+`docs/usage.md` and `docs/operating_system/runtime/runtime-surfaces.md` now
+describe the default live/trace benchmark behavior without implying that the
+CLI executes a workload.
 
 ## Completion Criteria
 

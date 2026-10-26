@@ -110,6 +110,8 @@ def test_live_benchmark_reports_runner_measurements_without_inventing_unobserved
     assert all(item.live is True for item in results)
     assert all(item.measurement_status == "measured" for item in results)
     assert all(item.measurement_source == "test-runner" for item in results)
+    assert all(item.evidence_provenance == "injected-runner" for item in results)
+    assert all(item.evidence_kind == "injected_measurement" for item in results)
     assert all(item.latency_ms == 12.5 for item in results)
     assert all(item.subprocess_count == 2 for item in results)
     assert {item.allocation_reuse for item in results} == {"reused", "recreated"}

@@ -43,10 +43,12 @@ def _contains_environment_dependency(value: object) -> bool:
         return bool(_ENVIRONMENT_REFERENCE_PATTERN.search(value))
     if isinstance(value, Mapping):
         for child_key, child_value in value.items():
-            if child_key == "env_vars" and isinstance(child_value, Sequence) and not isinstance(
-                child_value, (str, bytes, bytearray)
-            ):
-                if any(isinstance(item, str) and item.strip() for item in child_value):
+            if child_key == "env_vars":
+                if isinstance(child_value, Sequence) and not isinstance(
+                    child_value, (str, bytes, bytearray)
+                ) and any(isinstance(item, str) and item.strip() for item in child_value):
+                    return True
+                if isinstance(child_value, str) and child_value.strip():
                     return True
             if _contains_environment_dependency(child_value):
                 return True

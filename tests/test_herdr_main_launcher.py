@@ -386,6 +386,20 @@ def test_unique_agent_names_are_bounded_and_unique(monkeypatch: pytest.MonkeyPat
     assert first != second
 
 
+def test_context_free_agent_names_remain_unique_with_capability_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = iter(("a" * 32, "b" * 32))
+    monkeypatch.setattr(LAUNCHER.uuid, "uuid4", lambda: type("UUID", (), {"hex": next(values)})())
+
+    first = LAUNCHER._contextual_agent_name("high", None, "a" * 64)
+    second = LAUNCHER._contextual_agent_name("high", None, "a" * 64)
+
+    assert first != second
+    assert LAUNCHER._agent_capability_marker(first) is None
+    assert LAUNCHER._agent_capability_marker(second) is None
+
+
 def test_unique_agent_name_preserves_context_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         LAUNCHER.uuid,

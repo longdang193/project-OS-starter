@@ -67,10 +67,12 @@ python scripts/benchmark_secretary_architecture.py live 1
 ```
 
 `contract` is deterministic fixture evidence. `live` (also available as
-`trace`) runs bounded command samples and reports measured wall time and
-subprocess count; pane allocation/reuse and reconciliation counts remain
-`unavailable` unless the injected or runtime runner observes them. Neither mode
-sets a universal optimization threshold.
+`trace`) reports measurements only when an explicit runner is injected; the
+default CLI runner returns `measurement_unavailable` and does not execute a
+workload. Measurements from an injected runner are labelled
+`injected-runner`, while pane allocation/reuse and reconciliation counts remain
+`unavailable` unless that runner observes them. Neither mode sets a universal
+optimization threshold.
 
 ## Daily Loop
 

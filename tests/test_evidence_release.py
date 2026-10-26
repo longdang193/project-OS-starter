@@ -213,6 +213,29 @@ def test_settled_result_artifacts_wait_for_downstream_handoff(tmp_path: Path) ->
     assert not directory.exists()
 
 
+def test_unpublished_result_artifacts_are_marked_for_recovery(tmp_path: Path) -> None:
+    directory = tmp_path / "herdr-result-attempt-1-unpublished"
+    directory.mkdir()
+
+    result = settle_result_artifacts(
+        directory,
+        attempt_id="attempt-1",
+        assignment_id="assignment-1",
+        task_sha256="a" * 64,
+        grant_digest="b" * 64,
+        receipt=None,
+        task_result=None,
+        lifecycle_settled=False,
+        no_continuation=False,
+        temp_root=tmp_path,
+        now=100.0,
+        handoff_confirmed=False,
+    )
+
+    assert result["state"] == "preserved"
+    assert (directory / ".herdr-recovery.json").is_file()
+
+
 def test_absent_result_artifacts_are_idempotently_settled(tmp_path: Path) -> None:
     directory = tmp_path / "herdr-result-attempt-1-already-absent"
 

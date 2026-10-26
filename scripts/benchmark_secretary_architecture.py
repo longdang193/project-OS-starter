@@ -265,6 +265,7 @@ def run_live_benchmark(
     if iterations < 1:
         raise ValueError("iterations must be positive")
     sample_runner = runner or _default_live_runner
+    injected_runner = runner is not None
     results: list[ContractMetric] = []
     for run_id in range(1, iterations + 1):
         for scenario_id in SCENARIOS:
@@ -305,8 +306,12 @@ def run_live_benchmark(
                         semantic_result="not_captured",
                         failure_classification="not_classified",
                         blocker="measurement_only",
-                        evidence_provenance="live-command" if measured else "unavailable",
-                        evidence_kind="live_trace" if measured else "unavailable",
+                        evidence_provenance=(
+                            "injected-runner" if injected_runner and measured else "unavailable"
+                        ),
+                        evidence_kind=(
+                            "injected_measurement" if injected_runner and measured else "unavailable"
+                        ),
                         live=True,
                         latency_ms=float(latency) if measured else None,
                         time_to_first_result_ms=(
