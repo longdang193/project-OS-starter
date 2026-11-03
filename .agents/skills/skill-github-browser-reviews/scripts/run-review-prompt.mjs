@@ -48,6 +48,11 @@ function normalizePromptText(value) {
   return normalizeComposerText(value).replace(/\s*`n\s*/g, "`n");
 }
 
+function isChallengeEvidence(evidence) {
+  const content = `${evidence?.currentUrl || ""} ${evidence?.visibleText || ""}`;
+  return /(?:cloudflare|challenge-platform|verify you are human|checking your browser|just a moment|human verification)/i.test(content);
+}
+
 function assertPrompt(prompt) {
   if (typeof prompt !== "string" || prompt.trim() === "") {
     throw new Error("prompt must be a non-empty string");
@@ -153,8 +158,12 @@ export async function openReviewTab(context) {
     await openChatGPT(page);
     return page;
   } catch (error) {
+    const visibleEvidence = await captureVisibleEvidence(page).catch(() => null);
+    const failureScope = isChallengeEvidence(visibleEvidence) ? "shared_context" : "review";
+    const scopedError = withFailureScope(error, failureScope);
+    if (visibleEvidence) scopedError.visibleEvidence = visibleEvidence;
     await page.close().catch(() => {});
-    throw withFailureScope(error, "review");
+    throw scopedError;
   }
 }
 
