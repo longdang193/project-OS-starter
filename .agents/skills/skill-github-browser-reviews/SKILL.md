@@ -302,9 +302,10 @@ The runner validates every entry before opening the browser, reuses one
  ownership stays blocked for operator-confirmed recovery; the runner never
  deletes a stale lock based only on a PID, timestamp, or profile path, and
   release removes only the current lease token. Normal SIGINT/SIGTERM cleanup
-  makes a best-effort release when ownership remains provable. Selection failures
+ makes a best-effort release when ownership remains provable. Selection failures
  carry an explicit scope: the batch continues only for a review-scoped failure
- and stops for shared-context or unknown failures. The failed review is never
+ that is known not to have dispatched a prompt, and stops for shared-context,
+ unknown, or possibly-dispatched failures. The failed review is never
  resubmitted or silently switched to another model. Do not add a keep-open flag
  or a second browser lifecycle owner. A newly created tab that does not reach the
 composer readiness state is page-local and review-scoped; failure to create a

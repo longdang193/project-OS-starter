@@ -920,7 +920,10 @@ export async function runReviewBatch({ attached, outputDir, reviews, projectKey,
         outputDir,
       });
       results.push(result);
-      if (result.status !== "completed" && result.failure_scope !== "review") {
+      const dispatchMayHaveStarted = result.submission_attempted === true
+        || (result.dispatch_state != null && result.dispatch_state !== "not_dispatched")
+        || result.submission === "ambiguous";
+      if (result.status !== "completed" && (result.failure_scope !== "review" || dispatchMayHaveStarted)) {
         for (let skippedIndex = index + 1; skippedIndex < validatedReviews.length; skippedIndex += 1) {
           const skippedReview = validatedReviews[skippedIndex];
           results.push({
