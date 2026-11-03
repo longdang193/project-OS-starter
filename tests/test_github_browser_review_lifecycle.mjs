@@ -192,6 +192,39 @@ test("prompt acknowledgement polls once without resubmitting", async () => {
   assert.equal(waitCalls, 1);
 });
 
+test("pre-dispatch send control failures remain explicitly not dispatched", async () => {
+  const composer = {
+    async fill() {},
+    async inputValue() { return "review prompt"; },
+    async innerText() { return ""; },
+  };
+  const page = {
+    getByRole(role) {
+      if (role === "button") {
+        return {
+          first() {
+            return {
+              async isVisible() {
+                throw new Error("send control inspection failed");
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+  };
+
+  await assert.rejects(
+    submitPrompt(page, composer, "review prompt"),
+    (error) => {
+      assert.equal(error.dispatchState, "not_dispatched");
+      assert.equal(error.submissionAttempted, false);
+      return true;
+    },
+  );
+});
+
 test("send action exceptions are classified as possibly dispatched", async () => {
   let entered = false;
   const composer = {
@@ -1389,6 +1422,45 @@ test("review tab scopes composer readiness failure as review and closes", async 
     (error) => {
       assert.match(error.message, /Authenticated ChatGPT composer was not found/);
       assert.equal(error.failureScope, "review");
+      return true;
+    },
+  );
+  assert.equal(closed, true);
+});
+
+test("review tab scopes challenge-page readiness failure as shared-context and preserves evidence", async () => {
+  let closed = false;
+  const page = {
+    url: () => "https://chatgpt.com/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1",
+    locator(selector) {
+      assert.equal(selector, "body");
+      return { async innerText() { return "Just a moment... Verify you are human"; } };
+    },
+    getByRole(role) {
+      if (role === "textbox") {
+        return {
+          first() {
+            return {
+              async waitFor() { throw new Error("challenge page"); },
+              async isVisible() { return false; },
+            };
+          },
+        };
+      }
+      if (role === "button") {
+        return { first() { return { async isVisible() { return false; } }; } };
+      }
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async close() { closed = true; },
+  };
+
+  await assert.rejects(
+    openReviewTab({ newPage: async () => page }),
+    (error) => {
+      assert.equal(error.failureScope, "shared_context");
+      assert.equal(error.visibleEvidence.currentUrl, page.url());
+      assert.match(error.visibleEvidence.visibleText, /Verify you are human/);
       return true;
     },
   );
@@ -2669,6 +2741,36 @@ test("termination cleanup is installed, closes once, and preserves signal status
   }
 });
 
+test("single-review cleanup invokes its owner exactly once", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-single-cleanup-"));
+  try {
+    const promptFile = join(parent, "review.md");
+    await writeFile(promptFile, `${REVIEW_URL} ${REVIEW_SHA}\n`, "utf8");
+    let closeCalls = 0;
+
+    const exitCode = await main([
+      "--user-data-dir", "github-review/project",
+      "--project-key", REVIEW_PROJECT_KEY,
+      "--model", "GPT-6",
+      "--effort", "High",
+      "--prompt-file", promptFile,
+      "--repository", REVIEW_REPOSITORY,
+      "--commit-sha", REVIEW_SHA,
+      "--review-url", REVIEW_URL,
+      "--output-dir", join(parent, "output"),
+    ], {
+      openReviewContext: async () => ({ context: {}, ownsContext: true }),
+      runReviewTransaction: async () => ({ status: "completed", output_dir: "run-a" }),
+      closeContext: async () => { closeCalls += 1; },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(closeCalls, 1);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("final result persistence failure makes a completed response incomplete", async () => {
   const parent = await mkdtemp(join(tmpdir(), "github-review-final-persistence-failure-"));
   let writeCount = 0;
@@ -3051,6 +3153,39 @@ test("batch stops after a review-scoped send ambiguity", async () => {
   assert.equal(results.length, 2);
   assert.equal(results[1].status, "skipped");
   assert.match(results[1].failure_reason, /Skipped after review 1/);
+});
+
+test("batch continues after an explicitly not-dispatched review failure", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      makeBatchReview("first"),
+      makeBatchReview("second"),
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
+        ? {
+            status: "incomplete",
+            failure_scope: "review",
+            failure_stage: "submission",
+            submission_attempted: true,
+            submission: "attempted",
+            dispatch_state: "not_dispatched",
+          }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(results.length, 2);
+  assert.equal(results[1].status, "completed");
 });
 
 test("batch stops after an unknown failure scope", async () => {

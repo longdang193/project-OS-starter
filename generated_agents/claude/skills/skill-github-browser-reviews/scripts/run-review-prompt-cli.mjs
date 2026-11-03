@@ -926,9 +926,9 @@ export async function runReviewBatch({ attached, outputDir, reviews, projectKey,
         outputDir,
       });
       results.push(result);
-      const dispatchMayHaveStarted = result.submission_attempted === true
-        || (result.dispatch_state != null && result.dispatch_state !== "not_dispatched")
-        || result.submission === "ambiguous";
+      const dispatchMayHaveStarted = result.dispatch_state == null
+        ? result.submission_attempted === true || result.submission === "ambiguous"
+        : result.dispatch_state !== "not_dispatched";
       if (result.status !== "completed" && (result.failure_scope !== "review" || dispatchMayHaveStarted)) {
         for (let skippedIndex = index + 1; skippedIndex < validatedReviews.length; skippedIndex += 1) {
           const skippedReview = validatedReviews[skippedIndex];
@@ -1200,7 +1200,13 @@ export async function main(argv, dependencies = {}) {
     terminationCode = removeTerminationCleanup.getSignalCode?.() || null;
     removeTerminationCleanup();
     try {
-      if (attached && !options.batchFile) await removeTerminationCleanup.closeOnce?.(attached) || await closeAttachedContext(attached);
+      if (attached && !options.batchFile) {
+        if (removeTerminationCleanup.closeOnce) {
+          await removeTerminationCleanup.closeOnce(attached);
+        } else {
+          await closeAttachedContext(attached);
+        }
+      }
     } catch (error) {
       const cleanupReason = error instanceof Error ? error.message : String(error);
       if (!result) {
