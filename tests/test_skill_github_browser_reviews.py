@@ -89,3 +89,16 @@ def test_skill_keeps_review_requests_compact_and_read_only() -> None:
         "do not include unrelated repository contents",
     ):
         assert text in skill
+
+
+def test_skill_distinguishes_node_controller_and_standalone_cdp_contracts() -> None:
+    skill = normalized_skill()
+    for text in (
+        "node controller must supply validated `projectkey` and `repository`",
+        "standalone cli derives the project key from each validated review's repository provenance",
+        "in standalone cli cdp mode, do not pass `--project-key`",
+        "manual cdp recovery",
+    ):
+        assert text in skill
+
+    assert "cdp callers must provide the validated `projectkey` and `repository`" not in skill
