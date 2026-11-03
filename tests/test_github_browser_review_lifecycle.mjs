@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   ASSISTANT_TURN_SELECTOR,
   AMBIGUOUS_DISPATCH_TIMEOUT_MS,
+  COMPOSER_READINESS_TIMEOUT_MS,
   INTERRUPTION_PATTERN,
   INTERRUPTION_UI_SELECTOR,
   evaluateReviewCompletion,
@@ -65,6 +66,11 @@ const makeBatchReview = (label, model = "GPT-6") => ({
   repository: REVIEW_REPOSITORY,
   commitSha: REVIEW_SHA,
   reviewUrls: [REVIEW_URL],
+});
+
+test("browser readiness and submission acknowledgement use resilient observation windows", () => {
+  assert.equal(COMPOSER_READINESS_TIMEOUT_MS, 30000);
+  assert.equal(SUBMISSION_ACK_TIMEOUT_MS, 10000);
 });
 
 test("model-menu interactions use the bounded five-second timeout", async () => {
@@ -1428,8 +1434,47 @@ test("review tab scopes composer readiness failure as review and closes", async 
   assert.equal(closed, true);
 });
 
+test("review tab performs one bounded reload for an ambiguous blank ChatGPT page", async () => {
+  let reloadCount = 0;
+  let waitCount = 0;
+  const composer = {
+    first() { return this; },
+    async waitFor() {
+      waitCount += 1;
+      if (waitCount === 1) throw new Error("composer not ready");
+    },
+    async isVisible() { return waitCount > 1; },
+  };
+  const loginControl = {
+    first() { return this; },
+    async isVisible() { return false; },
+  };
+  const page = {
+    url: () => "https://chatgpt.com/",
+    locator(selector) {
+      assert.equal(selector, "body");
+      return { async innerText() { return ""; } };
+    },
+    getByRole(role) {
+      if (role === "textbox") return composer;
+      if (role === "button") return loginControl;
+      throw new Error(`Unexpected role lookup: ${role}`);
+    },
+    async reload(options) {
+      reloadCount += 1;
+      assert.equal(options.timeout, COMPOSER_READINESS_TIMEOUT_MS);
+      assert.equal(options.waitUntil, "domcontentloaded");
+    },
+    async close() {},
+  };
+
+  assert.equal(await openReviewTab({ newPage: async () => page }), page);
+  assert.equal(reloadCount, 1);
+});
+
 test("review tab scopes challenge-page readiness failure as shared-context and preserves evidence", async () => {
   let closed = false;
+  let reloadCount = 0;
   const page = {
     url: () => "https://chatgpt.com/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1",
     locator(selector) {
@@ -1452,6 +1497,9 @@ test("review tab scopes challenge-page readiness failure as shared-context and p
       }
       throw new Error(`Unexpected role lookup: ${role}`);
     },
+    async reload() {
+      reloadCount += 1;
+    },
     async close() { closed = true; },
   };
 
@@ -1465,6 +1513,7 @@ test("review tab scopes challenge-page readiness failure as shared-context and p
     },
   );
   assert.equal(closed, true);
+  assert.equal(reloadCount, 0);
 });
 
 test("review tab marks context setup failures as shared-context failures", async () => {

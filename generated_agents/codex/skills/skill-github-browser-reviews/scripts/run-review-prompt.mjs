@@ -8,8 +8,8 @@ import { MENU_TRANSITION_TIMEOUT_MS, selectReviewModel } from "./select-review-m
 
 const CHATGPT_URL = "https://chatgpt.com/";
 export const UI_ACTION_TIMEOUT_MS = 5000;
-export const COMPOSER_READINESS_TIMEOUT_MS = 10000;
-export const SUBMISSION_ACK_TIMEOUT_MS = 2000;
+export const COMPOSER_READINESS_TIMEOUT_MS = 30000;
+export const SUBMISSION_ACK_TIMEOUT_MS = 10000;
 export const SUBMISSION_ACK_POLL_MS = 50;
 export const AMBIGUOUS_DISPATCH_TIMEOUT_MS = 15000;
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
@@ -65,27 +65,45 @@ function assertPrompt(prompt) {
   }
 }
 
+async function waitForVisibleComposer(composer) {
+  try {
+    await composer.waitFor({ state: "visible", timeout: COMPOSER_READINESS_TIMEOUT_MS });
+    return await composer.isVisible();
+  } catch {
+    return false;
+  }
+}
+
+async function assertComposerReadinessCanRetry(page) {
+  const evidence = await captureVisibleEvidence(page).catch(() => null);
+  if (isChallengeEvidence(evidence)) {
+    throw new ReviewPromptError("ChatGPT challenge page blocked the authenticated composer", "shared_context");
+  }
+  if (evidence?.loginVisible) {
+    throw new ReviewPromptError("ChatGPT authentication is required for the dedicated profile", "shared_context");
+  }
+}
+
 async function openChatGPT(page) {
   if (!page.url().startsWith("https://chatgpt.com/")) {
     await page.goto(CHATGPT_URL, { timeout: COMPOSER_READINESS_TIMEOUT_MS });
   }
 
   const composer = page.getByRole("textbox", { name: "Ask ChatGPT" }).first();
-  try {
-    await composer.waitFor({ state: "visible", timeout: COMPOSER_READINESS_TIMEOUT_MS });
-  } catch {
+  if (await waitForVisibleComposer(composer)) return composer;
+
+  await assertComposerReadinessCanRetry(page);
+  if (typeof page.reload === "function") {
     try {
-      const loginControl = page.getByRole("button", { name: /^(Log in|Sign up)$/i }).first();
-      if (await loginControl.isVisible()) {
-        throw new ReviewPromptError("ChatGPT authentication is required for the dedicated profile", "shared_context");
-      }
-    } catch (error) {
-      if (error?.failureScope) throw error;
+      await page.reload({ timeout: COMPOSER_READINESS_TIMEOUT_MS, waitUntil: "domcontentloaded" });
+    } catch {
+      // Continue to the bounded post-refresh readiness check.
     }
-    throw new Error("Authenticated ChatGPT composer was not found");
+    if (await waitForVisibleComposer(composer)) return composer;
   }
-  if (!(await composer.isVisible())) throw new Error("Authenticated ChatGPT composer was not found");
-  return composer;
+
+  await assertComposerReadinessCanRetry(page);
+  throw new Error("Authenticated ChatGPT composer was not found");
 }
 
 export async function captureVisibleEvidence(page) {
