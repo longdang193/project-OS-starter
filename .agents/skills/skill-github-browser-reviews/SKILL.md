@@ -258,13 +258,18 @@ the runner, validates revision-specific review evidence and may classify the
 overall workflow as `verified`. The runner never retries or silently recovers a
 failed submission.
 
-For a multi-model review, validate the complete review list against one
-repository-derived project key before opening the browser. Then keep the same
-transaction boundary: call the CLI module's `openReviewContext(options)` once,
-and call `runReviewBatch({ attached, reviews, outputDir, projectKey,
-repository })` from the Node controller. CDP callers must provide the validated
-`projectKey` and `repository`; the attached browser context cannot establish
-repository identity safely. The standalone CLI also accepts a manifest:
+For a multi-model review driven by a Node controller, validate the complete
+review list against one repository-derived project key before opening the
+browser. Then keep the same transaction boundary: call the CLI module's
+`openReviewContext(options)` once, and call
+`runReviewBatch({ attached, reviews, outputDir, projectKey, repository })` from
+the Node controller. The Node controller must supply validated `projectKey` and
+`repository`; the attached browser context cannot establish repository identity
+safely. The standalone CLI validates each review's repository, full commit SHA,
+and pinned URLs. The standalone CLI derives the project key from each validated
+review's repository provenance. In standalone CLI CDP mode, do not pass `--project-key`;
+the CLI reserves that flag for owned-profile mode. The standalone CLI also
+accepts a manifest:
 
 ```json
 {
@@ -389,6 +394,36 @@ Verify an explicit TCP CDP endpoint as described above. Attach once using
 owned-profile-to-CDP transition, not a review retry. If the user cannot confirm
 the composer, model, effort, or CDP endpoint, return `blocked` or `incomplete`
 without submitting.
+
+#### Manual CDP recovery
+
+If the host cannot launch the owned Playwright browser, an operator may start
+the dedicated Chrome profile directly and attach through TCP CDP. Derive the
+profile directory from the repository; never reuse the normal Chrome `User
+Data` directory or a different repository's profile:
+
+```powershell
+$ownerRepo = "<owner>/<repo>"
+$projectKey = $ownerRepo.ToLowerInvariant().Replace("/", "-")
+$profile = "$env:USERPROFILE\.codex\profiles\github-review\$projectKey"
+
+& "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" `
+  --user-data-dir="$profile" `
+  --remote-debugging-port=9222 `
+  https://chatgpt.com/
+```
+
+Verify the same endpoint that will be passed to the CLI before attaching:
+
+```powershell
+Invoke-RestMethod http://localhost:9222/json/version
+Invoke-RestMethod http://localhost:9222/json/list
+```
+
+Then use `--cdp-endpoint http://localhost:9222` with the normal repository,
+full-SHA, and pinned-URL provenance arguments. This is an operator-owned
+fallback, not a second normal browser lifecycle owner; do not use it for a
+pipe-backed Playwright MCP browser.
 
 ### 3. Open the review
 
