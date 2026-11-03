@@ -148,6 +148,44 @@ def test_skill_documents_controller_owned_evidence_boundary() -> None:
     assert "probeReviewModelInNewTab" not in helper
 
 
+def test_skill_documents_profile_bootstrap_and_cloudflare_handoff() -> None:
+    skill = " ".join(CANONICAL_SKILL.read_text(encoding="utf-8").split())
+
+    for rule in (
+        "create the directory and verify",
+        "verify that it is empty",
+        ".codex-review-profile.json",
+        "Cloudflare or human-verification handoff",
+        "Invalid content type:",
+        "Do not retry, resubmit",
+        "complete verification and login",
+        "explicitly confirm `logged in`",
+        "explicit TCP CDP endpoint",
+        "single pre-submission owned-profile-to-CDP transition",
+    ):
+        assert rule in skill
+
+    assert "use Incognito" in skill
+    assert "solve/bypass a" in skill
+
+
+def test_skill_documents_cdp_readiness_and_pinned_prompt_contract() -> None:
+    skill = " ".join(CANONICAL_SKILL.read_text(encoding="utf-8").split())
+
+    for rule in (
+        "Do not assume `--context-index 0`",
+        "/json/version",
+        "/json/list",
+        "available explicit TCP port",
+        "Do not launch a second Chrome process against the same profile",
+        "composer, requested model, and reasoning effort",
+        "<full-sha>",
+    ):
+        assert rule in skill
+
+    assert "<commit-or-branch>" not in skill
+
+
 def test_skill_documents_file_backed_helper_execution_boundary() -> None:
     skill = CANONICAL_SKILL.read_text(encoding="utf-8")
 

@@ -14,6 +14,7 @@ export const SUBMISSION_ACK_POLL_MS = 50;
 export const AMBIGUOUS_DISPATCH_TIMEOUT_MS = 15000;
 export const ASSISTANT_TURN_SELECTOR = '[data-message-author-role="assistant"]:visible:not([data-message-author-role="assistant"] [data-message-author-role="assistant"])';
 const ASSISTANT_FALLBACK_SELECTOR = 'main [class*="MarkdownRoot-"]:visible:not(.rich-text-user-turn)';
+const ASSISTANT_TURN_SELECTORS = [ASSISTANT_TURN_SELECTOR, ASSISTANT_FALLBACK_SELECTOR];
 export const INTERRUPTION_PATTERN = /(?:something went wrong|network error|response interrupted|stopped responding)/i;
 export const INTERRUPTION_UI_SELECTOR = '[data-testid="conversation-turn-error"]:visible, [data-testid="response-error"]:visible, [data-testid="error-message"]:visible';
 const GENERIC_ALERT_SELECTOR = '[role="alert"]:visible';
@@ -176,12 +177,6 @@ function extractConversationIdentity(url) {
   return match ? match[1] : null;
 }
 
-async function readVisibleAssistantTurns(page) {
-  const assistantMessages = page.locator(ASSISTANT_TURN_SELECTOR);
-  if (await assistantMessages.count()) return assistantMessages;
-  return page.locator(ASSISTANT_FALLBACK_SELECTOR);
-}
-
 export async function readVisibleInterruption(page) {
   const interruption = page.locator(INTERRUPTION_UI_SELECTOR).first();
   if ((await interruption.count()) > 0 && await interruption.isVisible()) return true;
@@ -192,31 +187,50 @@ export async function readVisibleInterruption(page) {
 }
 
 async function readVisibleAssistantMessage(page, { includeText = true } = {}) {
-  const turns = await readVisibleAssistantTurns(page);
-  const count = await turns.count();
-  if (count === 0) {
+  for (const selector of ASSISTANT_TURN_SELECTORS) {
+    const turns = page.locator(selector);
+    let snapshots;
+    if (typeof turns.evaluateAll === "function") {
+      snapshots = await turns.evaluateAll((elements, readText) => elements.map((element) => ({
+        assistantMessageId: ["data-message-id", "data-turn-id", "data-testid", "id"]
+          .map((attribute) => element.getAttribute(attribute))
+          .find(Boolean) || null,
+        assistantText: readText ? (element.innerText || "").trim() : "",
+      })), includeText);
+    } else {
+      const count = await turns.count();
+      if (count === 0) continue;
+
+      const selected = turns.nth(count - 1);
+      let assistantMessageId = null;
+      for (const attribute of ["data-message-id", "data-turn-id", "data-testid", "id"]) {
+        const value = await selected.getAttribute(attribute, { timeout: UI_ACTION_TIMEOUT_MS });
+        if (value) {
+          assistantMessageId = value;
+          break;
+        }
+      }
+
+      snapshots = [{
+        assistantMessageId,
+        assistantText: includeText ? (await selected.innerText({ timeout: UI_ACTION_TIMEOUT_MS })).trim() : "",
+      }];
+    }
+
+    if (snapshots.length === 0) continue;
+
+    const selected = snapshots[snapshots.length - 1];
     return {
-      assistantMessageId: null,
-      assistantText: "",
-      assistantTurnCount: 0,
+      assistantMessageId: selected.assistantMessageId || `visible-assistant-turn-${snapshots.length - 1}`,
+      assistantText: selected.assistantText,
+      assistantTurnCount: snapshots.length,
     };
   }
 
-  const selected = turns.nth(count - 1);
-  let assistantMessageId = null;
-  for (const attribute of ["data-message-id", "data-turn-id", "data-testid", "id"]) {
-    const value = await selected.getAttribute(attribute, { timeout: UI_ACTION_TIMEOUT_MS });
-    if (value) {
-      assistantMessageId = value;
-      break;
-    }
-  }
-  if (!assistantMessageId) assistantMessageId = `visible-assistant-turn-${count - 1}`;
-
   return {
-    assistantMessageId,
-    assistantText: includeText ? (await selected.innerText({ timeout: UI_ACTION_TIMEOUT_MS })).trim() : "",
-    assistantTurnCount: count,
+    assistantMessageId: null,
+    assistantText: "",
+    assistantTurnCount: 0,
   };
 }
 
