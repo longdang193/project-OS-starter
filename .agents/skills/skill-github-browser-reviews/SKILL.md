@@ -216,6 +216,13 @@ renames profiles, or silently binds a legacy directory. A marker for another
 repository also blocks, which prevents collisions such as `foo-bar/baz` and
 `foo/bar-baz` from sharing one profile.
 
+When the derived profile path does not exist, create the directory and verify
+that it is empty before launching the runner. The runner may then create
+`.codex-review-profile.json` with the repository and project-key binding. If
+the path exists and is non-empty without a matching marker, stop as `blocked`;
+do not delete contents, clear cookies, copy credentials, or adopt the profile
+implicitly.
+
 The runner performs one non-submitting visible authentication preflight for the
 owned context. An explicit login wall blocks the batch before fresh review tabs
 are opened. It selects and visibly verifies the requested model and effort,
@@ -339,12 +346,48 @@ last durable checkpoint remains non-terminal and the returned result is
 When a TCP CDP endpoint is explicitly available, `--cdp-endpoint` remains an
 exceptional attach mode and `--context-index` selects its browser context. The
 normal personal submission path uses the dedicated project profile instead.
+Before attaching, verify the endpoint and its targets explicitly:
+
+```powershell
+$cdpPort = 9222  # Example only; replace with an available explicit TCP port.
+Invoke-RestMethod "http://localhost:$cdpPort/json/version"
+Invoke-RestMethod "http://localhost:$cdpPort/json/list"
+```
+
+`/json/list` confirms the endpoint's tabs/targets; it is not a browser-context
+index. Do not assume `--context-index 0`: use `0` only after verifying that the
+endpoint exposes exactly one browser context, otherwise identify the intended
+context and pass its actual index. The runner requires an explicit index when
+multiple contexts are exposed. Do not launch a second Chrome process against
+the same profile. Close the owned-profile process before the manual CDP launch,
+or reuse the already-running process only when it was launched with the
+verified endpoint.
 CLI imports `run-review-prompt.mjs` through Node's ESM loader and submits
 exactly once. It never authenticates
 a profile for the user. A pipe-backed Playwright MCP browser cannot be used
 with `--cdp-endpoint`; use the owned-profile mode or MCP directly.
 `browser_run_code_unsafe` is not an ESM module runner; do not pass this CLI or
 either `.mjs` helper to that VM as a raw file.
+
+### Cloudflare or human-verification handoff
+
+If the owned-profile attempt encounters a Cloudflare or human-verification
+loop, an HTML challenge page, or a pre-submission `Invalid content type:
+text/html` diagnostic, stop the owned-profile attempt. Do not retry, resubmit,
+clear cookies or site data, switch profiles, use Incognito, or solve/bypass a
+CAPTCHA. Ask the user to launch the same derived dedicated profile manually,
+complete verification and login, and explicitly confirm `logged in`.
+
+After that confirmation, verify the exact profile path, repository/profile
+binding, authenticated composer, requested model, and reasoning effort. A
+`logged in` message or visible composer alone is insufficient: the requested
+model and effort must be visibly confirmed, separately, before submission.
+Verify an explicit TCP CDP endpoint as described above. Attach once using
+`--cdp-endpoint` and the verified `--context-index` when required; do not pass
+`--user-data-dir` to the attached run. This is a single pre-submission
+owned-profile-to-CDP transition, not a review retry. If the user cannot confirm
+the composer, model, effort, or CDP endpoint, return `blocked` or `incomplete`
+without submitting.
 
 ### 3. Open the review
 
@@ -362,12 +405,13 @@ Use this shape, with every GitHub URL pinned to the expected full commit SHA:
 
 ```text
 @GitHub Review this exact file revision:
-https://github.com/<owner>/<repo>/blob/<commit-or-branch>/<path>
+https://github.com/<owner>/<repo>/blob/<full-sha>/<path>
 
 Scope: read-only review of the selected revision.
 Context: <stable review or work-item identifier>
 Model: <GPT-5.6-Sol|GPT-6>
 Reasoning: <instant|medium|high>
+Plan/source: <exact plan file and/or commit-pinned GitHub URL>
 Question: <one precise review question>
 
 Return findings ordered by severity and do not modify files.
@@ -378,7 +422,8 @@ Return findings ordered by severity and do not modify files.
 Keep the browser-tab request compact and provide only the exact revision,
 read-only scope, stable context identifier, and one review question.
 
-Do not paste the current chat transcript, system or developer instructions,
+Do not refer to an "above plan" without naming the exact plan file and its
+commit-pinned GitHub URL. Do not paste the current chat transcript, system or developer instructions,
 tool schemas, environment blocks, attachments, or transport wrappers. Do not
 include credentials. Do not include unrelated repository contents. Those are
 outer execution context, not review input. If the request is too large, rebuild it
