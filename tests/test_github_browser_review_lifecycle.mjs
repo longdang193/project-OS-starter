@@ -3019,6 +3019,40 @@ test("batch continues after an explicit review-scoped failure", async () => {
   assert.equal(closeCount, 1);
 });
 
+test("batch stops after a review-scoped send ambiguity", async () => {
+  const context = {};
+  const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
+  const attempted = [];
+  context.close = async () => {};
+
+  const results = await runReviewBatch({
+    attached,
+    outputDir: "review-output",
+    reviews: [
+      makeBatchReview("first"),
+      makeBatchReview("second"),
+    ],
+    runTransaction: async (_reviewContext, review) => {
+      attempted.push(review.prompt.split("\n").at(-1));
+      return review.prompt.endsWith("first")
+        ? {
+            status: "incomplete",
+            failure_scope: "review",
+            failure_stage: "submission",
+            submission_attempted: true,
+            submission: "ambiguous",
+            dispatch_state: "possibly_dispatched",
+          }
+        : { status: "completed" };
+    },
+  });
+
+  assert.deepEqual(attempted, ["first"]);
+  assert.equal(results.length, 2);
+  assert.equal(results[1].status, "skipped");
+  assert.match(results[1].failure_reason, /Skipped after review 1/);
+});
+
 test("batch stops after an unknown failure scope", async () => {
   const context = {};
   const attached = { context, ownsContext: true, projectKey: REVIEW_PROJECT_KEY, repository: REVIEW_REPOSITORY };
