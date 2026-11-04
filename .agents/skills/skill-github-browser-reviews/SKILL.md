@@ -44,11 +44,10 @@ that the review inspected local state.
 3. **Revision invariant:** Give the reviewer an exact branch or commit and an
    exact file URL. The review request must include the file path or GitHub file URL.
    Pin URLs to a commit when reproducibility matters.
-4. **Browser invariant:** Prefer the Node/Playwright automation runner as the
-   primary execution path. In profile mode it must own the authenticated
-   browser context; in CDP mode it may receive a caller-owned authenticated
-   context. In either mode it invokes `@GitHub` through the visible UI. Use
-   CDP attachment only when a TCP CDP endpoint is explicitly available. A
+4. **Browser invariant:** Prefer the standalone automatic dedicated TCP-CDP
+   runner as the primary execution path. It launches only the repository-bound
+   Chrome profile, attaches over TCP CDP, and invokes `@GitHub` through the
+   visible UI. Owned Playwright profile mode is the secondary fallback. A
    pipe-backed Playwright MCP browser has no TCP CDP endpoint; do not attempt
    to attach the standalone CLI to it. Use ChromeDev only for session
    attachment or low-level diagnostics when the primary runner cannot operate.
@@ -163,12 +162,14 @@ const { page } = await runReviewPromptInNewTab(context, {
 });
 ```
 
-The runner must either own or receive an already authenticated Playwright
-`context`. The CLI's `--user-data-dir` mode creates the owned context; use one
-dedicated project profile such as
+The runner must either launch the dedicated project profile over TCP CDP or
+receive an already authenticated Playwright `context`. The CLI's
+`--launch-cdp` mode launches Chrome with the repository-bound profile and
+attaches to its endpoint. Use one dedicated project profile such as
 `~/.codex/profiles/github-review/<project>` and never the normal Chrome `User
-Data` directory. The library helpers and `--cdp-endpoint` mode require the
-caller to provide one.
+Data` directory. The CLI's `--user-data-dir` mode remains the owned Playwright
+fallback. The library helpers and `--cdp-endpoint` mode require the caller to
+provide an existing context or endpoint.
 Use a browser tool's `filename` or `sourcePath` option only when it supports
 file-backed Node execution. If the helper cannot be loaded or the authenticated
 context cannot be created or attached, report `incomplete` or `blocked`; do not
@@ -177,10 +178,11 @@ skill.
 
 For a standalone, repeatable Node invocation, use the ESM CLI entrypoint rather
 than evaluating the `.mjs` module as a browser VM script. The primary mode
-launches a visible Playwright browser with a dedicated authenticated profile:
+launches visible Chrome with TCP CDP and a dedicated authenticated profile:
 
 ```bash
 node .agents/skills/skill-github-browser-reviews/scripts/run-review-prompt-cli.mjs \
+  --launch-cdp \
   --user-data-dir ~/.codex/profiles/github-review/<project> \
   --project-key <owner-repository> \
   --model GPT-6 \
@@ -377,12 +379,12 @@ either `.mjs` helper to that VM as a raw file.
 
 ### Cloudflare or human-verification handoff
 
-If the owned-profile attempt encounters a Cloudflare or human-verification
-loop, an HTML challenge page, or a pre-submission `Invalid content type:
-text/html` diagnostic, stop the owned-profile attempt. Do not retry, resubmit,
-clear cookies or site data, switch profiles, use Incognito, or solve/bypass a
-CAPTCHA. Ask the user to launch the same derived dedicated profile manually,
-complete verification and login, and explicitly confirm `logged in`.
+If the automatic dedicated TCP-CDP attempt encounters a Cloudflare or
+human-verification loop, an HTML challenge page, or a pre-submission
+`Invalid content type: text/html` diagnostic, stop the attempt. Do not retry,
+resubmit, clear cookies or site data, switch profiles, use Incognito, or
+solve/bypass a CAPTCHA. Complete verification and login in the already launched
+dedicated profile, and explicitly confirm `logged in`.
 
 After that confirmation, verify the exact profile path, repository/profile
 binding, authenticated composer, requested model, and reasoning effort. A
@@ -397,10 +399,10 @@ without submitting.
 
 #### Manual CDP recovery
 
-If the host cannot launch the owned Playwright browser, an operator may start
-the dedicated Chrome profile directly and attach through TCP CDP. Derive the
-profile directory from the repository; never reuse the normal Chrome `User
-Data` directory or a different repository's profile:
+If automatic launch fails, an operator may start the same derived dedicated
+Chrome profile directly and attach through TCP CDP. Never reuse the normal
+Chrome `User Data` directory or a different repository's profile. Use this
+only after the automatic path fails and never attach to an unknown endpoint:
 
 ```powershell
 $ownerRepo = "<owner>/<repo>"
@@ -410,6 +412,7 @@ $profile = "$env:USERPROFILE\.codex\profiles\github-review\$projectKey"
 & "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" `
   --user-data-dir="$profile" `
   --remote-debugging-port=9222 `
+  --remote-debugging-address=127.0.0.1 `
   https://chatgpt.com/
 ```
 
@@ -427,12 +430,13 @@ pipe-backed Playwright MCP browser.
 
 ### 3. Open the review
 
-Run the Node/Playwright automation path first to open or control an authenticated
-ChatGPT Web tab and invoke `@GitHub` through the visible UI.
-If the owned-profile runner cannot create or use the required session, report
-`incomplete` or `blocked`; use ChromeDev only for low-level diagnostics. Keep
-the browser request compact and provide only the exact revision, read-only
-scope, stable context identifier, and one review question.
+Run the automatic dedicated TCP-CDP path first to launch or control an
+authenticated ChatGPT Web tab and invoke `@GitHub` through the visible UI. Use
+owned Playwright profile mode only as the secondary fallback. If neither path
+can create or use the required session, report `incomplete` or `blocked`; use
+ChromeDev only for low-level diagnostics. Keep the browser request compact and
+provide only the exact revision, read-only scope, stable context identifier,
+and one review question.
 Use visible page state as the authority for model, response mode, completion,
 and interruption status; do not infer these from hidden DOM or transport
 metadata.

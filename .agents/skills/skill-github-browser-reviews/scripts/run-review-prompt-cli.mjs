@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { createHash, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -21,12 +23,16 @@ import {
 } from "./select-review-model.mjs";
 
 const DEFAULT_CONTEXT_INDEX = 0;
+const DEFAULT_CDP_PORT = 9222;
+const CDP_STARTUP_TIMEOUT_MS = 15000;
+const CDP_POLL_INTERVAL_MS = 100;
 const DEFAULT_OUTPUT_DIR = "review-output";
 const PROFILE_LEASE_SUFFIX = ".codex-review-profile.lock";
 const PROFILE_BINDING_FILE = ".codex-review-profile.json";
 const PROJECT_PROFILE_MARKER = "github-review";
 const VALUE_ARGUMENTS = new Set([
   "--cdp-endpoint",
+  "--cdp-port",
   "--commit-sha",
   "--context-index",
   "--effort",
@@ -39,8 +45,8 @@ const VALUE_ARGUMENTS = new Set([
   "--batch-file",
   "--user-data-dir",
 ]);
-const USAGE = "Usage: node run-review-prompt-cli.mjs (--user-data-dir <path> | --cdp-endpoint <url>) [--project-key <owner-repository>] (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> --repository <owner/repository> --commit-sha <sha> --review-url <url>...) | --batch-file <path>) [--output-dir <path>] [--context-index <number>]";
-const FLAG_ARGUMENTS = new Set();
+const USAGE = "Usage: node run-review-prompt-cli.mjs (--launch-cdp --user-data-dir <path> --project-key <owner-repository> | --user-data-dir <path> --project-key <owner-repository> | --cdp-endpoint <url>) (--model <GPT-5.6-Sol|GPT-6> --effort <Instant|Medium|High> --prompt-file <path> --repository <owner/repository> --commit-sha <sha> --review-url <url>...) | --batch-file <path>) [--cdp-port <port>] [--output-dir <path>] [--context-index <number>]";
+const FLAG_ARGUMENTS = new Set(["--launch-cdp"]);
 const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const GITHUB_BLOB_URL_PATTERN = /https:\/\/github\.com\/[^\s<>"']+/gi;
 
@@ -74,6 +80,7 @@ export function parseArguments(argv) {
   }
 
   const cdpEndpoint = argumentsByName.get("--cdp-endpoint");
+  const cdpPortValue = argumentsByName.get("--cdp-port");
   const commitSha = argumentsByName.get("--commit-sha");
   const userDataDir = argumentsByName.get("--user-data-dir");
   const model = argumentsByName.get("--model");
@@ -84,12 +91,16 @@ export function parseArguments(argv) {
   const reviewUrls = argumentsByName.get("--review-url") || [];
   const batchFile = argumentsByName.get("--batch-file");
   const contextIndexValue = argumentsByName.get("--context-index");
+  const launchCdp = argumentsByName.has("--launch-cdp");
   const outputDir = argumentsByName.get("--output-dir") || DEFAULT_OUTPUT_DIR;
 
   if (!cdpEndpoint && !userDataDir) usageError("Missing one of: --cdp-endpoint or --user-data-dir");
   if (cdpEndpoint && userDataDir) usageError("Use only one of: --cdp-endpoint or --user-data-dir");
+  if (launchCdp && !userDataDir) usageError("--launch-cdp requires --user-data-dir");
+  if (launchCdp && cdpEndpoint) usageError("--launch-cdp cannot be combined with --cdp-endpoint");
   if (userDataDir && !projectKey) usageError("Missing required argument: --project-key for --user-data-dir");
   if (cdpEndpoint && projectKey) usageError("--project-key requires --user-data-dir");
+  if (!launchCdp && cdpPortValue !== undefined) usageError("--cdp-port requires --launch-cdp");
   if (userDataDir) argumentsByName.set("--user-data-dir", validateProjectProfilePath(userDataDir));
   if (!cdpEndpoint && contextIndexValue !== undefined) usageError("--context-index requires --cdp-endpoint");
   if (batchFile && (model || effort || promptFile || repository || commitSha || reviewUrls.length > 0)) {
@@ -106,9 +117,12 @@ export function parseArguments(argv) {
 
   const contextIndex = contextIndexValue === undefined ? DEFAULT_CONTEXT_INDEX : Number(contextIndexValue);
   if (!Number.isInteger(contextIndex) || contextIndex < 0) usageError(`Invalid context index: ${contextIndexValue}`);
+  const cdpPort = cdpPortValue === undefined ? DEFAULT_CDP_PORT : Number(cdpPortValue);
+  if (!Number.isInteger(cdpPort) || cdpPort < 1 || cdpPort > 65535) usageError(`Invalid CDP port: ${cdpPortValue}`);
 
   return {
     cdpEndpoint,
+    cdpPort,
     contextIndex,
     contextIndexProvided: contextIndexValue !== undefined,
     commitSha,
@@ -118,6 +132,7 @@ export function parseArguments(argv) {
     outputDir,
     promptFile,
     projectKey,
+    launchCdp,
     repository,
     reviewUrls,
     userDataDir: userDataDir ? resolve(userDataDir) : undefined,
@@ -536,19 +551,129 @@ async function loadPlaywright() {
   }
 }
 
-export async function openContext(chromium, options) {
+export function resolveChromeExecutable({ platform = process.platform, env = process.env } = {}) {
+  const explicitPath = env.CHROME_PATH || env.GOOGLE_CHROME_BIN;
+  if (explicitPath) return explicitPath;
+
+  const candidates = platform === "win32"
+    ? [
+        env.ProgramFiles && join(env.ProgramFiles, "Google", "Chrome", "Application", "chrome.exe"),
+        env["ProgramFiles(x86)"] && join(env["ProgramFiles(x86)"], "Google", "Chrome", "Application", "chrome.exe"),
+        env.LOCALAPPDATA && join(env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+      ]
+    : platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          join(env.HOME || "", "Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"),
+        ]
+      : ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"];
+
+  const existing = candidates.filter(Boolean).find((candidate) => existsSync(candidate));
+  if (existing) return existing;
+  if (platform === "linux") return candidates[0];
+  throw new Error(`Chrome executable not found; set CHROME_PATH to the dedicated Chrome executable`);
+}
+
+export async function findAvailableTcpPort(preferredPort = DEFAULT_CDP_PORT, createServerFn = createServer) {
+  const reserve = (port) => new Promise((resolvePort, reject) => {
+    const server = createServerFn();
+    const finish = (error, value) => {
+      server.removeListener("error", onError);
+      if (error) reject(error);
+      else resolvePort(value);
+    };
+    const onError = (error) => finish(error);
+    server.once("error", onError);
+    server.listen({ host: "127.0.0.1", port }, () => {
+      const address = server.address();
+      const actualPort = typeof address === "object" && address ? address.port : port;
+      server.close((error) => finish(error, actualPort));
+    });
+  });
+
+  try {
+    return await reserve(preferredPort);
+  } catch (error) {
+    if (error?.code !== "EADDRINUSE") throw error;
+    return reserve(0);
+  }
+}
+
+export async function waitForCdpEndpoint(
+  endpoint,
+  {
+    fetchImpl = globalThis.fetch,
+    timeoutMs = CDP_STARTUP_TIMEOUT_MS,
+    pollIntervalMs = CDP_POLL_INTERVAL_MS,
+  } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() <= deadline) {
+    try {
+      const response = await fetchImpl(`${endpoint}/json/version`);
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, pollIntervalMs));
+  }
+  throw new Error(`Timed out waiting for Chrome CDP endpoint ${endpoint}: ${errorMessage(lastError)}`);
+}
+
+export async function launchDedicatedChrome(
+  profilePath,
+  {
+    cdpPort = DEFAULT_CDP_PORT,
+    executablePath,
+    findPort = findAvailableTcpPort,
+    spawnProcess = spawn,
+    waitForEndpoint = waitForCdpEndpoint,
+  } = {},
+) {
+  const port = await findPort(cdpPort);
+  const endpoint = `http://127.0.0.1:${port}`;
+  const executable = executablePath || resolveChromeExecutable();
+  const chromeProcess = spawnProcess(
+    executable,
+    [
+      `--user-data-dir=${profilePath}`,
+      `--remote-debugging-port=${port}`,
+      "--remote-debugging-address=127.0.0.1",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "https://chatgpt.com/",
+    ],
+    { detached: false, stdio: "ignore", windowsHide: true },
+  );
+  try {
+    await waitForEndpoint(endpoint);
+    return { endpoint, port, process: chromeProcess };
+  } catch (error) {
+    chromeProcess.kill?.();
+    throw error;
+  }
+}
+
+async function connectToCdpContext(chromium, endpoint, options) {
+  const browser = await chromium.connectOverCDP(endpoint);
+  const contexts = browser.contexts();
+  if (contexts.length > 1 && !options.contextIndexProvided) {
+    await browser.close().catch(() => {});
+    throw new Error(`Explicit --context-index is required when multiple authenticated browser contexts exist; available contexts: ${contexts.length}`);
+  }
+  const context = contexts[options.contextIndex];
+  if (!context) {
+    await browser.close().catch(() => {});
+    throw new Error(`Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`);
+  }
+  return { browser, context };
+}
+
+export async function openContext(chromium, options, dependencies = {}) {
   if (options.cdpEndpoint) {
-    const browser = await chromium.connectOverCDP(options.cdpEndpoint);
-    const contexts = browser.contexts();
-    if (contexts.length > 1 && !options.contextIndexProvided) {
-      await browser.close().catch(() => {});
-      throw new Error(`Explicit --context-index is required when multiple authenticated browser contexts exist; available contexts: ${contexts.length}`);
-    }
-    const context = contexts[options.contextIndex];
-    if (!context) {
-      await browser.close().catch(() => {});
-      throw new Error(`Authenticated browser context not found at index ${options.contextIndex}; available contexts: ${contexts.length}`);
-    }
+    const { browser, context } = await connectToCdpContext(chromium, options.cdpEndpoint, options);
     return { browser, context, ownsContext: false };
   }
 
@@ -559,6 +684,34 @@ export async function openContext(chromium, options) {
   const profilePath = validateProjectProfilePath(options.userDataDir, derivedProjectKey);
   await bindProfileIdentity(profilePath, options.repository, derivedProjectKey);
   const profileLease = await acquireProfileLease(profilePath);
+  if (options.launchCdp) {
+    let launched;
+    try {
+      const launch = dependencies.launchDedicatedChrome || launchDedicatedChrome;
+      launched = await launch(profilePath, { cdpPort: options.cdpPort });
+      const { browser, context } = await connectToCdpContext(chromium, launched.endpoint, options);
+      return {
+        browser,
+        context,
+        ownsContext: false,
+        chromeProcess: launched.process,
+        cdpEndpoint: launched.endpoint,
+        profileLease,
+        profilePath,
+        projectKey: derivedProjectKey,
+        repository: options.repository,
+      };
+    } catch (error) {
+      launched?.process?.kill?.();
+      try {
+        await releaseProfileLease(profileLease);
+      } catch (cleanupError) {
+        error.cleanupError = cleanupError;
+        error.message = `${errorMessage(error)}; profile lease cleanup failed: ${errorMessage(cleanupError)}`;
+      }
+      throw error;
+    }
+  }
   try {
     const context = await chromium.launchPersistentContext(profilePath, { headless: false });
     return {
@@ -602,7 +755,7 @@ export async function openReviewContext(options) {
 export async function closeContext(attached) {
   if (attached?.closed) return;
   if (!attached) return;
-  const { browser, context, ownsContext, page, profileLease } = attached;
+  const { browser, context, ownsContext, page, profileLease, chromeProcess } = attached;
   let cleanupError;
   let ownedContextClosed = !ownsContext;
   try {
@@ -621,6 +774,11 @@ export async function closeContext(attached) {
     }
     try {
       if (browser) await browser.close();
+    } catch (error) {
+      cleanupError ||= error;
+    }
+    try {
+      if (chromeProcess && !chromeProcess.killed) chromeProcess.kill?.();
     } catch (error) {
       cleanupError ||= error;
     }
