@@ -25,7 +25,7 @@ REQUIRED_BROWSER_REVIEW_RULES = (
     "Use this skill only after the user explicitly invokes it by name",
     "Do not activate this skill merely because",
     "Explicit-invocation invariant",
-    "Node/Playwright automation runner",
+    "standalone automatic dedicated TCP-CDP",
     "normal ChatGPT browser tab",
     "with `@GitHub`",
     "Commit and push the selected plan or code",
@@ -158,10 +158,10 @@ def test_skill_documents_profile_bootstrap_and_cloudflare_handoff() -> None:
         "Cloudflare or human-verification handoff",
         "Invalid content type:",
         "Do not retry, resubmit",
-        "complete verification and login",
+        "Complete verification and login",
         "explicitly confirm `logged in`",
         "explicit TCP CDP endpoint",
-        "single pre-submission owned-profile-to-CDP transition",
+        "automatic dedicated TCP-CDP attempt",
     ):
         assert rule in skill
 

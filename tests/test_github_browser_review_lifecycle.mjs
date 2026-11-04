@@ -30,6 +30,7 @@ import {
   deriveProjectKey,
   extractPromptGitHubBlobUrls,
   installTerminationCleanup,
+  launchDedicatedChrome,
   main,
   openContext,
   parseArguments,
@@ -336,6 +337,104 @@ test("CDP mode rejects implicit selection across multiple contexts", async () =>
     /Explicit --context-index is required/,
   );
   assert.equal(closeCalls, 1);
+});
+
+test("automatic CDP mode requires the dedicated project profile", () => {
+  const parsed = parseArguments([
+    "--launch-cdp",
+    "--user-data-dir", "github-review/longdang193-project-os-starter",
+    "--project-key", "longdang193-project-os-starter",
+    "--batch-file", "reviews.json",
+  ]);
+
+  assert.equal(parsed.launchCdp, true);
+  assert.equal(parsed.cdpPort, 9222);
+  assert.throws(
+    () => parseArguments([
+      "--launch-cdp",
+      "--cdp-endpoint", "http://127.0.0.1:9222",
+      "--batch-file", "reviews.json",
+    ]),
+    /requires --user-data-dir|Use only one of|--launch-cdp/,
+  );
+});
+
+test("automatic CDP mode launches and cleans up only its dedicated profile", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "github-review-auto-cdp-"));
+  const profile = join(parent, "github-review", REVIEW_PROJECT_KEY);
+  let launch;
+  let killed = false;
+  const context = {};
+  const browser = {
+    contexts() { return [context]; },
+    async close() {},
+  };
+  try {
+    launch = await openContext(
+      {
+        connectOverCDP: async (endpoint) => {
+          assert.equal(endpoint, "http://127.0.0.1:9333");
+          return browser;
+        },
+      },
+      {
+        launchCdp: true,
+        userDataDir: profile,
+        projectKey: REVIEW_PROJECT_KEY,
+        repository: REVIEW_REPOSITORY,
+        contextIndex: 0,
+        contextIndexProvided: false,
+      },
+      {
+        launchDedicatedChrome: async (profilePath) => {
+          assert.equal(profilePath, resolve(profile));
+          return {
+            endpoint: "http://127.0.0.1:9333",
+            process: { kill() { killed = true; } },
+          };
+        },
+      },
+    );
+
+    assert.equal(launch.context, context);
+    assert.equal(launch.ownsContext, false);
+    assert.equal(launch.profilePath, resolve(profile));
+    await closeContext(launch);
+    assert.equal(killed, true);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("automatic CDP launcher passes only the dedicated profile to Chrome", async () => {
+  const calls = [];
+  const launched = await launchDedicatedChrome("C:\\profiles\\github-review\\owner-repository", {
+    cdpPort: 9222,
+    executablePath: "chrome.exe",
+    findPort: async (preferredPort) => {
+      assert.equal(preferredPort, 9222);
+      return 9333;
+    },
+    spawnProcess: (...args) => {
+      calls.push(args);
+      return { killed: false, kill() {} };
+    },
+    waitForEndpoint: async (endpoint) => {
+      assert.equal(endpoint, "http://127.0.0.1:9333");
+    },
+  });
+
+  assert.equal(launched.endpoint, "http://127.0.0.1:9333");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "chrome.exe");
+  assert.deepEqual(calls[0][1], [
+    "--user-data-dir=C:\\profiles\\github-review\\owner-repository",
+    "--remote-debugging-port=9333",
+    "--remote-debugging-address=127.0.0.1",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "https://chatgpt.com/",
+  ]);
 });
 
 test("normal CLI arguments keep the runner contract small", () => {

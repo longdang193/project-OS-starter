@@ -102,3 +102,16 @@ def test_skill_distinguishes_node_controller_and_standalone_cdp_contracts() -> N
         assert text in skill
 
     assert "cdp callers must provide the validated `projectkey` and `repository`" not in skill
+
+
+def test_skill_makes_automatic_dedicated_cdp_the_primary_browser_path() -> None:
+    skill = normalized_skill()
+    for text in (
+        "automatic dedicated tcp-cdp runner as the primary execution path",
+        "the cli's `--launch-cdp` mode launches chrome",
+        "owned playwright profile mode is the secondary fallback",
+        "run the automatic dedicated tcp-cdp path first",
+    ):
+        assert text in skill
+
+    assert "prefer the node/playwright automation runner as the primary execution path" not in skill
